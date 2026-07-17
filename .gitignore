@@ -1,0 +1,17 @@
+# dependencies
+/node_modules
+
+# next.js
+/.next
+/out
+*.tsbuildinfo
+next-env.d.ts
+
+# misc
+.DS_Store
+*.pem
+.env*
+!.env.example
+
+# local tooling
+/scratch
