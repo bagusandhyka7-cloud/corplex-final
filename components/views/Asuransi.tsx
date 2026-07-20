@@ -1,45 +1,108 @@
 "use client";
-import React, { useState } from "react";
-import { RadioTower, Scale, Upload } from "lucide-react";
+import React, { useEffect, useState } from "react";
+import { Lock, Plus, RadioTower, Scale } from "lucide-react";
 import { Klaim } from "@/lib/data";
 import { clone, useStore, ViewId } from "@/lib/store";
-import { Chip, Field, Kpi, Panel, Row, Tabs, Timeline, ViewHead } from "@/components/ui";
+import { Chip, Field, Kpi, Panel, Row, Timeline } from "@/components/ui";
+import { ModuleShell } from "@/components/ModuleShell";
+import { RecActions, RecordModal } from "@/components/RecordModal";
+import { idOf, RecRow, stripId } from "@/lib/records";
+import { api } from "@/lib/api";
+import { useRouter } from "next/navigation";
+
+const SUBJUDUL = ["Polis & Pertanggungan", "Klaim", "Integrasi Aset & Karyawan"];
 
 export default function Asuransi() {
-  const { ten, go, toast, pushQueue } = useStore();
+  const { ten, toast, activeTab: tab, setActiveTab: setTab, pushQueue, patchTen, go } = useStore();
   const t = ten!;
-  const [tab, setTab] = useState(0);
+  const router = useRouter();
   const [f, setF] = useState("semua");
+  const [q, setQ] = useState("");
   const [pol, setPol] = useState(() => clone(t.asr.pol));
+  useEffect(() => setPol(clone(t.asr.pol)), [t.asr.pol]); // hidrasi DB menyusul mount
+  const [mOpen, setMOpen] = useState(false);
+  const [mEdit, setMEdit] = useState<RecRow | null>(null);
+  const onDone = (row: RecRow, editId: string | null) =>
+    patchTen({ asr: { ...t.asr, pol: (editId ? t.asr.pol.map((x) => idOf("pol", x) === editId ? row : x) : [row, ...t.asr.pol]) as typeof t.asr.pol } });
   const [klaim, setKlaim] = useState<Klaim[]>(() => clone(t.asr.klaim));
   const [nkObj, setNkObj] = useState(t.asr.pol[0] ? `${t.asr.pol[0][3]} — ${t.asr.pol[0][0]}` : "");
   const [nkDesc, setNkDesc] = useState("");
 
-  const renew = (i: number) => {
-    setPol((ps) => {
-      const n = clone(ps);
-      n[i][7] = "PENGURUSAN"; n[i][8] = "c-mon"; n[i][9] = "PENGURUSAN";
-      return n;
-    });
-    toast("Perpanjangan polis dimulai", "Permintaan penawaran terkirim ke penanggung — tenggat JAGA tetap aktif hingga polis baru terbit dan tertaut ke rekam.", "ok");
+  /* Perpanjang: status ditulis NYATA ke module_records (bukan mutasi lokal). */
+  const renew = async (row: RecRow) => {
+    const id = idOf("pol", row);
+    const next = [...(stripId("pol", row) as unknown[])];
+    next[7] = "PENGURUSAN"; next[8] = "c-mon"; next[9] = "PENGURUSAN";
+    if (id) {
+      const r = await api.records.update(id, next);
+      if (!r.ok) return toast("Gagal", r.error.message, "warn");
+      patchTen({ asr: { ...t.asr, pol: t.asr.pol.map((x) => (idOf("pol", x) === id ? ([...next, id] as unknown as typeof t.asr.pol[number]) : x)) as typeof t.asr.pol } });
+    } else {
+      setPol((ps) => ps.map((p) => (p === row ? (next as typeof p) : p)));
+    }
   };
 
-  const newKlaim = () => {
+  /* Klaim: kronologi → draf AI → langsung sinkron ke antrean Pengacara (verification_queue). */
+  const [kirimKlaim, setKirimKlaim] = useState(false);
+  const newKlaim = async () => {
     if (!nkDesc.trim()) { toast("Kronologi wajib diisi", "Uraikan kejadian sebagai dasar klaim.", "warn"); return; }
+    setKirimKlaim(true);
+    const objek = nkObj.split(" — ")[0];
+    let ringkas = `Klaim atas ${objek}. Kronologi: ${nkDesc.trim()}`;
+    // AI menyusun draf berkas klaim; bila AI tak tersedia, kronologi mentah tetap terkirim
+    const ai = await api.ai.chatStream({
+      messages: [{ role: "user", content: `Susun ringkasan berkas klaim asuransi (maks 4 kalimat, bahasa hukum Indonesia) untuk objek "${objek}". Kronologi kejadian: ${nkDesc.trim()}` }],
+      model: "Jago 1.5", company: { name: t.name, sector: t.sector }, onDelta: () => {},
+    });
+    if (ai.ok && ai.data.trim()) ringkas = ai.data.trim();
     setKlaim((ks) => [{
-      t: "Klaim Baru — " + nkObj.split(" — ")[0], obj: nkObj, nilai: "Taksiran menyusul", cls: "c-draft", lbl: "DRAF AI",
-      tl: [["HARI INI", "Klaim diajukan", "Berkas dirakit AI dari rekam — menunggu nomor registrasi penanggung", "next"]],
+      t: "Klaim — " + objek, obj: nkObj, nilai: "Taksiran menyusul", cls: "c-draft", lbl: "DRAF AI",
+      tl: [["HARI INI", "Klaim diajukan", "Berkas dirakit AI dari rekam — terkirim ke antrean advokat", "next"]],
     }, ...ks]);
     setNkDesc("");
-    pushQueue("Klaim asuransi — " + nkObj.split(" — ")[0], "Berkas klaim dirakit AI · verifikasi sebelum dikirim ke penanggung", "c-draft", "DRAF AI");
-    toast("Klaim disusun — DRAF AI", "Dokumen pendukung ditarik dari vault · masuk antrean verifikasi advokat sebelum dikirim ke penanggung.", "ok");
+    pushQueue("Klaim asuransi — " + objek, ringkas.slice(0, 240), "c-draft", "DRAF AI");
+    setKirimKlaim(false);
   };
 
+  /* Bundel dokumen: rakit daftar berkas nyata (rekam modul + dokumen karyawan) lalu simpan
+   * sebagai rekam bundel yang bisa dibuka di halaman detail. */
+  const bundelDokumen = async (judul: string, objek: string) => {
+    const tid = localStorage.getItem("corplex_tid") || "";
+    const r = await api.records.list(tid);
+    const berkas = r.ok ? r.data.filter((x) => x.dok_url).map((x) => x.dok_nama || x.module) : [];
+    const isi = [`Bundel — ${judul}`, `Objek: ${objek}`, t.name, "", "", 0, `${berkas.length} berkas tertaut: ${berkas.join(", ") || "belum ada dokumen terunggah"}`, "AKTIF", "c-mon", "BUNDEL", "detail"];
+    const c = await api.records.create(tid, "lic", isi, "ai");
+    if (!c.ok) return toast("Gagal membuat bundel", c.error.message, "warn");
+    pushQueue(`Bundel dokumen klaim — ${objek}`, `${berkas.length} berkas ditarik dari vault · siap dikirim ke penanggung`, "c-mon", "BUNDEL");
+  };
+
+  /* Dropzone polis: dokumen ke Storage + rekam pol baru. */
+  const dropDok = async (file: File) => {
+    const tid = localStorage.getItem("corplex_tid") || "";
+    const up = await api.records.uploadDoc(tid, file);
+    if (!up.ok) return toast("Gagal mengunggah", up.error.message, "warn");
+    const nama = file.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim();
+    const data = [nama, "", "", "", "asset", "", "", "AKTIF", "c-ver", "AKTIF"];
+    const r = await api.records.create(tid, "pol", data, "ai", up.data);
+    if (!r.ok) return toast("Gagal menyimpan", r.error.message, "warn");
+    patchTen({ asr: { ...t.asr, pol: [[...data, r.data.id] as unknown as typeof t.asr.pol[number], ...t.asr.pol] as typeof t.asr.pol } });
+  };
+
+  /* Relasi ke tabel employees (bukan angka hardcode) */
+  const bpjsTk = t.emp.filter((e) => e.bpjsTk).length;
+  const bpjsKes = t.emp.filter((e) => e.bpjsKes).length;
+  const kurangBpjs = t.emp.filter((e) => !e.bpjsTk || !e.bpjsKes);
+
+  const polRows = pol.filter((p) => (f === "semua" || p[7] === f) && (String(p[0]) + p[1] + p[3]).toLowerCase().includes(q.toLowerCase()));
+
   return (
-    <div>
-      <ViewHead en="Modul 4.10 · Insurance & Risk Transfer Management · Layer 2" h1="Manajemen Asuransi"
-        sub={<>Registrasi polis berbasis unggah dokumen — objek pertanggungan <b>tertaut langsung ke rekam Aset &amp; Karyawan</b>. Jatuh tempo polis, iuran BPJS, dan alur klaim dipantau fungsi JAGA; kesenjangan proteksi terdeteksi otomatis.</>}
-        acts={<button className="btn btn-navy" onClick={() => toast("Registrasi polis", "Unggah dokumen polis → AI mengekstrak penanggung, objek, nilai pertanggungan, masa berlaku → tautan otomatis ke aset/karyawan pada rekam.")}><Upload size={14} /> Daftarkan Polis (AI Ekstraksi)</button>} />
+    <ModuleShell h1={SUBJUDUL[tab] || "Asuransi"}
+      sub="Semua polis perusahaan di satu tempat — jatuh tempo & klaim diingatkan otomatis."
+      acts={<button className="btn btn-gold" onClick={() => { setMEdit(null); setMOpen(true); }}><Plus size={14} /> Daftarkan Polis</button>}
+      dropNote="Dokumen polis (PDF/pindaian) — AI mengekstrak penanggung, objek, nilai pertanggungan, dan masa berlaku; berkas asli tersimpan di vault."
+      onDrop={(f2) => void dropDok(f2)}
+      filters={tab === 0 ? ["semua", "AKTIF", "SEGERA", "KLAIM", "PENGURUSAN"] : undefined} active={f} onFilter={setF}
+      q={tab === 0 ? q : undefined} setQ={tab === 0 ? setQ : undefined} cariPh="Cari polis / penanggung / objek…">
 
       <div className="grid g4 mb16">
         <Kpi v={pol.length} label="Polis aktif dipantau" tr={t.asr.polTr} />
@@ -48,22 +111,15 @@ export default function Asuransi() {
         <Kpi v={t.asr.gap.length} label="Kesenjangan proteksi" tr="Objek tanpa polis tertaut" trCls="dn" />
       </div>
 
-      <Tabs items={["Polis & Pertanggungan", "Klaim", "Integrasi Aset & Karyawan"]} cur={tab} onSel={setTab} />
+
 
       {tab === 0 && (
         <div>
-          <div className="filters">
-            {["semua", "AKTIF", "SEGERA", "KLAIM"].map((x) => (
-              <button key={x} className={`fchip${f === x ? " on" : ""}`} onClick={() => setF(x)}>
-                {x === "semua" ? "Semua" : x === "AKTIF" ? "Aktif" : x === "SEGERA" ? "Segera berakhir" : "Klaim berjalan"}
-              </button>
-            ))}
-          </div>
           <div className="tblwrap">
             <table>
               <thead><tr><th>Polis</th><th>Objek Pertanggungan (Tertaut Rekam)</th><th>Nilai Pertanggungan</th><th>Masa Berlaku</th><th>Status</th><th>Aksi</th></tr></thead>
               <tbody>
-                {pol.map((p, i) => (f === "semua" || p[7] === f) ? (
+                {polRows.map((p, i) => (
                   <tr key={i}>
                     <td><b>{p[0]}</b><span className="sub mono" style={{ fontSize: 10 }}>{p[1]} · No. {p[2]}</span></td>
                     <td style={{ cursor: "pointer" }} onClick={() => go(p[4] as ViewId)} title="Buka rekam sumber">
@@ -72,13 +128,16 @@ export default function Asuransi() {
                     <td>{p[5]}</td><td>{p[6]}</td>
                     <td><Chip c={p[8]}>{p[9]}</Chip></td>
                     <td>
-                      {p[7] === "SEGERA" ? <button className="btn btn-gold btn-sm" onClick={() => renew(i)}>Perpanjang</button>
-                        : p[7] === "KLAIM" ? <button className="btn btn-line btn-sm" onClick={() => setTab(1)}>Lihat Klaim</button>
-                          : p[7] === "PENGURUSAN" ? <button className="btn btn-line btn-sm" onClick={() => toast("Tracking perpanjangan", "Penawaran penanggung ditunggu — perbandingan premi dan klausul disiapkan AI.")}>Lacak</button>
-                            : <button className="btn btn-line btn-sm" onClick={() => toast("Detail polis", "Dokumen polis, klausul pertanggungan, dan riwayat premi — tersimpan di vault dengan hash.")}>Detail</button>}
+                      <div className="flex items-center gap-2">
+                        {idOf("pol", p as RecRow) && <button className="btn-act" onClick={() => router.push(`/rekam/pol/${idOf("pol", p as RecRow)}`)}><Lock size={10} style={{ display: "inline", marginRight: 4 }} />Buka</button>}
+                        {p[7] === "SEGERA" ? <button className="btn-act" onClick={() => void renew(p as RecRow)}>Perpanjang</button>
+                          : p[7] === "KLAIM" ? <button className="btn-act" onClick={() => setTab(1)}>Lihat Klaim</button> : null}
+                        <RecActions mod="pol" row={p as RecRow} toast={toast} onEdit={(row) => { setMEdit(row); setMOpen(true); }}
+                          onDeleted={(id) => patchTen({ asr: { ...t.asr, pol: t.asr.pol.filter((x) => idOf("pol", x) !== id) as typeof t.asr.pol } })} />
+                      </div>
                     </td>
                   </tr>
-                ) : null)}
+                ))}
               </tbody>
             </table>
           </div>
@@ -87,15 +146,15 @@ export default function Asuransi() {
       )}
 
       {tab === 1 && (
-        <div className="grid g-wide">
-          <div style={{ display: "grid", gap: 16, alignContent: "start" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.6fr) minmax(300px,1fr)", gap: 16, alignItems: "start" }}>
+          <div style={{ display: "grid", gap: 16, alignContent: "start", minWidth: 0 }}>
             {klaim.map((k, i) => k.tl ? (
               <Panel key={i} title={<>{k.t} <Chip c={k.cls}>{k.lbl}</Chip></>}>
                 <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12 }}>{k.obj} · {k.nilai}</p>
                 <Timeline items={k.tl} />
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
-                  <button className="btn btn-line btn-sm" onClick={() => toast("Bundel dokumen klaim", "Polis + berita acara + bukti kepemilikan ditarik otomatis dari vault — hash terverifikasi.", "ok")}>Bundel Dokumen</button>
-                  <button className="btn btn-gold btn-sm" onClick={() => pushQueue(k.t, "Eskalasi klaim asuransi · dokumen dan kronologi terlampir", "c-gold", "ESKALASI")}><Scale size={12} /> Dampingi Advokat</button>
+                  <button className="btn btn-line btn-sm" onClick={() => void bundelDokumen(k.t, k.obj)}>Bundel Dokumen</button>
+                  <button className="btn btn-gold btn-sm" onClick={() => { pushQueue(k.t, `Dampingi advokat · objek ${k.obj} · dokumen & kronologi terlampir`, "c-gold", "ESKALASI"); go("lawyer"); }}><Scale size={12} /> Dampingi Advokat</button>
                 </div>
               </Panel>
             ) : (
@@ -114,7 +173,7 @@ export default function Asuransi() {
               <Field label="Kronologi kejadian">
                 <textarea rows={3} value={nkDesc} placeholder="Uraikan insiden — tanggal, lokasi, taksiran kerugian…" onChange={(e) => setNkDesc(e.target.value)} />
               </Field>
-              <button className="btn btn-navy" onClick={newKlaim}>Ajukan Klaim (AI Menyusun Berkas)</button>
+              <button className="btn btn-navy" disabled={kirimKlaim} aria-busy={kirimKlaim} onClick={() => void newKlaim()}>{kirimKlaim ? "AI menyusun berkas…" : "Ajukan Klaim (AI Menyusun Berkas)"}</button>
               <p className="note mt16"><b>Otomatis dari rekam:</b> polis, bukti kepemilikan aset / perjanjian kerja, dan dokumen pendukung ditarik dari vault — Anda tidak mengunggah ulang.</p>
             </Panel>
           </div>
@@ -127,6 +186,14 @@ export default function Asuransi() {
             <div className="rows">
               {pol.map((p, i) => (
                 <Row key={i} b={p[3]} d={`↔ ${p[0]} · ${p[5]}`} right={<Chip c={p[8]}>{p[9]}</Chip>} onClick={() => go(p[4] as ViewId)} />
+              ))}
+              {/* Relasi NYATA ke tabel employees: kepesertaan BPJS per karyawan */}
+              <Row b={`${t.emp.length} tenaga kerja · modul Employment`}
+                d={`BPJS Ketenagakerjaan terdata: ${bpjsTk}/${t.emp.length} · BPJS Kesehatan: ${bpjsKes}/${t.emp.length}`}
+                right={<Chip c={bpjsTk === t.emp.length && t.emp.length > 0 ? "c-ver" : "c-draft"}>{bpjsTk === t.emp.length && t.emp.length > 0 ? "LENGKAP" : "PERLU LENGKAP"}</Chip>}
+                onClick={() => go("hr-database")} />
+              {kurangBpjs.slice(0, 5).map((e) => (
+                <Row key={e.id} b={e.n} d={`${e.j || "—"} · nomor BPJS belum lengkap pada rekam`} right={<Chip c="c-draft">TANPA JAMINAN</Chip>} onClick={() => go("hr-database")} />
               ))}
             </div>
           </Panel>
@@ -143,6 +210,8 @@ export default function Asuransi() {
           </Panel>
         </div>
       )}
-    </div>
+
+      <RecordModal mod="pol" open={mOpen} editRow={mEdit} tenantName={t.name} toast={toast} onClose={() => setMOpen(false)} onDone={onDone} />
+    </ModuleShell>
   );
 }

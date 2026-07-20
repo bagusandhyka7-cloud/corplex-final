@@ -18,6 +18,7 @@ export function registerVault(file: File) {
 }
 
 export const vaultHash = (name: string) => VAULT[name]?.hash || fakeHash(name);
+export const vaultUrl = (name?: string) => (name && VAULT[name]?.url) || null;
 
 export function downloadDoc(name: string, tenantName: string) {
   if (!name) return;

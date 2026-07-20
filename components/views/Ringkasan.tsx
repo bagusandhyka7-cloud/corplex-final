@@ -46,16 +46,14 @@ export default function Ringkasan({ onOpenWizard }: { onOpenWizard: () => void }
   ];
 
   return (
-    <div>
+    // id v-ringkasan + .on = kunci seluruh CSS hero animasi lama (aurora, heroShift, riseIn berjenjang) di globals.css
+    <div id="v-ringkasan" className="view on">
       <div className="vh">
         <div>
-          <span className="en">Rekam Hukum Hidup Perusahaan</span>
           <h1>Ringkasan — {t.name}</h1>
-          <div className="sub"><span id="heroDate">{today}</span> · Kesehatan hukum perusahaan Anda: tercatat, terjaga, terjamin.</div>
+          <div className="sub"><span id="heroDate">{today}</span> · Kesehatan hukum perusahaan Anda hari ini.</div>
           <div className="hero-meta">
-            <span className="hpill"><span className="pulse" />REKAM AKTIF — FUNGSI JAGA BERJALAN</span>
-            <span className="hpill gold">CATAT → JAGA → JAMIN</span>
-            <span className="hpill">AI → LAWYER → CLIENT</span>
+            <span className="hpill"><span className="pulse" />PEMANTAUAN AKTIF</span>
           </div>
         </div>
         <div className="vh-acts">

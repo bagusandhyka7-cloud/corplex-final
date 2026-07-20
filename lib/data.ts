@@ -1,15 +1,20 @@
 /* Dataset multi-tenant — porting 1:1 dari referensi Corplex Platform v2 */
 
-export interface Msg { r: "q" | "a" | "esc"; t: string; src?: string; chip?: string; esc?: boolean }
+export interface Msg { r: "q" | "a" | "esc"; t: string; src?: string; chip?: string; esc?: boolean; cit?: number }
 export interface Conv { title: string; domain: string; time: string; msgs: Msg[] }
 export interface Flag { id: number; t: string; d: string; w: number; cls: string; fix: string; fixText: string; done?: boolean }
 export interface Doc { name: string; sub: string; status: string; cls: string; vers: string[]; risk: number | null; body: string; flags: Flag[] }
 export interface SP { t: string; tgl: string; exp: string; expISO: string; alasan: string; dok: string; ver: boolean; st?: string }
-export interface Emp { n: string; j: string; jk: "L" | "P"; wn: "TKI" | "TKA"; lok: boolean; s: "PKWT" | "PKWTT"; m: string; sisa: number | null; hari?: string | null; komp: string; pat: string; rem: boolean; dok: string; sp?: SP[] }
-export interface Case { tab?: string; head: string; tl: string[][]; bukti: string[][]; biaya: string[][]; aksi: { t: string; d: string; btn?: string; toast?: [string, string] }[]; custody?: boolean }
+export interface Emp {
+  id?: string; foto?: string | null; n: string; j: string; jk: "L" | "P"; wn: "TKI" | "TKA"; lok: boolean; s: "PKWT" | "PKWTT"; m: string; sisa: number | null; hari?: string | null; komp: string; pat: string; rem: boolean; dok: string; sp?: SP[]; prov?: string; kota?: string; desa?: string;
+  nik?: string; kk?: string; npwp?: string; bpjsKes?: string; bpjsTk?: string; sim?: string; pend?: string; lahir?: string; dept?: string; kdNama?: string; kdTelp?: string; pengalaman?: string; dokUrl?: string;
+  agama?: string; nikah?: string; golDarah?: string; bankNama?: string; bankRek?: string; alamatKtp?: string; pendInst?: string;
+  gajiPokok?: number | null; tunjTetap?: number | null; upah?: number | null; mulaiKerja?: string;
+}
+export interface Case { id?: string; dokUrl?: string | null; dokNama?: string | null; tab?: string; head: string; tl: string[][]; bukti: string[][]; biaya: string[][]; aksi: { t: string; d: string; btn?: string; toast?: [string, string] }[]; custody?: boolean }
 export interface Agr { n: string; p1: string; p2: string; mulai: string; akhir: string; nilai: string; st: string; cls: string; lbl: string; dok: string }
 export interface Klaim { t: string; obj: string; nilai: string; cls: string; lbl: string; tl: string[][] | null }
-export interface QItem { t: string; m: string; chip: string; lbl: string; sla: string; status: "masuk" | "verified" | "rejected"; note?: string }
+export interface QItem { id?: string; t: string; m: string; chip: string; lbl: string; sla: string; status: "masuk" | "verified" | "rejected"; note?: string }
 export interface IdxItem { t: string; s: string; v: string }
 
 export interface Tenant {
@@ -29,7 +34,7 @@ export interface Tenant {
   lic: (string | number)[][];
   assets: (string | string[] | null)[][];
   hki: (string | number | string[] | null)[][];
-  corp: { entity: string; rupsTitle: string; rups: string[][]; circNo: string; dirs: string[][]; meetings: string[][]; cap: string[][]; stat: string[][]; docs: string[][] };
+  corp: { id?: string; entity: string; rupsTitle: string; rups: string[][]; circNo: string; dirs: string[][]; meetings: string[][]; cap: string[][]; stat: string[][]; docs: string[][] };
 }
 
 /* ============ TENANT 1 — PT CONTOH SEJAHTERA ============ */
@@ -63,45 +68,6 @@ const DOCS_T1: Doc[] = [
     body: "<h5>ADDENDUM PERJANJIAN KERJA</h5><p>Ditandatangani digital oleh advokat MRWP atas hash versi final. QR verifikasi tersemat — status dapat dicek publik tanpa membuka isi.</p>", flags: [] },
   { name: "Somasi_Piutang_CV_X.docx", sub: "v1 · menunggu antrean", status: "DRAF", cls: "c-gray", vers: ["v1"], risk: null,
     body: "<h5>SOMASI I</h5><p>Draf somasi disiapkan dari template — berakibat hukum: <b>wajib TERVERIFIKASI ADVOKAT</b> sebelum dikirim. Ekspor final terkunci (403 VERIFIKASI_WAJIB).</p>", flags: [] },
-];
-
-const EMP_T1: Emp[] = [
-  { n: "Andi Prasetyo", j: "Supervisor Produksi", jk: "L", wn: "TKI", lok: true, s: "PKWTT", m: "Sejak 2019", sisa: null, komp: "—", pat: "PATUH", rem: false, dok: "PK_PKWTT_Andi_Prasetyo.pdf" },
-  { n: "Rina Wulandari", j: "Staf Gudang", jk: "P", wn: "TKI", lok: true, s: "PKWT", m: "Sep 2024 – Agu 2026", sisa: 12, hari: "32 hari", komp: "Wajib dihitung", pat: "REMINDER", rem: true, dok: "PK_PKWT_Rina_Wulandari.pdf" },
-  { n: "Budi Santoso", j: "Operator Mesin", jk: "L", wn: "TKI", lok: true, s: "PKWT", m: "Sep 2024 – Agu 2026", sisa: 12, hari: "32 hari", komp: "Wajib dihitung", pat: "REMINDER", rem: true, dok: "PK_PKWT_Budi_Santoso.pdf",
-    sp: [{ t: "SP1", tgl: "10 Des 2025", exp: "10 Jun 2026", expISO: "2026-06-10", alasan: "Keterlambatan berulang", dok: "SP1_Budi_Santoso_2025.pdf", ver: true }] },
-  { n: "Siti Nurhaliza", j: "Admin Keuangan", jk: "P", wn: "TKI", lok: true, s: "PKWTT", m: "Sejak 2021", sisa: null, komp: "—", pat: "PATUH", rem: false, dok: "PK_PKWTT_Siti_Nurhaliza.pdf" },
-  { n: "Dedi Firmansyah", j: "Driver Logistik", jk: "L", wn: "TKI", lok: false, s: "PKWT", m: "Jan 2025 – Des 2026", sisa: 34, hari: "171 hari", komp: "Terjadwal", pat: "PATUH", rem: false, dok: "PK_PKWT_Dedi_Firmansyah.pdf" },
-  { n: "Lina Kartika", j: "QC Analyst", jk: "P", wn: "TKI", lok: true, s: "PKWT", m: "Sep 2024 – Agu 2026", sisa: 12, hari: "32 hari", komp: "Wajib dihitung", pat: "REMINDER", rem: true, dok: "PK_PKWT_Lina_Kartika.pdf" },
-  { n: "Hendra Gunawan", j: "Staf Legal", jk: "L", wn: "TKI", lok: false, s: "PKWTT", m: "Sejak 2023", sisa: null, komp: "—", pat: "PATUH", rem: false, dok: "PK_PKWTT_Hendra_Gunawan.pdf" },
-  { n: "Maya Puspita", j: "Marketing", jk: "P", wn: "TKI", lok: true, s: "PKWT", m: "Okt 2024 – Agu 2026", sisa: 12, hari: "32 hari", komp: "Wajib dihitung", pat: "REMINDER", rem: true, dok: "PK_PKWT_Maya_Puspita.pdf",
-    sp: [{ t: "SP1", tgl: "22 Jun 2026", exp: "22 Des 2026", expISO: "2026-12-22", alasan: "Pelanggaran SOP pelaporan", dok: "SP1_Maya_Puspita_2026.pdf", ver: true }] },
-  { n: "Tanaka Hiroshi", j: "Technical Advisor Lini Produksi", jk: "L", wn: "TKA", lok: false, s: "PKWT", m: "Jan 2026 – Jan 2027", sisa: 52, hari: "6 bulan", komp: "—", pat: "PATUH", rem: false, dok: "Pengesahan_RPTKA_Tanaka_Hiroshi.pdf" },
-];
-
-const CASES_T1: Case[] = [
-  { tab: "PHI — Gugatan eks-karyawan", head: "Perkara: PHI — Gugatan Eks-Karyawan (No. 45/Pdt.Sus-PHI/2026/PN Bdg)",
-    tl: [["FEB 2026", "Bipartit gagal", "Risalah tercatat · ditarik dari modul Employment via relasi", "done"],
-      ["MAR 2026", "Mediasi Disnaker — anjuran", "Anjuran ditolak penggugat", "done"],
-      ["MEI 2026", "Gugatan didaftarkan", "Jawaban disusun via Legal Drafter", "done"],
-      ["24 JUN 2026", "Sidang pembuktian I", "4 bukti surat diajukan", "done"],
-      ["22 JUL 2026", "Sidang pembuktian II — saksi", "Pengingat otomatis H-7 dan H-1 aktif", "next"]],
-    bukti: [["P-1 · Perjanjian Kerja", "Hash terverifikasi · asli di vault", "SAH"],
-      ["P-2 · Risalah Bipartit", "Chain of custody lengkap", "SAH"],
-      ["P-3 · Rekap absensi", "Ekspor sistem · bertanda waktu", "SAH"],
-      ["Saksi: 2 orang", "Supervisor & HRD · resume siap", "SIAP"]],
-    biaya: [["Pra-litigasi & mediasi", "Rp 18 jt"], ["Persidangan (berjalan)", "Rp 42 jt"]],
-    custody: true, aksi: [] },
-  { tab: "Perdata — Wanprestasi CV X", head: "Perkara: Perdata — Wanprestasi CV X (pra-litigasi)",
-    tl: [["5 JUN 2026", "Somasi I dikirim", "Dari Legal Drafter · TERVERIFIKASI ADVOKAT", "done"],
-      ["26 JUN 2026", "Somasi II dikirim", "Tenggat pemenuhan 14 hari", "done"],
-      ["10 JUL 2026", "Tenggat somasi lewat", "Tanpa pemenuhan — opsi litigasi terbuka", "done"],
-      ["—", "Naikkan menjadi gugatan", "Satu aksi: membawa seluruh riwayat somasi + bukti", "next"]],
-    bukti: [["Bukti tagihan & invoice", "5 dokumen · hash tercatat", "SAH"], ["Korespondensi somasi", "Tanda terima tercatat", "SAH"]],
-    biaya: [["Pra-litigasi", "Rp 6 jt"]],
-    aksi: [
-      { t: "Naikkan menjadi gugatan", d: "POST /case/dari-somasi — seluruh riwayat terbawa", btn: "Naikkan", toast: ["Perkara dibentuk", "Gugatan wanprestasi diregistrasi — bundel somasi & bukti tertaut otomatis."] },
-      { t: "Tawarkan musyawarah terakhir", d: "Draf undangan negosiasi via Legal Drafter", btn: "Susun", toast: ["Draf disusun", "Undangan musyawarah — DRAF AI."] }] },
 ];
 
 const AGR_T1: Agr[] = [
@@ -156,26 +122,6 @@ const DOCS_T2: Doc[] = [
     body: "<h5>ADENDUM PERPANJANGAN WAKTU</h5><p>Berakibat hukum — wajib TERVERIFIKASI ADVOKAT sebelum ditandatangani para pihak.</p>", flags: [] },
 ];
 
-const EMP_T2: Emp[] = [
-  { n: "Sugeng Riyadi", j: "Site Manager", jk: "L", wn: "TKI", lok: true, s: "PKWTT", m: "Sejak 2018", sisa: null, komp: "—", pat: "PATUH", rem: false, dok: "PK_PKWTT_Sugeng_Riyadi.pdf" },
-  { n: "Wahyu Prabowo", j: "Mandor", jk: "L", wn: "TKI", lok: true, s: "PKWT", m: "Proyek Irigasi 2026", sisa: 16, hari: "44 hari", komp: "Terjadwal", pat: "PATUH", rem: false, dok: "PK_PKWT_Wahyu_Prabowo.pdf" },
-  { n: "Slamet Widodo", j: "Operator Alat Berat", jk: "L", wn: "TKI", lok: true, s: "PKWT", m: "Proyek Jalan 2026", sisa: 9, hari: "20 hari", komp: "Wajib dihitung", pat: "REMINDER", rem: true, dok: "PK_PKWT_Slamet_Widodo.pdf",
-    sp: [{ t: "SP1", tgl: "2 Mei 2026", exp: "2 Nov 2026", expISO: "2026-11-02", alasan: "Pelanggaran K3 di lokasi proyek", dok: "SP1_Slamet_Widodo_2026.pdf", ver: true }] },
-  { n: "Bambang Irawan", j: "Logistik Proyek", jk: "L", wn: "TKI", lok: false, s: "PKWT", m: "Proyek Jalan 2026", sisa: 9, hari: "20 hari", komp: "Wajib dihitung", pat: "REMINDER", rem: true, dok: "PK_PKWT_Bambang_Irawan.pdf" },
-  { n: "Eko Susanto", j: "Drafter Sipil", jk: "L", wn: "TKI", lok: true, s: "PKWTT", m: "Sejak 2020", sisa: null, komp: "—", pat: "PATUH", rem: false, dok: "PK_PKWTT_Eko_Susanto.pdf" },
-  { n: "Ratna Sari", j: "Admin Proyek", jk: "P", wn: "TKI", lok: true, s: "PKWTT", m: "Sejak 2021", sisa: null, komp: "—", pat: "PATUH", rem: false, dok: "PK_PKWTT_Ratna_Sari.pdf" },
-];
-
-const CASES_T2: Case[] = [
-  { tab: "Perdata — Wanprestasi pemasok", head: "Perkara: Perdata — Wanprestasi Pemasok Beton (pra-litigasi)",
-    tl: [["12 JUN 2026", "Somasi I dikirim", "Keterlambatan pasokan ready-mix", "done"],
-      ["28 JUN 2026", "Somasi II dikirim", "Tenggat 14 hari", "done"],
-      ["—", "Opsi gugatan / penggantian pemasok", "Membawa bukti keterlambatan & kerugian", "next"]],
-    bukti: [["Kontrak pasokan & PO", "Hash tercatat", "SAH"], ["Log keterlambatan pengiriman", "Bertanda waktu", "SAH"]],
-    biaya: [["Pra-litigasi", "Rp 5 jt"]],
-    aksi: [{ t: "Naikkan menjadi gugatan", d: "Bundel somasi & bukti terbawa otomatis", btn: "Naikkan", toast: ["Perkara dibentuk", "Gugatan wanprestasi diregistrasi."] }] },
-];
-
 const AGR_T2: Agr[] = [
   { n: "Kontrak Pengadaan — Proyek Jalan Pemda", p1: "CV Karya Abadi", p2: "Dinas PUPR Kab. Kuningan", mulai: "3 Mar 2026", akhir: "28 Nov 2026", nilai: "Rp 4,7 M", st: "AKTIF", cls: "c-ver", lbl: "AKTIF · VERIFIED", dok: "Kontrak_Proyek_Jalan_Pemda_2026.pdf" },
   { n: "Perjanjian Sewa Alat Berat", p1: "CV Karya Abadi", p2: "PT Rental Alat Perkasa", mulai: "1 Apr 2026", akhir: "30 Sep 2026", nilai: "Rp 95 jt / bulan", st: "SEGERA", cls: "c-red", lbl: "75 HARI", dok: "Sewa_Alat_Berat_2026.pdf" },
@@ -213,33 +159,6 @@ const DOCS_T3: Doc[] = [
     body: "<h5>SYARAT &amp; KETENTUAN LAYANAN</h5><p>Ditandatangani digital oleh advokat MRWP atas hash versi final. QR verifikasi tersemat.</p>", flags: [] },
   { name: "Shareholders_Agreement_SeriB.docx", sub: "v1 · menunggu antrean", status: "DRAF", cls: "c-gray", vers: ["v1"], risk: null,
     body: "<h5>SHAREHOLDERS AGREEMENT — SERI B</h5><p>Berakibat hukum — wajib TERVERIFIKASI ADVOKAT. Ekspor final terkunci hingga verifikasi.</p>", flags: [] },
-];
-
-const EMP_T3: Emp[] = [
-  { n: "Aditya Nugroho", j: "VP Engineering", jk: "L", wn: "TKI", lok: true, s: "PKWTT", m: "Sejak 2020", sisa: null, komp: "—", pat: "PATUH", rem: false, dok: "PK_PKWTT_Aditya_Nugroho.pdf" },
-  { n: "Kirana Melati", j: "Product Lead", jk: "P", wn: "TKI", lok: true, s: "PKWTT", m: "Sejak 2021", sisa: null, komp: "—", pat: "PATUH", rem: false, dok: "PK_PKWTT_Kirana_Melati.pdf" },
-  { n: "Reza Pratama", j: "Data Engineer", jk: "L", wn: "TKI", lok: false, s: "PKWT", m: "2025 – 2026", sisa: 18, hari: "54 hari", komp: "Terjadwal", pat: "PATUH", rem: false, dok: "PK_PKWT_Reza_Pratama.pdf" },
-  { n: "Nadia Safira", j: "UX Researcher", jk: "P", wn: "TKI", lok: true, s: "PKWT", m: "Sep 2024 – Sep 2026", sisa: 11, hari: "28 hari", komp: "Wajib dihitung", pat: "REMINDER", rem: true, dok: "PK_PKWT_Nadia_Safira.pdf" },
-  { n: "Fajar Ramadhan", j: "DevOps", jk: "L", wn: "TKI", lok: true, s: "PKWT", m: "Sep 2024 – Sep 2026", sisa: 11, hari: "28 hari", komp: "Wajib dihitung", pat: "REMINDER", rem: true, dok: "PK_PKWT_Fajar_Ramadhan.pdf" },
-  { n: "Putri Handayani", j: "Legal Counsel", jk: "P", wn: "TKI", lok: true, s: "PKWTT", m: "Sejak 2022", sisa: null, komp: "—", pat: "PATUH", rem: false, dok: "PK_PKWTT_Putri_Handayani.pdf" },
-  { n: "Yoga Perdana", j: "Growth Marketing", jk: "L", wn: "TKI", lok: false, s: "PKWT", m: "Okt 2024 – Sep 2026", sisa: 11, hari: "28 hari", komp: "Wajib dihitung", pat: "REMINDER", rem: true, dok: "PK_PKWT_Yoga_Perdana.pdf" },
-  { n: "Daniel Kim", j: "Machine Learning Advisor", jk: "L", wn: "TKA", lok: false, s: "PKWT", m: "Mar 2026 – Mar 2027", sisa: 64, hari: "8 bulan", komp: "—", pat: "PATUH", rem: false, dok: "Pengesahan_RPTKA_Daniel_Kim.pdf" },
-];
-
-const CASES_T3: Case[] = [
-  { tab: "HKI — Pelanggaran merek aplikasi", head: "Perkara: HKI — Dugaan Pelanggaran Merek Aplikasi (somasi berjalan)",
-    tl: [["3 JUN 2026", "Deteksi watcher merek", "Aplikasi tiruan pada marketplace aplikasi", "done"],
-      ["18 JUN 2026", "Somasi + takedown", "Dikirim ke pihak & platform", "done"],
-      ["—", "Gugatan bila tidak dipenuhi", "Bundel bukti berstempel waktu siap", "next"]],
-    bukti: [["Sertifikat merek terdaftar", "Kelas 9 & 42 · hash tercatat", "SAH"], ["Bukti kemiripan + tangkapan layar", "Stempel waktu + hash", "SAH"]],
-    biaya: [["Pra-litigasi & enforcement", "Rp 22 jt"]],
-    aksi: [{ t: "Naikkan menjadi gugatan HKI", d: "Bundel bukti watcher terbawa otomatis", btn: "Naikkan", toast: ["Perkara dibentuk", "Gugatan pelanggaran merek diregistrasi."] }] },
-  { tab: "Perdata — Sengketa vendor cloud", head: "Perkara: Perdata — Sengketa SLA Vendor Cloud (pra-litigasi)",
-    tl: [["20 JUN 2026", "Klaim SLA breach", "Downtime melebihi ambang kontrak", "done"],
-      ["5 JUL 2026", "Negosiasi kompensasi", "Berjalan", "next"]],
-    bukti: [["Log uptime & tiket insiden", "Ekspor sistem · hash", "SAH"], ["MSA & lampiran SLA", "Tercatat", "SAH"]],
-    biaya: [["Pra-litigasi", "Rp 8 jt"]],
-    aksi: [{ t: "Ajukan proposal kompensasi", d: "Draf via Legal Drafter", btn: "Susun", toast: ["Draf disusun", "Proposal kompensasi — DRAF AI."] }] },
 ];
 
 const AGR_T3: Agr[] = [
@@ -289,7 +208,7 @@ export const TENANTS: Record<string, Tenant> = {
       ["Kontrak Kerja Karyawan (PKWT)", "30 dokumen diverifikasi massal", "c-ver", "VERIFIED"],
       ["Somasi Pelanggaran HKI", "Draf awal dari Legal Assistant", "c-draft", "DRAF AI"],
       ["NDA — PT Inovasi Teknologi", "Ditandatangani kedua belah pihak", "c-ver", "VERIFIED"]],
-    conv: CONVS_T1, docs: DOCS_T1, emp: EMP_T1, cases: CASES_T1, idx: IDX_T1,
+    conv: CONVS_T1, docs: DOCS_T1, emp: [], cases: [], idx: IDX_T1,
     agr: AGR_T1, empOut: 1,
     asetVal: "Rp 24,6 M", asetTr: "4 kategori · 2 dibebani · DD terjadwal",
     asr: { nilai: "Rp 25,1 M", polTr: "1 klaim berjalan · 1 segera berakhir",
@@ -351,18 +270,7 @@ export const TENANTS: Record<string, Tenant> = {
       ["Merek “CONTOH FRESH”", "Lini minuman", "D2026-4521 · Kelas 32", "", 0, "Pemeriksaan substantif DJKI", null, ["c-mon", "PROSES"]],
       ["Desain Industri Kemasan", "Botol seri B", "IDD00098765", "ok", 70, "s.d. 2031", ["c-red", "1 INDIKASI"], ["c-red", "TINDAK LANJUT"]],
       ["Rahasia Dagang — Formula A", "NDA karyawan kunci", "4 NDA aktif", "", 0, "Selama dijaga · masa NDA turut dipantau", ["c-ver", "TERJAGA"], ["c-ver", "AMAN"]]],
-    corp: { entity: "PT Contoh Sejahtera", rupsTitle: "RUPS Tahunan 2026",
-      rups: [
-        ["18 MEI 2026", "Undangan diterbitkan (guard: ≥14 hari)", "Seluruh pemegang saham · kanal tercatat", "done"],
-        ["2 JUN 2026", "Terselenggara — kuorum 87,5% ≥ syarat", "Agenda: laporan tahunan, laba, perubahan pengurus", "done"],
-        ["4 JUN 2026", "Risalah — persetujuan elektronik lengkap", "Digital MoM · hash ttd per pihak · verifikasi advokat → SAH", "done"],
-        ["TENGGAT 2 AGU 2026", "Pemberitahuan perubahan pengurus ke Menkumham", "Tenggat statutori otomatis dari tanggal keputusan (30 hari)", "next"]],
-      circNo: "08/2026",
-      dirs: [["Chandra Wijaya", "Direktur Utama", "ok", "11 Jul 09:14"], ["Dewi Lestari", "Direktur", "ok", "11 Jul 10:02"], ["Bima Nugraha", "Direktur", "wait", ""]],
-      meetings: [["Rapat Direksi — Evaluasi Q3", "21 Jul 2026 · draf MoM disusun AI dari agenda"], ["Rapat Dewan Komisaris", "4 Agu 2026 · pengawasan rencana ekspansi"]],
-      cap: [["PT Induk Nusantara", "6.000 lembar · sejak pendirian", "60%"], ["Tn. Chandra Wijaya", "2.500 lembar", "25%"], ["Ny. Dewi Lestari", "1.500 lembar", "15%"]],
-      stat: [["Pemberitahuan Menkumham — pengurus", "Pemicu: RUPS 2 Jun · notaris rekanan", "c-draft", "20 HARI"], ["Laporan Tahunan 2026", "Kalender tata kelola", "c-mon", "TERJADWAL"]],
-      docs: [["Risalah RUPS Tahunan 2026", "c-ver", "VERIFIED"], ["Akta Perubahan AD No. 14", "c-ver", "VERIFIED"], ["Keputusan Sirkuler 07/2026", "c-ver", "VERIFIED"]] },
+    corp: { entity: "PT Contoh Sejahtera", rupsTitle: "—", rups: [], circNo: "—", dirs: [], meetings: [], cap: [], stat: [], docs: [] },
   },
   t2: {
     id: "t2", name: "CV Karya Abadi", plan: "BASIC", ava: "KA", user: "Sugeng Riyadi · Owner",
@@ -388,7 +296,7 @@ export const TENANTS: Record<string, Tenant> = {
       ["Kontrak Subkontrak Struktur", "3 red flag terdeteksi", "c-draft", "DRAF AI"],
       ["Adendum Waktu Proyek Irigasi", "Menunggu verifikasi advokat", "c-mon", "MENUNGGU"],
       ["Surat Kuasa Direksi", "Ditandatangani advokat MRWP", "c-ver", "VERIFIED"]],
-    conv: CONVS_T2, docs: DOCS_T2, emp: EMP_T2, cases: CASES_T2,
+    conv: CONVS_T2, docs: DOCS_T2, emp: [], cases: [],
     idx: [
       { t: "Kontrak Subkon Struktur Gedung", s: "Dokumen · Legal Drafter · DRAF AI", v: "drafter" },
       { t: "SBU Konstruksi", s: "Izin · berakhir 21 hari · Licensing", v: "licensing" },
@@ -448,18 +356,7 @@ export const TENANTS: Record<string, Tenant> = {
       ["Kendaraan Operasional (3 unit)", "Pick-up & truk", "BPKB lengkap", null, "Pajak kendaraan", "c-ver", "AMAN"]],
     hki: [
       ["Merek “KARYA ABADI”", "Logo badan usaha", "IDM00456789 · Kelas 37", "wa", 34, "Berlaku s.d. 2028", ["c-ver", "BERSIH"], ["c-ver", "AMAN"]]],
-    corp: { entity: "CV Karya Abadi", rupsTitle: "Rapat Sekutu 2026",
-      rups: [
-        ["10 MEI 2026", "Undangan rapat sekutu", "Para sekutu · sesuai anggaran dasar CV", "done"],
-        ["24 MEI 2026", "Rapat terselenggara", "Agenda: pembagian laba & tambahan modal", "done"],
-        ["26 MEI 2026", "Risalah disepakati", "Ditandatangani seluruh sekutu → verifikasi advokat", "done"],
-        ["TERJADWAL", "Pencatatan perubahan pada SABU/AHU", "Kewajiban administratif badan usaha", "next"]],
-      circNo: "02/2026",
-      dirs: [["Sugeng Riyadi", "Sekutu Aktif", "ok", "24 Mei 09:00"], ["Hartono", "Sekutu Aktif", "ok", "24 Mei 09:20"], ["Yuli Astuti", "Sekutu Komanditer", "wait", ""]],
-      meetings: [["Rapat evaluasi proyek berjalan", "18 Jul 2026 · progres 3 proyek"]],
-      cap: [["Sugeng Riyadi (Sekutu Aktif)", "Kontribusi modal utama", "55%"], ["Hartono (Sekutu Aktif)", "Kontribusi modal", "30%"], ["Yuli Astuti (Komanditer)", "Penyertaan modal", "15%"]],
-      stat: [["Pencatatan perubahan badan usaha", "Sistem AHU CV", "c-draft", "30 HARI"], ["Laporan keuangan sekutu", "Kalender internal", "c-mon", "TERJADWAL"]],
-      docs: [["Risalah Rapat Sekutu 2026", "c-ver", "VERIFIED"], ["Anggaran Dasar CV (terkini)", "c-ver", "VERIFIED"]] },
+    corp: { entity: "CV Karya Abadi", rupsTitle: "—", rups: [], circNo: "—", dirs: [], meetings: [], cap: [], stat: [], docs: [] },
   },
   t3: {
     id: "t3", name: "PT Nusantara Digital", plan: "ENTERPRISE", ava: "ND", user: "Putri Handayani · Legal Counsel",
@@ -487,7 +384,7 @@ export const TENANTS: Record<string, Tenant> = {
       ["Term of Service Aplikasi", "Ditandatangani advokat MRWP", "c-ver", "VERIFIED"],
       ["Master Subscription Agreement", "3 temuan terdeteksi", "c-draft", "DRAF AI"],
       ["Shareholders Agreement Seri B", "Menunggu verifikasi advokat", "c-mon", "MENUNGGU"]],
-    conv: CONVS_T3, docs: DOCS_T3, emp: EMP_T3, cases: CASES_T3,
+    conv: CONVS_T3, docs: DOCS_T3, emp: [], cases: [],
     idx: [
       { t: "Master Subscription Agreement", s: "Dokumen · Legal Drafter · DRAF AI", v: "drafter" },
       { t: "DPA Vendor Cloud", s: "Dokumen · pelindungan data · Drafter", v: "drafter" },
@@ -556,28 +453,37 @@ export const TENANTS: Record<string, Tenant> = {
       ["Merek Layanan", "Platform", "IDM00778900 · Kelas 42", "ok", 64, "Berlaku s.d. 2030", ["c-red", "1 INDIKASI"], ["c-red", "TINDAK LANJUT"]],
       ["Hak Cipta Perangkat Lunak", "Kode aplikasi inti", "EC00202600123", "ok", 88, "Tercatat", ["c-ver", "TERDAFTAR"], ["c-ver", "AMAN"]],
       ["Rahasia Dagang — Algoritma Skoring", "NDA tim data", "6 NDA aktif", "", 0, "Selama dijaga · masa NDA dipantau", ["c-ver", "TERJAGA"], ["c-ver", "AMAN"]]],
-    corp: { entity: "PT Nusantara Digital", rupsTitle: "RUPS Luar Biasa 2026 — Seri B",
-      rups: [
-        ["20 MEI 2026", "Undangan RUPS-LB (guard: ≥14 hari)", "Seluruh pemegang saham + calon investor Seri B", "done"],
-        ["5 JUN 2026", "Terselenggara — kuorum 92% ≥ syarat", "Agenda: penerbitan saham Seri B, perubahan AD", "done"],
-        ["8 JUN 2026", "Risalah — persetujuan elektronik lengkap", "Digital MoM · hash ttd per pihak → verifikasi advokat", "done"],
-        ["TENGGAT 8 JUL 2026", "Persetujuan perubahan AD ke Menkumham", "Perubahan modal & klasifikasi saham (30 hari)", "next"]],
-      circNo: "15/2026",
-      dirs: [["Aditya Nugroho", "Direktur Utama", "ok", "9 Jul 08:40"], ["Kirana Melati", "Direktur", "ok", "9 Jul 09:05"], ["Rangga Saputra", "Komisaris", "wait", ""]],
-      meetings: [["Rapat Direksi — OKR Q3", "19 Jul 2026 · target pertumbuhan"], ["Rapat Komite Audit", "2 Agu 2026 · tinjauan kepatuhan"]],
-      cap: [["Founders (pooled)", "Saham pendiri", "48%"], ["Ventura Seri A", "Preferensi Seri A", "30%"], ["Ventura Seri B (baru)", "Preferensi Seri B", "22%"]],
-      stat: [["Persetujuan perubahan AD — Menkumham", "Pemicu: RUPS-LB 5 Jun", "c-draft", "8 HARI"], ["Pelaporan struktur kepemilikan", "Regulator sektoral", "c-mon", "TERJADWAL"]],
-      docs: [["Risalah RUPS-LB Seri B", "c-ver", "VERIFIED"], ["Akta Perubahan AD (modal)", "c-mon", "MENUNGGU"], ["Shareholders Agreement Seri A", "c-ver", "VERIFIED"]] },
+    corp: { entity: "PT Nusantara Digital", rupsTitle: "—", rups: [], circNo: "—", dirs: [], meetings: [], cap: [], stat: [], docs: [] },
   },
 };
 
+/* Demo VVIP: semua akun auth NYATA (JWT + RLS), dipetakan tenant t1 — nol bypass. */
 export const ACCOUNTS = [
   { tid: "t1", email: "legal@contohsejahtera.co.id", pw: "demo123" },
-  { tid: "t2", email: "admin@karyaabadi.co.id", pw: "demo123" },
-  { tid: "t3", email: "corplegal@nusantaradigital.id", pw: "demo123" },
+  { tid: "t1", email: "atasan1@mrwp.com", pw: "demo1234" },
+  { tid: "t1", email: "atasan2@mrwp.com", pw: "demo1234" },
 ];
 
-export interface Tool { ic: string; t: string; s: string; kind: "drop" | "mono" | "rows"; drop?: [string, string]; dropToast?: [string, string]; mono?: string; rows?: string[][]; note?: string }
+/* Tenant nyata yang baru login (belum punya rekam modul apa pun) — semua koleksi kosong
+ * agar setiap view merender empty-state, bukan crash. Diisi mesin data saat backend modul terisi. */
+export function emptyTenant(t: { id: string; name: string; tier?: string; sector?: string }, u?: { nama?: string | null; email?: string; jabatan?: string | null }): Tenant {
+  return {
+    id: t.id, name: t.name, plan: (t.tier || "STARTER").toUpperCase(),
+    ava: t.name.replace(/^(PT|CV)\.?\s+/i, "").slice(0, 2).toUpperCase(), user: u ? `${u.nama || u.email || "—"} · ${u.jabatan || "Legal"}` : "—",
+    sector: t.sector || "—", score: 0, delta: "—",
+    kpiDocs: 0, kpiDocsTr: "—", kpiIzin: 0, kpiIzinTr: "—",
+    quota: { used: 0, max: 10 }, verified: 0,
+    bab: [], rem: [], bell: [], verif: [],
+    conv: [], docs: [], emp: [], cases: [], idx: [],
+    agr: [], empOut: 0, asetVal: "Rp 0", asetTr: "—",
+    asr: { nilai: "Rp 0", polTr: "—", pol: [], klaim: [], gap: [] },
+    tax: { score: 0, trend: "—", done: 0, next: "—", nextTr: "—", prof: [], kal: [], join: [], integ: [] },
+    mass: [], queue: [], lic: [], assets: [], hki: [],
+    corp: { entity: t.name, rupsTitle: "—", rups: [], circNo: "—", dirs: [], meetings: [], cap: [], stat: [], docs: [] },
+  };
+}
+
+export interface Tool { ic: string; t: string; s: string; kind: "drop" | "mono" | "rows" | "template"; drop?: [string, string]; dropToast?: [string, string]; mono?: string; rows?: string[][]; note?: string }
 export const TOOLS: Tool[] = [
   { ic: "convert", t: "Konversi Dokumen", s: "PDF ↔ Word · OCR pindaian", kind: "drop", drop: ["Letakkan berkas di sini", "PDF → Word · Word → PDF · OCR dokumen hukum berbahasa Indonesia"], dropToast: ["Konversi dijalankan", "Worker LibreOffice headless — hasil masuk vault sebagai berkas turunan menunjuk berkas asal."] },
   { ic: "clip", t: "Manajemen PDF", s: "Merge · split · watermark", kind: "drop", drop: ["Letakkan PDF di sini", "Gabung · pecah per rentang halaman · watermark"], dropToast: ["PDF diproses", "Merge/split/watermark server-side — watermark kustom tenant."] },
@@ -590,5 +496,5 @@ export const TOOLS: Tool[] = [
     ["Pasal 12 — jangka pemberitahuan", "30 → 90 hari (sepihak)", "c-red", "MEMBURUK"],
     ["Pasal 15 — forum sengketa", "BANI → SIAC", "c-draft", "PERHATIAN"]],
     note: "Klasifikasi menguntungkan/netral/merugikan berdasar perbandingan ke clause library — satu mesin diff dengan Legal Drafter." },
-  { ic: "scan", t: "AI Due Diligence Scanner", s: "Kelengkapan & risiko transaksi", kind: "mono", mono: "<b>TRANSAKSI: Jual beli 60% saham PT Target</b>\n✓ Akta pendirian + perubahan (lengkap)\n✓ Daftar pemegang saham (konsisten)\n⚠ 2 izin sektor target mendekati kedaluwarsa\n✗ Laporan keuangan audited 2025 belum tersedia\n\nStatus: <b>DRAF AI</b> — dipakai juga oleh modul 4.6 dan penugasan premium DD." },
+  { ic: "scan", t: "Template Form", s: "Unduh template Excel per modul", kind: "template" },
 ];

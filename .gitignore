@@ -7,6 +7,9 @@
 *.tsbuildinfo
 next-env.d.ts
 
+# dokumen internal rahasia — JANGAN pernah masuk repo
+*.md
+
 # misc
 .DS_Store
 *.pem

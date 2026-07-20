@@ -1,17 +1,27 @@
 "use client";
-import React, { useRef, useState } from "react";
-import { Download, FileText, Upload } from "lucide-react";
+import React, { useEffect, useRef, useState } from "react";
+import { FileText, Lock, Plus } from "lucide-react";
 import { Agr } from "@/lib/data";
 import { clone, useStore } from "@/lib/store";
 import { downloadDoc, registerVault, vaultHash } from "@/lib/vault";
 import { api, withRetry } from "@/lib/api";
 import { useAsyncAction, useUpload } from "@/lib/hooks";
-import { Chip, Field, Kpi, Modal, ViewHead } from "@/components/ui";
+import { Chip, Field, Kpi, Modal } from "@/components/ui";
+import { ModuleShell } from "@/components/ModuleShell";
+import { useRouter } from "next/navigation";
+import { RecActions, RecordModal } from "@/components/RecordModal";
+import { idOf, RecRow } from "@/lib/records";
 
 export default function Agreement() {
-  const { ten, toast, pushQueue } = useStore();
+  const { ten, toast, pushQueue, patchTen } = useStore();
+  const router = useRouter();
   const t = ten!;
   const [agr, setAgr] = useState<Agr[]>(() => clone(t.agr));
+  useEffect(() => setAgr(clone(t.agr)), [t.agr]); // hidrasi DB menyusul mount
+  const [mOpen, setMOpen] = useState(false);
+  const [mEdit, setMEdit] = useState<RecRow | null>(null);
+  const onDone = (row: RecRow, editId: string | null) =>
+    patchTen({ agr: (editId ? t.agr.map((x) => idOf("agr", x as unknown as RecRow) === editId ? row : x) : [row, ...t.agr]) as typeof t.agr });
   const [f, setF] = useState("semua");
   const [q, setQ] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
@@ -38,9 +48,10 @@ export default function Agreement() {
       mulai: ax.mulai.trim() || "—", akhir: ax.akhir.trim() || "—", nilai: ax.nilai.trim() || "—",
       st: "DRAF", cls: "c-draft", lbl: "DRAF AI", dok: ax.dok,
     };
-    const res = await withRetry(() => api.agreements.create(rec));
+    // NYATA: tersimpan ke module_records (source 'ai') — bertahan lintas refresh.
+    const res = await withRetry(() => api.records.create(localStorage.getItem("corplex_tid") || "", "agr", rec, "ai"));
     if (!res.ok) { toast("Gagal menyimpan", res.error.message, "warn"); return; }
-    setAgr((as) => [rec as Agr, ...as]);
+    patchTen({ agr: [{ ...rec, id: res.data.id } as unknown as Agr, ...t.agr] });
     setAxOpen(false);
     pushQueue("Registrasi perjanjian — " + ax.nama, "Dari Agreement Management · hasil ekstraksi AI atas dokumen terunggah", "c-draft", "DRAF AI");
     toast("Perjanjian tercatat — DRAF AI", `Dokumen tersimpan di vault (hash tercatat)${ax.akhir ? " · aturan JAGA dibuat dari tanggal berakhir " + ax.akhir : ""} · diajukan ke antrean verifikasi advokat.`, "ok");
@@ -52,13 +63,13 @@ export default function Agreement() {
   });
 
   return (
-    <div>
-      <ViewHead en="Modul 4.9 · Agreement Lifecycle Management · Layer 2" h1="Agreement Management"
-        sub={<>Registrasi <b>berbasis unggah dokumen</b> — AI membaca perjanjian → mengekstrak para pihak, tanggal mulai/berakhir, nilai, dan klausul kunci → aturan pengingat fungsi JAGA dibuat otomatis dari tanggal berakhir.</>}
-        acts={<>
-          <input ref={fileRef} type="file" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" style={{ display: "none" }} onChange={(e) => { const file = e.target.files?.[0]; if (file) upload(file); e.target.value = ""; }} />
-          <button className="btn btn-navy" onClick={() => fileRef.current?.click()}><Upload size={14} /> Unggah Perjanjian (AI Ekstraksi)</button>
-        </>} />
+    <ModuleShell h1="Perjanjian"
+      sub="Unggah perjanjian — sistem membaca isinya dan mengingatkan Anda sebelum jatuh tempo."
+      acts={<button className="btn btn-gold" onClick={() => { setMEdit(null); setMOpen(true); }}><Plus size={14} /> Tambah Manual</button>}
+      dropNote="PDF · Word · pindaian (OCR) — AI mengekstrak para pihak, tanggal mulai/berakhir, dan nilai perikatan; dokumen asli tersimpan di vault."
+      onDrop={(file) => upload(file)}
+      filters={["semua", "AKTIF", "SEGERA", "DRAF"]} active={f} onFilter={setF}
+      q={q} setQ={setQ} cariPh="Cari perjanjian / pihak…">
 
       <div className="grid g4 mb16">
         <Kpi v={agr.filter((a) => a.st !== "DRAF").length} label="Perjanjian aktif dipantau" />
@@ -66,26 +77,9 @@ export default function Agreement() {
         <Kpi v={agr.filter((a) => a.cls === "c-ver").length} label="Terverifikasi advokat" />
         <Kpi v={agr.filter((a) => a.st === "DRAF").length} label="Menunggu verifikasi" tr="Status DRAF AI" />
       </div>
-
-      <div className="dropzone mb16" onClick={() => fileRef.current?.click()}
-        onDragOver={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = "var(--gold)"; }}
-        onDragLeave={(e) => { e.currentTarget.style.borderColor = ""; }}
-        onDrop={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = ""; const file = e.dataTransfer.files?.[0]; if (file) upload(file); }}>
-        <b>Letakkan dokumen perjanjian di sini — atau klik untuk memilih berkas</b>
-        PDF · Word · hasil pindaian (OCR) — AI mengekstrak: para pihak (siapa dengan siapa) · tanggal mulai · tanggal berakhir · nilai perikatan · jenis perjanjian → Anda mengonfirmasi sebelum tersimpan ke rekam
-      </div>
-
-      <div className="filters">
-        <input className="finput" placeholder="Cari perjanjian / pihak…" value={q} onChange={(e) => setQ(e.target.value)} />
-        {["semua", "AKTIF", "SEGERA", "DRAF"].map((x) => (
-          <button key={x} className={`fchip${f === x ? " on" : ""}`} onClick={() => setF(x)}>
-            {x === "semua" ? "Semua" : x === "AKTIF" ? "Aktif" : x === "SEGERA" ? "Segera berakhir" : "Draf / menunggu"}
-          </button>
-        ))}
-      </div>
       <div className="tblwrap">
         <table>
-          <thead><tr><th>Perjanjian</th><th>Para Pihak</th><th>Tanggal Mulai</th><th>Tanggal Berakhir</th><th>Nilai</th><th>Status</th><th>Dokumen Sumber</th></tr></thead>
+          <thead><tr><th>Perjanjian</th><th>Para Pihak</th><th>Tanggal Mulai</th><th>Tanggal Berakhir</th><th>Nilai</th><th>Status</th><th>Dokumen Sumber</th><th>Aksi</th></tr></thead>
           <tbody>
             {rows.map((a, i) => (
               <tr key={i}>
@@ -96,9 +90,13 @@ export default function Agreement() {
                 <td>{a.nilai}</td>
                 <td><Chip c={a.cls}>{a.lbl}</Chip></td>
                 <td>
-                  <div className="flex items-center gap-2">
-                    <button className="btn btn-line btn-sm" onClick={() => { downloadDoc(a.dok, t.name); toast("Unduhan dimulai", `${a.dok} · hash ${vaultHash(a.dok)} · akses unduh tercatat pada jejak audit.`, "ok"); }}><Download size={11} /></button>
-                    <span className="sub mono" style={{ fontSize: 10 }}><FileText size={10} style={{ display: "inline" }} /> {a.dok}</span>
+                  <span className="sub mono" style={{ fontSize: 10, display: "block", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}><FileText size={10} style={{ display: "inline" }} /> {a.dok || "—"}</span>
+                </td>
+                <td>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    {idOf("agr", a as unknown as RecRow) && <button className="btn-act" onClick={() => router.push(`/rekam/agr/${idOf("agr", a as unknown as RecRow)}`)}><Lock size={10} style={{ display: "inline", marginRight: 4 }} />Buka</button>}
+                    <RecActions mod="agr" row={a as unknown as RecRow} toast={toast} onEdit={(row) => { setMEdit(row); setMOpen(true); }}
+                      onDeleted={(id) => patchTen({ agr: t.agr.filter((x) => idOf("agr", x as unknown as RecRow) !== id) as typeof t.agr })} />
                   </div>
                 </td>
               </tr>
@@ -126,6 +124,8 @@ export default function Agreement() {
         <Field label="Nilai perikatan"><input value={ax.nilai} placeholder="mis. Rp 500 jt / tahun" onChange={(e) => setAx({ ...ax, nilai: e.target.value })} /></Field>
         <div className="note">Hasil <b>ekstraksi AI dari dokumen terunggah</b> — koreksi bila perlu. Tanggal berakhir otomatis menjadi aturan JAGA (tangga pengingat H-90 → H-14). Berstatus <b>DRAF AI</b> hingga verifikasi advokat bila berakibat hukum.</div>
       </Modal>
-    </div>
+
+      <RecordModal mod="agr" open={mOpen} editRow={mEdit} tenantName={t.name} toast={toast} onClose={() => setMOpen(false)} onDone={onDone} />
+    </ModuleShell>
   );
 }

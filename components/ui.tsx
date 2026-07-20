@@ -15,9 +15,9 @@ export function Row({ b, d, right, onClick, extra }: { b: React.ReactNode; d?: R
   );
 }
 
-export function Panel({ title, className, children }: { title?: React.ReactNode; className?: string; children: React.ReactNode }) {
+export function Panel({ title, className, style, children }: { title?: React.ReactNode; className?: string; style?: React.CSSProperties; children: React.ReactNode }) {
   return (
-    <div className={`panel ${className || ""}`}>
+    <div className={`panel ${className || ""}`} style={style}>
       {title ? <h4>{title}</h4> : null}
       {children}
     </div>
@@ -45,15 +45,48 @@ export function Tabs({ items, cur, onSel }: { items: string[]; cur: number; onSe
   );
 }
 
-export function Modal({ open, title, onClose, children, footer }: { open: boolean; title: string; onClose: () => void; children: React.ReactNode; footer?: React.ReactNode }) {
-  return (
-    <div className={`modal-bg${open ? " open" : ""}`} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+import { createPortal } from "react-dom";
+
+export function Modal({ open, title, onClose, children, footer, right }: { open: boolean; title: string; onClose: () => void; children: React.ReactNode; footer?: React.ReactNode; right?: boolean }) {
+  /* Scroll lock: modal terbuka → scrollbar halaman mati, hanya scrollbar form yang hidup. */
+  React.useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, [open]);
+  if (!open) return null;
+  const content = (
+    <div className={`modal-bg${open ? " open" : ""}${right ? " right" : ""}`} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="modal">
         <div className="modal-h"><b>{title}</b><button onClick={onClose} aria-label="Tutup"><X size={17} /></button></div>
         <div className="modal-b">{children}</div>
         {footer ? <div className="modal-f">{footer}</div> : null}
       </div>
     </div>
+  );
+  return typeof document !== "undefined" ? createPortal(content, document.body) : content;
+}
+
+/* Konfirmasi standar Enterprise — drawer kanan, pengganti window.confirm (dilarang).
+ * Pakai: `if (!(await askConfirm("Hapus X?"))) return;` — ConfirmHost dimount sekali per shell. */
+let openConfirm: ((m: string) => Promise<boolean>) | null = null;
+export const askConfirm = (m: string): Promise<boolean> => openConfirm ? openConfirm(m) : Promise.resolve(false);
+export function ConfirmHost() {
+  const [msg, setMsg] = React.useState<string | null>(null);
+  const res = React.useRef<((v: boolean) => void) | null>(null);
+  React.useEffect(() => {
+    openConfirm = (m) => new Promise((r) => { setMsg(m); res.current = r; });
+    return () => { openConfirm = null; };
+  }, []);
+  const done = (v: boolean) => { setMsg(null); res.current?.(v); res.current = null; };
+  return (
+    <Modal right open={!!msg} title="Konfirmasi" onClose={() => done(false)}
+      footer={<><button className="btn btn-line" onClick={() => done(false)}>Batal</button>
+        <button className="btn btn-red" onClick={() => done(true)}>Ya, Lanjutkan</button></>}>
+      <p style={{ fontSize: 13, lineHeight: 1.7, color: "var(--txt)" }}>{msg}</p>
+      <div className="note">Tindakan tercatat pada jejak audit.</div>
+    </Modal>
   );
 }
 
@@ -91,11 +124,10 @@ export function Spark({ points, stroke = "url(#sparkStroke)", fill }: { points: 
   );
 }
 
-export function ViewHead({ en, h1, sub, acts }: { en: string; h1: string; sub?: React.ReactNode; acts?: React.ReactNode }) {
+export function ViewHead({ h1, sub, acts }: { en?: string; h1: string; sub?: React.ReactNode; acts?: React.ReactNode }) {
   return (
     <div className="vh">
       <div>
-        <span className="en">{en}</span>
         <h1>{h1}</h1>
         {sub ? <div className="sub">{sub}</div> : null}
       </div>
@@ -109,6 +141,32 @@ export function Ring({ score, size = 76 }: { score: number; size?: number }) {
   return (
     <div className="ring" style={{ width: size, height: size, background: `conic-gradient(var(--gold) ${deg}deg, var(--sunken) ${deg}deg 360deg)` }}>
       <i>{score}</i>
+    </div>
+  );
+}
+
+/* Markdown ringan (bold/italic) — jawaban AI tampil rapi tanpa simbol bintang.
+ * Escape HTML dulu (teks AI = untrusted), lalu **→<b>, *→<i>. */
+export const mdHtml = (s: string) => s
+  .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+  .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
+  .replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, "$1<i>$2</i>");
+export function Md({ t }: { t: string }) {
+  return <span dangerouslySetInnerHTML={{ __html: mdHtml(t) }} />;
+}
+
+/* Input rupiah: tampil "6.000.000" saat diketik, nilai balik angka murni. */
+export const rpFormat = (v: string | number) => {
+  const n = String(v ?? "").replace(/[^\d]/g, "");
+  return n ? Number(n).toLocaleString("id-ID") : "";
+};
+export const rpValue = (v: string) => Number(String(v ?? "").replace(/[^\d]/g, "")) || 0;
+export function RpInput({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
+  return (
+    <div style={{ position: "relative" }}>
+      <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", fontSize: 12, color: "var(--muted)", pointerEvents: "none" }}>Rp</span>
+      <input inputMode="numeric" style={{ paddingLeft: 34 }} value={rpFormat(value)} placeholder={placeholder}
+        onChange={(e) => onChange(String(rpValue(e.target.value) || ""))} />
     </div>
   );
 }
