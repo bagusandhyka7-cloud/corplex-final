@@ -176,6 +176,9 @@ function AdminInner() {
       })));
     });
   }, []);
+  /* id tenant → nama PT (utk Konsol Advokat & Data Modul — jangan tampilkan uuid mentah) */
+  const tenNama = (id: string) => tens.find((t) => t.id === id)?.nama || id;
+
   const [sel, setSel] = useState<string | null>(null);
   const [seatOpen, setSeatOpen] = useState(false);
   const [seatEmail, setSeatEmail] = useState("");
@@ -378,7 +381,7 @@ function AdminInner() {
                   <tbody>
                     {modStats.map((s) => (
                       <tr key={s.tenant}>
-                        <td><b>{s.tenant}</b></td>
+                        <td><b>{tenNama(s.tenant)}</b></td>
                         <td>{s.emp}</td><td>{s.mods.sp || 0}</td><td>{s.mods.lic || 0}</td><td>{s.mods.assets || 0}</td>
                         <td>{s.mods.hki || 0}</td><td>{s.mods.pol || 0}</td><td>{s.mods.agr || 0}</td><td>{s.mods.tax || 0}</td>
                         <td>{s.mods.kalk || 0}</td><td>{s.mods.vault || 0}</td><td>{s.att}</td><td>{s.vq}</td>
@@ -476,7 +479,7 @@ function AdminInner() {
                   <tbody>
                     {vq.filter((x) => x.status === "masuk").map((x) => (
                       <tr key={x.id}>
-                        <td><span className="mono" style={{ fontSize: 11 }}>{x.tenant_id}</span></td>
+                        <td><b style={{ fontSize: 12 }}>{tenNama(x.tenant_id)}</b></td>
                         <td><b>{x.title}</b><span className="sub">{x.meta}</span></td>
                         <td><Chip c={x.chip}>{x.label}</Chip></td>
                         <td>
