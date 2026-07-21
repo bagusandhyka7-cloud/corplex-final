@@ -5,12 +5,12 @@
  * Slice-1: menu Autentikasi & Akses (Kode Undangan / Akun & Seat / Approval Onboarding).
  */
 import React, { useEffect, useState } from "react";
-import { BadgeCheck, ChevronDown, Copy, Gavel, KeyRound, LayoutDashboard, Lock, LogOut, Mail, Plus, ShieldCheck, Ticket, UserPlus, Users } from "lucide-react";
+import { BadgeCheck, ChevronDown, Copy, Download, Gavel, KeyRound, LayoutDashboard, Lock, LogOut, Mail, Plus, ShieldCheck, Ticket, Trash2, UserPlus, Users } from "lucide-react";
 import { StoreProvider, useStore } from "@/lib/store";
 import { admin, api, InviteRow } from "@/lib/api";
 import { sb } from "@/lib/supabase";
 import { useAsyncAction } from "@/lib/hooks";
-import { Chip, Field, Modal } from "@/components/ui";
+import { askConfirm, Chip, ConfirmHost, Field, Modal, Row } from "@/components/ui";
 import { Toasts } from "@/components/shell";
 
 /* ===== tipe & seed (in-memory; PROD: Supabase) ===== */
@@ -97,7 +97,20 @@ function AdminLogin({ onOk }: { onOk: () => void }) {
 
 function AdminInner() {
   const { toast } = useStore();
-  const [menu, setMenu] = useState<"beranda" | "kode" | "seat" | "approval" | "advokat" | "modul">("kode");
+  const [menu, setMenu] = useState<"beranda" | "kode" | "seat" | "approval" | "advokat" | "modul" | "pusat" | "metrik">("kode");
+  type Metrics = { tenantAktif: number; tenantPending: number; aktif30h: number; karyawan: number; dokumen: number; perModul: Record<string, number>; vqMasuk: number; vqVerified: number };
+  const [mx, setMx] = useState<Metrics | null>(null);
+  const loadMetrik = async () => { const r = await admin.metrics(); if (r.ok) setMx(r.data.metrics); else toast("Gagal memuat metrik", r.error.message, "warn"); };
+  const [pdTenant, setPdTenant] = useState<string | null>(null);
+  const [pdDocs, setPdDocs] = useState<{ kel: string; nama: string; jenis: string; url: string }[]>([]);
+  const [pdKaryawan, setPdKaryawan] = useState(0);
+  const [pdLoading, setPdLoading] = useState(false);
+  const loadPusat = async (id: string) => {
+    setPdTenant(id); setPdLoading(true);
+    const r = await admin.tenantDocs(id);
+    setPdLoading(false);
+    if (r.ok) { setPdDocs(r.data.docs); setPdKaryawan(r.data.karyawan); } else toast("Gagal memuat", r.error.message, "warn");
+  };
 
   /* Data Modul — agregat NYATA lintas tenant dari Supabase (employees + module_records +
    * attendance + verification_queue), realtime via postgres_changes. Nol seed. */
@@ -245,12 +258,13 @@ function AdminInner() {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(seatEmail)) { toast("Email tidak valid", "Periksa format email.", "warn"); return; }
     const dupe = tens.some((x) => x.seats.some((s) => s.email === seatEmail.trim().toLowerCase()));
     if (dupe) { toast("Email sudah terdaftar", "Satu email hanya untuk satu akun — gunakan email berbeda.", "warn"); return; }
-    const res = await admin.act("invite_seat", { tenant: t.id, email: seatEmail });
+    const res = await admin.inviteSeat(t.id, seatEmail.trim().toLowerCase());
     if (!res.ok) { toast("Gagal", res.error.message, "warn"); return; }
+    if (res.data.link) void navigator.clipboard?.writeText(res.data.link);
     setTens((xs) => xs.map((x) => x.id === t.id ? { ...x, seats: [...x.seats, { nama: seatNama.trim() || seatEmail.split("@")[0], email: seatEmail.trim().toLowerCase(), peran: "—", status: "undangan" as const }] } : x));
     setSeatOpen(false); setSeatEmail(""); setSeatNama("");
-    log(`Kursi ke-2 ${t.nama} diundang: ${seatEmail}`);
-    toast("Undangan terkirim", `${seatEmail} — kursi 2/2 ${t.nama}.`, "ok");
+    log(`Kursi ke-2 ${t.nama} dibuat: ${seatEmail}`);
+    toast("Kursi dibuat — tautan set-sandi disalin", `Tempel tautan (di clipboard) ke ${seatEmail} untuk mengatur kata sandi.`, "ok");
   });
 
   const putuskan = async (p: Pending, ok: boolean, alasan = "") => {
@@ -318,6 +332,8 @@ function AdminInner() {
           {vq.filter((x) => x.status === "masuk").length > 0 && <span style={{ marginLeft: "auto", background: "linear-gradient(145deg,var(--gold-bright),var(--gold))", color: "#060E1D", fontFamily: "var(--mono)", fontSize: 9, fontWeight: 700, minWidth: 17, height: 17, borderRadius: 100, display: "grid", placeItems: "center", padding: "0 5px" }}>{vq.filter((x) => x.status === "masuk").length}</span>}
         </div>
         <div style={S.item(menu === "modul")} onClick={() => setMenu("modul")}><LayoutDashboard size={15} /> Data Modul</div>
+        <div style={S.item(menu === "pusat")} onClick={() => setMenu("pusat")}><Lock size={15} /> Pusat Data</div>
+        <div style={S.item(menu === "metrik")} onClick={() => { setMenu("metrik"); if (!mx) void loadMetrik(); }}><BadgeCheck size={15} /> Metrik</div>
         <div style={{ ...S.item(false), marginTop: "auto" }} onClick={() => { sessionStorage.removeItem(SESSION_KEY); void sb.auth.signOut().finally(() => location.reload()); }}><LogOut size={15} /> Keluar</div>
         <div style={{ fontFamily: "var(--mono)", fontSize: 8.5, color: "#5E76A8", padding: 10, lineHeight: 1.8 }}>SERVICE-ROLE · SERVER-SIDE<br />SEMUA AKSI MASUK AUDIT</div>
       </aside>
@@ -362,6 +378,80 @@ function AdminInner() {
                 </table>
               </div>
               <p className="note mt16">Angka = jumlah baris nyata di <b>employees</b>, <b>module_records</b> (per modul), <b>attendance</b>, dan <b>verification_queue</b>. Nol seed/dummy.</p>
+            </div>
+          </div>
+        ) : menu === "metrik" ? (
+          <div>
+            <h1 style={{ fontFamily: "var(--serif)", color: "#fff", fontSize: 24, marginBottom: 4 }}>Metrik</h1>
+            <p style={{ color: "var(--txt2)", fontSize: 12.5, marginBottom: 16 }}>Dihitung dari database operasional sendiri — bukan pelacak pihak ketiga (PDP-aman, zero-budget). <button className="btn btn-line btn-sm" style={{ marginLeft: 8 }} onClick={() => void loadMetrik()}>Muat Ulang</button></p>
+            {!mx ? <p className="note">Memuat…</p> : (
+              <>
+                <div className="grid g4 mb16">
+                  <div className="kpi"><b>{mx.tenantAktif}</b><span>Perusahaan aktif</span></div>
+                  <div className="kpi"><b>{mx.aktif30h}</b><span>Aktif 30 hari (isi data)</span></div>
+                  <div className="kpi"><b>{mx.karyawan}</b><span>Total karyawan</span></div>
+                  <div className="kpi"><b>{mx.dokumen}</b><span>Dokumen tersimpan</span></div>
+                </div>
+                <div className="grid g2">
+                  <div className="panel"><h4>Adopsi per Modul</h4>
+                    <div className="rows">
+                      {Object.entries(mx.perModul).sort((a, b) => b[1] - a[1]).map(([m, n]) => <Row key={m} b={m.toUpperCase()} right={<Chip c="c-mon">{n}</Chip>} />)}
+                      {!Object.keys(mx.perModul).length && <span className="sub" style={{ fontSize: 12 }}>Belum ada rekam modul.</span>}
+                    </div>
+                  </div>
+                  <div className="panel"><h4>Verifikasi &amp; Pipeline</h4>
+                    <div className="rows">
+                      <Row b="Antre verifikasi advokat" right={<Chip c="c-draft">{mx.vqMasuk}</Chip>} />
+                      <Row b="Terverifikasi advokat" right={<Chip c="c-ver">{mx.vqVerified}</Chip>} />
+                      <Row b="Pendaftaran menunggu approval" right={<Chip c="c-draft">{mx.tenantPending}</Chip>} />
+                    </div>
+                  </div>
+                </div>
+                <p className="note mt16">Bintang Utara = perusahaan aktif yang benar-benar mengisi rekam. Aktivitas menurun = sinyal awal churn (tindak lanjut MRWP).</p>
+              </>
+            )}
+          </div>
+        ) : menu === "pusat" ? (
+          <div>
+            <h1 style={{ fontFamily: "var(--serif)", color: "#fff", fontSize: 24, marginBottom: 4 }}>Pusat Data</h1>
+            <p style={{ color: "var(--txt2)", fontSize: 12.5, marginBottom: 16 }}>Akses &amp; unduh seluruh dokumen klien — dasar perjanjian &amp; NDA (MRWP firma hukum klien). Setiap akses tercatat pada jejak audit.</p>
+            <div className="grid" style={{ gridTemplateColumns: "240px 1fr", gap: 16, alignItems: "start" }}>
+              <div className="panel">
+                <h4>Perusahaan</h4>
+                <div className="rows">
+                  {tens.map((t) => <button key={t.id} className={`btn ${pdTenant === t.id ? "btn-gold" : "btn-line"} btn-sm`} style={{ justifyContent: "flex-start" }} onClick={() => void loadPusat(t.id)}>{t.nama}</button>)}
+                  {!tens.length && <span className="sub" style={{ fontSize: 12 }}>Belum ada perusahaan aktif.</span>}
+                </div>
+              </div>
+              <div className="panel">
+                {!pdTenant ? <p className="note">Pilih perusahaan untuk membuka seluruh dokumennya.</p> : pdLoading ? <p className="note">Memuat…</p> : (
+                  <>
+                    <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
+                      <div className="kpi"><b>{pdDocs.length}</b><span>Dokumen</span></div>
+                      <div className="kpi"><b>{pdKaryawan}</b><span>Karyawan</span></div>
+                    </div>
+                    <div className="tblwrap">
+                      <table>
+                        <thead><tr><th>Kelompok</th><th>Dokumen</th><th>Jenis</th><th>Aksi</th></tr></thead>
+                        <tbody>
+                          {pdDocs.map((d, i) => (
+                            <tr key={i}>
+                              <td><span className="mono" style={{ fontSize: 10 }}>{d.kel}</span></td>
+                              <td>{d.nama}</td><td>{d.jenis}</td>
+                              <td><div style={{ display: "inline-flex", gap: 6 }}>
+                                <button className="btn btn-line btn-sm" onClick={() => setDocPrev({ url: d.url, nama: d.nama })}>Preview</button>
+                                <a className="btn btn-navy btn-sm" href={d.url} target="_blank" rel="noreferrer"><Download size={11} /> Unduh</a>
+                              </div></td>
+                            </tr>
+                          ))}
+                          {!pdDocs.length && <tr><td colSpan={4} style={{ color: "var(--muted)" }}>Tak ada dokumen tersimpan untuk perusahaan ini.</td></tr>}
+                        </tbody>
+                      </table>
+                    </div>
+                    <p className="note mt16">Unduhan penuh sesuai perjanjian — tanpa watermark. Akses tercatat diam-diam (buku tamu) untuk pertanggungjawaban.</p>
+                  </>
+                )}
+              </div>
             </div>
           </div>
         ) : menu === "advokat" ? (
@@ -473,7 +563,8 @@ function AdminInner() {
                           <div><b>{s.nama}</b><span className="d">{s.email} · {s.peran}</span></div>
                           <div className="right">
                             <Chip c={s.status === "aktif" ? "c-ver" : s.status === "undangan" ? "c-draft" : "c-red"}>{s.status.toUpperCase()}</Chip>
-                            <button className="btn btn-line btn-sm" onClick={() => { void admin.act("reset_pw", { email: s.email }); log(`Reset sandi ${s.email}`); toast("Link reset terkirim", s.email, "ok"); }}><KeyRound size={11} /></button>
+                            <button className="btn btn-line btn-sm" title="Reset sandi" onClick={async () => { const r = await admin.resetSeat(s.email); if (!r.ok) return toast("Gagal", r.error.message, "warn"); if (r.data.link) void navigator.clipboard?.writeText(r.data.link); log(`Reset sandi ${s.email}`); toast("Tautan reset disalin", `Kirim ke ${s.email}.`, "ok"); }}><KeyRound size={11} /></button>
+                            <button className="btn btn-red btn-sm" title="Hapus kursi" onClick={async () => { if (!(await askConfirm(`Hapus kursi ${s.email}?`))) return; const r = await admin.removeSeat(s.email); if (!r.ok) return toast("Gagal", r.error.message, "warn"); setTens((xs) => xs.map((t) => ({ ...t, seats: t.seats.filter((z) => z.email !== s.email) }))); log(`Kursi dihapus ${s.email}`); toast("Kursi dihapus", s.email, "warn"); }}><Trash2 size={11} /></button>
                           </div>
                         </div>
                       ))}
@@ -598,5 +689,5 @@ function AdminGate() {
 }
 
 export default function AdminPage() {
-  return <StoreProvider><AdminGate /><Toasts /></StoreProvider>;
+  return <StoreProvider><AdminGate /><Toasts /><ConfirmHost /></StoreProvider>;
 }

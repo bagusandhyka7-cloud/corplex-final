@@ -74,7 +74,7 @@ export default function SuratPeringatan() {
 
   return (
     <div>
-      <ViewHead h1="Surat Peringatan" sub="Manajemen peringatan berjenjang (SP1 – SP3) — tercatat pada rekam tenant." />
+      <ViewHead h1="Surat Peringatan" sub="SP tanpa rekam = PHK cacat prosedur — jenjang SP1 – SP3 tercatat sah di sini." />
       <div className="grid g2">
         <Panel title="Terbitkan Surat Peringatan — Alur Berjenjang SP1 → SP2 → SP3">
           <Field label="Karyawan">

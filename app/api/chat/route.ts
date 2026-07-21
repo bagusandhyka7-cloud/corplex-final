@@ -4,6 +4,7 @@
  * Respons: text/plain streaming (potongan teks mentah, langsung ditampilkan frontend).
  */
 import { NextRequest } from "next/server";
+import { limited, tooMany } from "@/lib/ratelimit";
 
 // Alias -latest: Google mengarahkan ke versi stabil terbaru — kebal deprecation model bernomor.
 const MODEL_MAP: Record<string, string> = {
@@ -17,6 +18,7 @@ ketenagakerjaan, kontrak, perizinan, korporasi, pajak. Bila tidak yakin atau isu
 nyatakan eksplisit dan sarankan verifikasi advokat MRWP. Jangan mengarang pasal atau putusan.`;
 
 export async function POST(req: NextRequest) {
+  if (limited(req, "chat", 20)) return tooMany();
   const key = process.env.GEMINI_API_KEY;
   if (!key) {
     return Response.json({ error: "GEMINI_API_KEY belum diisi di .env.local — tempel key dari Google AI Studio lalu restart server." }, { status: 501 });

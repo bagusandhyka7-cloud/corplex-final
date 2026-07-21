@@ -381,7 +381,7 @@ export type EmpRow = {
   kontak_darurat_nama: string | null; kontak_darurat_telp: string | null; pengalaman: string | null; dok_url: string | null;
   agama: string | null; status_nikah: string | null; gol_darah: string | null; bank_nama: string | null;
   bank_rekening: string | null; alamat_ktp: string | null; pendidikan_institusi: string | null;
-  gaji_pokok: number | null; tunjangan_tetap: number | null; upah: number | null; mulai_kerja: string | null;
+  gaji_pokok: number | null; tunjangan_tetap: number | null; upah: number | null; mulai_kerja: string | null; akhir_kontrak: string | null;
 };
 export const empFromRow = (r: EmpRow) => ({
   id: r.id, foto: r.foto_url, n: r.nama, j: r.jabatan, jk: r.jk, wn: r.wn, lok: r.lok, s: r.status,
@@ -395,9 +395,9 @@ export const empFromRow = (r: EmpRow) => ({
   agama: r.agama || undefined, nikah: r.status_nikah || undefined, golDarah: r.gol_darah || undefined,
   bankNama: r.bank_nama || undefined, bankRek: r.bank_rekening || undefined,
   alamatKtp: r.alamat_ktp || undefined, pendInst: r.pendidikan_institusi || undefined,
-  gajiPokok: r.gaji_pokok, tunjTetap: r.tunjangan_tetap, upah: r.upah, mulaiKerja: r.mulai_kerja || undefined,
+  gajiPokok: r.gaji_pokok, tunjTetap: r.tunjangan_tetap, upah: r.upah, mulaiKerja: r.mulai_kerja || undefined, akhirKontrak: r.akhir_kontrak || undefined,
 });
-type EmpIn = { n: string; j: string; jk: "L" | "P"; wn: "TKI" | "TKA"; lok: boolean; s: "PKWT" | "PKWTT"; m: string; sisa?: number | null; komp?: string; pat?: string; rem?: boolean; dok?: string; prov?: string; kota?: string; desa?: string; foto?: string | null; nik?: string; kk?: string; npwp?: string; bpjsKes?: string; bpjsTk?: string; sim?: string; pend?: string; lahir?: string; dept?: string; kdNama?: string; kdTelp?: string; pengalaman?: string; dokUrl?: string | null; agama?: string; nikah?: string; golDarah?: string; bankNama?: string; bankRek?: string; alamatKtp?: string; pendInst?: string; gajiPokok?: number | null; tunjTetap?: number | null; mulaiKerja?: string };
+type EmpIn = { n: string; j: string; jk: "L" | "P"; wn: "TKI" | "TKA"; lok: boolean; s: "PKWT" | "PKWTT"; m: string; sisa?: number | null; komp?: string; pat?: string; rem?: boolean; dok?: string; prov?: string; kota?: string; desa?: string; foto?: string | null; nik?: string; kk?: string; npwp?: string; bpjsKes?: string; bpjsTk?: string; sim?: string; pend?: string; lahir?: string; dept?: string; kdNama?: string; kdTelp?: string; pengalaman?: string; dokUrl?: string | null; agama?: string; nikah?: string; golDarah?: string; bankNama?: string; bankRek?: string; alamatKtp?: string; pendInst?: string; gajiPokok?: number | null; tunjTetap?: number | null; mulaiKerja?: string; akhirKontrak?: string };
 export const empToRow = (e: EmpIn, source = "manual"): Partial<EmpRow> => ({
   nama: e.n, jabatan: e.j || "—", jk: e.jk, wn: e.wn, lok: e.lok, status: e.s, masa: e.m,
   sisa: e.sisa ?? null, komp: e.komp || "—", pat: e.pat || "PATUH", rem: e.rem ?? false, dok: e.dok || "",
@@ -408,7 +408,7 @@ export const empToRow = (e: EmpIn, source = "manual"): Partial<EmpRow> => ({
   agama: e.agama || null, status_nikah: e.nikah || null, gol_darah: e.golDarah || null, bank_nama: e.bankNama || null,
   bank_rekening: e.bankRek || null, alamat_ktp: e.alamatKtp || null, pendidikan_institusi: e.pendInst || null,
   // `upah` kolom generated di DB — JANGAN dikirim, Postgres yang menghitung
-  gaji_pokok: e.gajiPokok ?? null, tunjangan_tetap: e.tunjTetap ?? null, mulai_kerja: e.mulaiKerja || null,
+  gaji_pokok: e.gajiPokok ?? null, tunjangan_tetap: e.tunjTetap ?? null, mulai_kerja: e.mulaiKerja || null, akhir_kontrak: e.akhirKontrak || null,
 });
 
 /* Panggilan back-office lewat route service-role (server-side). Password admin dari
@@ -454,6 +454,12 @@ export const admin = {
   async decideTenant(id: string, approve: boolean, reason?: string) {
     return adminPost<{ ok: true }>("decideTenant", { id, approve, reason });
   },
+  /* Seat NYATA — lewat server (Auth Admin API butuh service role). */
+  async inviteSeat(tenant: string, email: string) { return adminPost<{ link: string | null }>("inviteSeat", { tenant, email }); },
+  async resetSeat(email: string) { return adminPost<{ link: string | null }>("resetSeat", { email }); },
+  async removeSeat(email: string) { return adminPost<{ ok: true }>("removeSeat", { email }); },
+  async tenantDocs(tenant: string) { return adminPost<{ docs: { kel: string; nama: string; jenis: string; url: string }[]; karyawan: number }>("tenantDocs", { tenant }); },
+  async metrics() { return adminPost<{ metrics: { tenantAktif: number; tenantPending: number; aktif30h: number; karyawan: number; dokumen: number; perModul: Record<string, number>; vqMasuk: number; vqVerified: number } }>("metrics", {}); },
   async act(action: string, payload: Record<string, unknown>, signal?: AbortSignal): Promise<ApiResult<Record<string, unknown>>> {
     if (action === "create_invite") {
       const expMs = Number(payload.expMs || 0);

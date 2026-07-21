@@ -5,7 +5,7 @@
  * Aksi advokat (setujui/koreksi/tolak + ttd) pindah ke Konsol Advokat di /adminmrwp (slice berikutnya).
  */
 import React, { useState } from "react";
-import { Download, Plus, RefreshCw } from "lucide-react";
+import { Download, FileText, Plus, RefreshCw } from "lucide-react";
 import { QItem } from "@/lib/data";
 import { useStore } from "@/lib/store";
 import { downloadDoc } from "@/lib/vault";
@@ -13,11 +13,11 @@ import { Chip, Field, Modal, Panel, Row, ViewHead } from "@/components/ui";
 
 const STEPS = ["Diajukan", "Antre verifikasi", "Ditinjau advokat", "Selesai"];
 
-/* posisi timeline + label akhir per status antrean */
-const progress = (q: QItem): { at: number; done: boolean; chip: [string, string]; kalimat: string } => {
-  if (q.status === "verified") return { at: 3, done: true, chip: ["c-ver", "TERVERIFIKASI ✓"], kalimat: "Selesai — ditandatangani digital oleh advokat MRWP." };
-  if (q.status === "rejected") return { at: 3, done: true, chip: ["c-red", "PERLU REVISI"], kalimat: "Dikembalikan dengan catatan advokat — perbaiki lalu ajukan ulang." };
-  return { at: 1, done: false, chip: ["c-draft", "SEDANG DIPROSES"], kalimat: "Sedang antre verifikasi advokat — estimasi selesai < 24 jam." };
+/* S4: tanpa badge status — status dibaca dari timeline (lingkaran akhir hijau "Terverifikasi" / merah) */
+const progress = (q: QItem): { at: number; done: boolean; kalimat: string } => {
+  if (q.status === "verified") return { at: 3, done: true, kalimat: "Selesai — ditandatangani digital oleh advokat MRWP." };
+  if (q.status === "rejected") return { at: 3, done: true, kalimat: "Dikembalikan dengan catatan advokat — perbaiki lalu ajukan ulang." };
+  return { at: 1, done: false, kalimat: "Sedang antre verifikasi advokat — estimasi selesai < 24 jam." };
 };
 
 export default function Lawyer() {
@@ -26,6 +26,7 @@ export default function Lawyer() {
   const [f, setF] = useState("semua");
   const [cari, setCari] = useState("");
   const [premOpen, setPremOpen] = useState(false);
+  const [noteQ, setNoteQ] = useState<QItem | null>(null); // drawer kanan: catatan advokat
   const [prBidang, setPrBidang] = useState("Legal Due Diligence");
   const [prSkema, setPrSkema] = useState("Fixed fee");
   const [premList, setPremList] = useState([
@@ -70,6 +71,10 @@ export default function Lawyer() {
         .lw-st.on .dot{background:linear-gradient(150deg,var(--gold-bright),var(--gold));color:#060E1D;border-color:var(--gold)}
         .lw-st .cap{font-family:var(--mono);font-size:7.5px;letter-spacing:.08em;text-transform:uppercase;color:#5E76A8;text-align:center}
         .lw-st.on .cap{color:var(--gold-deep)}
+        .lw-st.ok .dot{background:linear-gradient(150deg,#3FB37E,#35A56C);color:#04160C;border-color:#35A56C}
+        .lw-st.ok .cap{color:#3FB37E}
+        .lw-st.bad .dot{background:linear-gradient(150deg,#C4574F,#A93E37);color:#fff;border-color:#A93E37}
+        .lw-st.bad .cap{color:#C4574F}
       `}</style>
 
       <ViewHead h1="Pengacara MRWP"
@@ -91,61 +96,69 @@ export default function Lawyer() {
         <input className="finput" style={{ flex: 1, minWidth: 160 }} placeholder="Cari pengajuan…" value={cari} onChange={(e) => setCari(e.target.value)} />
       </div>
 
-      <div className="grid g-wide">
-        {/* daftar pengajuan */}
-        <div>
-          {rows.length ? rows.map((q, i) => {
-            const p = progress(q);
-            return (
-              <div key={i} className="lw-card">
-                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                  <b style={{ flex: 1, minWidth: 200, color: "#fff", fontSize: 13.5 }}>
-                    {q.t.replace(/\s*—\s*/g, " ")}
-                    <span style={{ color: "var(--muted)", fontWeight: 500 }}> — {(q.m.split("·")[0].trim().replace(/^Dari\s+/i, "Dari ")) || "Pengajuan"}</span>
-                  </b>
-                  <Chip c={p.chip[0]}>{p.chip[1]}</Chip>
-                </div>
-
-                <div className="lw-tl">
-                  {STEPS.map((s, si) => (
-                    <div key={s} className={`lw-st${si <= p.at ? " on" : ""}`}>
-                      <div className="dot">{si < p.at || (si === p.at && p.done) ? "✓" : si + 1}</div>
-                      <span className="cap">{s}</span>
-                    </div>
-                  ))}
-                </div>
-
-                <p style={{ fontSize: 12, color: "var(--txt2)", margin: "8px 0 0" }}>{p.kalimat}</p>
-                {q.note && <p style={{ fontSize: 11.5, color: "var(--warn)", margin: "6px 0 0" }}>📝 {q.note}</p>}
-
-                {(q.status === "verified" || q.status === "rejected") && (
-                  <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-                    {q.status === "verified" && (
-                      <button className="btn btn-navy btn-sm" onClick={() => { downloadDoc(q.t.replace(/[^\w]+/g, "_") + ".pdf", t.name); toast("Unduhan dimulai", "Dokumen final ber-ttd digital · akses tercatat pada jejak audit.", "ok"); }}>
-                        <Download size={12} /> Unduh dokumen final
-                      </button>
-                    )}
-                    {q.status === "rejected" && (
-                      <button className="btn btn-gold btn-sm" onClick={() => ajukanUlang(q)}><RefreshCw size={12} /> Perbaiki &amp; ajukan ulang</button>
-                    )}
-                  </div>
+      {/* list FULL-WIDTH, ±3 kartu terlihat lalu scroll; tanpa badge; tombol aksi ujung kanan sejajar judul */}
+      <div style={{ maxHeight: 430, overflowY: "auto", paddingRight: rows.length > 3 ? 6 : 0 }}>
+        {rows.length ? rows.map((q, i) => {
+          const p = progress(q);
+          return (
+            <div key={i} className="lw-card">
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <b style={{ flex: 1, minWidth: 200, color: "#fff", fontSize: 13.5 }}>
+                  {q.t.replace(/\s*—\s*/g, " ")}
+                  <span style={{ color: "var(--muted)", fontWeight: 500 }}> — {(q.m.split("·")[0].trim().replace(/^Dari\s+/i, "Dari ")) || "Pengajuan"}</span>
+                </b>
+                {q.status === "verified" && <span style={{ display: "inline-flex", gap: 8 }}>
+                  <button className="btn btn-navy btn-sm" onClick={() => { downloadDoc(q.t.replace(/[^\w]+/g, "_") + ".pdf", t.name); toast("Unduhan dimulai", "Dokumen final ber-ttd digital · akses tercatat pada jejak audit.", "ok"); }}>
+                    <Download size={12} /> Unduh dokumen final
+                  </button>
+                  {q.note && <button className="btn btn-line btn-sm" onClick={() => setNoteQ(q)}><FileText size={12} /> Lihat catatan</button>}
+                </span>}
+                {q.status === "rejected" && (
+                  <button className="btn btn-red btn-sm" onClick={() => setNoteQ(q)}><FileText size={12} /> Ditolak, lihat catatan</button>
                 )}
               </div>
-            );
-          }) : (
-            <div className="panel"><p className="note">Belum ada pengajuan{f !== "semua" ? " pada filter ini" : ""} — ajukan dokumen dari modul mana pun (Agreement, Employment, AI Assistant) dan pantau progresnya di sini.</p></div>
-          )}
-        </div>
 
-        {/* samping */}
-        <div style={{ display: "grid", gap: 16, alignContent: "start" }}>
-          <Panel title="Penugasan Premium Aktif">
-            <div className="rows">
-              {premList.map((p, i) => <Row key={i} b={p.b} d={p.d} right={<Chip c={p.chip}>{p.lbl}</Chip>} />)}
+              <div className="lw-tl">
+                {STEPS.map((s, si) => {
+                  const last = si === 3;
+                  const cls = si <= p.at ? (last && q.status === "verified" ? " on ok" : last && q.status === "rejected" ? " on bad" : " on") : "";
+                  const cap = last && q.status === "verified" ? "Terverifikasi" : last && q.status === "rejected" ? "Perlu revisi" : s;
+                  return (
+                    <div key={s} className={`lw-st${cls}`}>
+                      <div className="dot">{si < p.at || (si === p.at && p.done) ? "✓" : si + 1}</div>
+                      <span className="cap">{cap}</span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <p style={{ fontSize: 12, color: "var(--txt2)", margin: "8px 0 0" }}>{p.kalimat}</p>
             </div>
-          </Panel>
-        </div>
+          );
+        }) : (
+          <div className="panel"><p className="note">Belum ada pengajuan{f !== "semua" ? " pada filter ini" : ""} — ajukan dokumen dari modul mana pun (Agreement, Employment, AI Assistant) dan pantau progresnya di sini.</p></div>
+        )}
       </div>
+
+      {/* S4: Penugasan Premium pindah ke BAWAH daftar */}
+      <Panel title="Penugasan Premium Aktif" className="mt16">
+        <div className="rows">
+          {premList.map((p, i) => <Row key={i} b={p.b} d={p.d} right={<Chip c={p.chip}>{p.lbl}</Chip>} />)}
+        </div>
+      </Panel>
+
+      {/* drawer kanan: catatan advokat (gaya form) */}
+      <Modal open={!!noteQ} right title="Catatan Advokat" onClose={() => setNoteQ(null)}
+        footer={<>
+          <button className="btn btn-line" onClick={() => setNoteQ(null)}>Tutup</button>
+          {noteQ?.status === "rejected" && <button className="btn btn-gold" onClick={() => { ajukanUlang(noteQ); setNoteQ(null); }}><RefreshCw size={12} /> Perbaiki &amp; ajukan ulang</button>}
+        </>}>
+        {noteQ && <>
+          <Field label="Pengajuan"><input value={noteQ.t} readOnly /></Field>
+          <Field label="Status"><input value={noteQ.status === "verified" ? "Disetujui / terverifikasi" : "Ditolak — perlu revisi"} readOnly /></Field>
+          <Field label="Catatan dari advokat"><textarea rows={7} value={noteQ.note || "— tidak ada catatan —"} readOnly /></Field>
+        </>}
+      </Modal>
 
       <Modal open={premOpen} title="Penugasan Premium — Permintaan Penawaran" onClose={() => setPremOpen(false)}
         footer={<>

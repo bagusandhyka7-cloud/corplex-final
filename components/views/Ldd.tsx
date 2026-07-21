@@ -10,11 +10,12 @@ import React from "react";
 import { Download, FileSearch, Gavel, Gem, Landmark, Scale as ScaleIcon, FileBadge, FileSignature, Users } from "lucide-react";
 import { useStore, ViewId } from "@/lib/store";
 import { Chip, Panel, Row, ViewHead } from "@/components/ui";
+import { buildLdd, lddHtml } from "@/lib/ldd";
 
 type Status = "AMAN" | "BERISIKO" | "BERMASALAH";
 const chipOf: Record<Status, string> = { AMAN: "c-ver", BERISIKO: "c-draft", BERMASALAH: "c-red" };
 
-export default function Ldd() {
+export default function Ldd({ embed }: { embed?: boolean } = {}) {
   const { ten, toast, pushQueue, go } = useStore();
   const t = ten!;
 
@@ -64,24 +65,40 @@ export default function Ldd() {
     ? "Seluruh aspek pemeriksaan dalam kondisi baik — perusahaan siap menghadapi uji tuntas eksternal."
     : `${nBerisiko + nBermasalah} dari ${aspek.length} aspek memerlukan perhatian sebelum perusahaan siap uji tuntas eksternal (akuisisi, pendanaan, kemitraan).`;
 
+  /* S3: Preview = laporan penuh di TAB BARU (tanpa dialog cetak) · Unduh = DOCX · Verifikasi = antrean advokat */
+  const preview = () => {
+    const url = URL.createObjectURL(new Blob([lddHtml(buildLdd(t))], { type: "text/html" }));
+    window.open(url, "_blank");
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  };
+  const unduh = async () => {
+    /* html-to-docx tersedak inline-style kompleks — DOCX = salinan kerja polos (advokat memformat di Word) */
+    const html = lddHtml(buildLdd(t)).replace(/^[\s\S]*?<body[^>]*>|<\/body>[\s\S]*$/g, "").replace(/ style="[^"]*"/g, "");
+    const res = await fetch("/api/docx", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ html, title: `Laporan Uji Tuntas Hukum ${t.name}` }) });
+    if (!res.ok) return toast("Gagal membuat DOCX", `HTTP ${res.status}`, "warn");
+    const url = URL.createObjectURL(await res.blob());
+    const a = document.createElement("a"); a.href = url; a.download = `LDD-${t.name.replace(/\s+/g, "-")}.docx`; a.click();
+    URL.revokeObjectURL(url);
+  };
+  /* minimalis: ukuran ikut tombol "Tanyakan ke AI Assistant" (btn-sm) */
+  const acts = <>
+    <button className="btn btn-line btn-sm" onClick={() => void preview()}><FileSearch size={13} /> Preview</button>
+    <button className="btn btn-line btn-sm" onClick={() => void unduh()}><Download size={13} /> Unduh</button>
+    <button className="btn btn-gold btn-sm" onClick={() => { pushQueue("Laporan Legal Due Diligence — " + t.name, "Laporan LDD lengkap 6 aspek · wajib ditandatangani advokat sebelum disajikan", "c-gold", "ESKALASI"); }}><Gavel size={13} /> Verifikasi ke Advokat</button>
+  </>;
+
   return (
     <div>
-      <ViewHead h1="Legal Due Diligence"
+      {!embed && <ViewHead h1="Legal Due Diligence"
         sub="Laporan uji tuntas hukum perusahaan Anda — status tiap aspek, siap disajikan ke owner dan investor."
-        acts={<>
-          <button className="btn btn-line" onClick={() => {
-            /* Ekspor nyata: laporan HTML rapi → dialog cetak browser (Simpan sebagai PDF). */
-            const w = window.open("", "_blank"); if (!w) return toast("Popup diblokir", "Izinkan popup untuk mengekspor laporan.", "warn");
-            w.document.write(`<!doctype html><html lang="id"><head><meta charset="utf-8"><title>LDD — ${t.name}</title></head>
-<body style="font-family:Georgia,serif;max-width:720px;margin:40px auto;color:#14264A;line-height:1.7">
-<div style="border-bottom:3px solid #A9884C;padding-bottom:10px;margin-bottom:20px"><b style="font-size:20px">LAPORAN LEGAL DUE DILIGENCE</b><br><span style="letter-spacing:.12em;color:#A9884C;font-size:12px">${t.name.toUpperCase()} · ${new Date().toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}</span></div>
-<p><b>Status keseluruhan: ${keseluruhan}</b></p><p>${ringkas}</p><hr>
-${aspek.map((a) => `<p><b>${a.nama} — ${a.status}</b><br>${a.temuan}</p>`).join("")}
-<p style="font-size:11px;color:#666;margin-top:24px">DRAF AI — belum ditandatangani advokat MRWP. RAHASIA.</p></body></html>`);
-            w.document.close(); w.print();
-          }}><Download size={14} /> Ekspor Laporan</button>
-          <button className="btn btn-gold" onClick={() => { pushQueue("Laporan Legal Due Diligence — " + t.name, "Laporan LDD lengkap 6 aspek · wajib ditandatangani advokat sebelum disajikan", "c-gold", "ESKALASI"); }}><Gavel size={14} /> Ajukan Verifikasi Advokat</button>
-        </>} />
+        acts={acts} />}
+      {/* S3 embed: judul kiri + 3 tombol kanan SATU BARIS, tanpa garis titik-titik */}
+      {embed && (
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14, flexWrap: "wrap" }}>
+          <h2 style={{ fontFamily: "var(--serif)", color: "#fff", fontSize: 20, margin: 0, flex: 1, minWidth: 240 }}>Uji Tuntas Hukum (Legal Due Diligence)</h2>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>{acts}</div>
+        </div>
+      )}
 
       {/* ringkasan eksekutif */}
       <div className="lw-quota" style={{ background: "linear-gradient(150deg,#10203C,#0C1A33)", border: "1px solid var(--line2)", borderRadius: 15, padding: "20px 24px", marginBottom: 16, display: "flex", alignItems: "center", gap: 22, flexWrap: "wrap" }}>

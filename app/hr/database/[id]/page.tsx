@@ -213,7 +213,7 @@ export default function EmployeeProfile({ params }: { params: Promise<{ id: stri
                 </Field>
               ))}
               {/* marginLeft auto = rata kanan, sejajar kolom tombol Hapus di daftar — input Alpha tak bergeser */}
-              <button className="btn btn-navy btn-sm" style={{ marginBottom: 2, marginLeft: "auto", marginRight: 15 }} onClick={() => void simpanAbsensi()}>Catat</button>
+              <button className="btn btn-navy btn-sm" style={{ marginBottom: 2, marginLeft: "auto", marginRight: 15 }} onClick={() => void simpanAbsensi()}>Simpan</button>
             </div>
             <div className="rows">
               {attList.map((a) => (

@@ -6,10 +6,17 @@ import React, { useRef } from "react";
 import { Upload } from "lucide-react";
 import { ViewHead } from "@/components/ui";
 
+/* Singkatan resmi boleh kapital semua; label lain jadi Title Case (aturan hierarki owner). */
+const ABBR = new Set(["TKI", "TKA", "PKWT", "PKWTT", "PTUN", "KBLI", "HKI", "SP1", "SP2", "SP3", "LKPM", "NIB", "SPT", "PPN", "PPH"]);
+const chipLabel = (x: string) => x === "semua" ? "Semua"
+  : x.split(/\s+/).map((w) => ABBR.has(w.toUpperCase()) && w === w.toUpperCase() ? w : /^[A-Z0-9&]+$/.test(w) ? w[0] + w.slice(1).toLowerCase() : w).join(" ");
+
 export function ModuleShell({
-  h1, sub, acts, dropNote, onDrop, filters, active, onFilter, q, setQ, cariPh, children,
+  h1, sub, acts, kpi, dropNote, onDrop, filters, active, onFilter, q, setQ, cariPh, children,
 }: {
   h1: string; sub?: string; acts?: React.ReactNode;
+  /* Hierarki baku: Judul → KPI → Ekstrak → Search+Kategori → Tabel */
+  kpi?: React.ReactNode;
   /* dropNote/onDrop dihilangkan pada menu murni pemantauan (mis. Digital Vault) */
   dropNote?: string; onDrop?: (f: File) => void;
   filters?: string[]; active?: string; onFilter?: (f: string) => void;
@@ -20,6 +27,8 @@ export function ModuleShell({
   return (
     <div>
       <ViewHead h1={h1} sub={sub} acts={acts} />
+
+      {kpi}
 
       {onDrop && (
         <>
@@ -35,17 +44,15 @@ export function ModuleShell({
         </>
       )}
 
-      {/* Navigasi: filter kiri · search kanan — satu baris, tinggi & tepi presisi sejajar */}
+      {/* S2: search KIRI · kategori KANAN — seragam semua modul; tanpa kategori = chip "Semua" agar struktur sejajar */}
       {(filters || setQ) && (
         <div style={{ display: "flex", alignItems: "stretch", gap: 12, marginBottom: 16 }}>
-          {filters && (
-            <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-              {filters.map((x) => (
-                <button key={x} className={`fchip${active === x ? " on" : ""}`} onClick={() => onFilter?.(x)}>{x === "semua" ? "Semua" : x}</button>
-              ))}
-            </div>
-          )}
           {setQ && <input className="finput" style={{ flex: 1, minWidth: 0, margin: 0 }} placeholder={cariPh || "Cari…"} value={q ?? ""} onChange={(e) => setQ(e.target.value)} />}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+            {(filters || ["semua"]).map((x) => (
+              <button key={x} className={`fchip${(active ?? "semua") === x ? " on" : ""}`} onClick={() => onFilter?.(x)}>{chipLabel(x)}</button>
+            ))}
+          </div>
         </div>
       )}
 

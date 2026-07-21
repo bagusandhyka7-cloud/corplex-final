@@ -2,12 +2,14 @@
 /* Profil sesi — simpel: Nama, Email, Jabatan, Perusahaan. Sumber: sesi login nyata
  * (localStorage corplex_ten) atau string user seed demo. Nol karangan: kosong = "—". */
 import React from "react";
-import { CircleUser } from "lucide-react";
+import { ArrowLeft, CircleUser } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useStore } from "@/lib/store";
 import { Panel, ViewHead } from "@/components/ui";
 
 export default function Profil() {
   const { ten } = useStore();
+  const router = useRouter();
   let nama = "—", email = "—", jabatan = "—";
   try {
     const r = JSON.parse(localStorage.getItem("corplex_ten") || "null");
@@ -17,6 +19,7 @@ export default function Profil() {
 
   return (
     <div>
+      <button className="btn btn-line btn-sm" onClick={() => router.back()} style={{ marginBottom: 16 }}><ArrowLeft size={14} /> Kembali</button>
       <ViewHead h1="Profil" sub="Informasi sesi yang sedang masuk." />
       <Panel title="Akun">
         <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 18 }}>

@@ -63,20 +63,20 @@ export default function Agreement() {
   });
 
   return (
-    <ModuleShell h1="Perjanjian"
+    <ModuleShell h1="Manajemen Kontrak"
       sub="Unggah perjanjian — sistem membaca isinya dan mengingatkan Anda sebelum jatuh tempo."
       acts={<button className="btn btn-gold" onClick={() => { setMEdit(null); setMOpen(true); }}><Plus size={14} /> Tambah Manual</button>}
       dropNote="PDF · Word · pindaian (OCR) — AI mengekstrak para pihak, tanggal mulai/berakhir, dan nilai perikatan; dokumen asli tersimpan di vault."
       onDrop={(file) => upload(file)}
       filters={["semua", "AKTIF", "SEGERA", "DRAF"]} active={f} onFilter={setF}
-      q={q} setQ={setQ} cariPh="Cari perjanjian / pihak…">
-
-      <div className="grid g4 mb16">
+      q={q} setQ={setQ} cariPh="Cari perjanjian / pihak…"
+      kpi={<div className="grid g4 mb16">
         <Kpi v={agr.filter((a) => a.st !== "DRAF").length} label="Perjanjian aktif dipantau" />
         <Kpi v={agr.filter((a) => a.st === "SEGERA").length} label="Mendekati berakhir" tr="Reminder bertahap aktif" trCls="dn" />
         <Kpi v={agr.filter((a) => a.cls === "c-ver").length} label="Terverifikasi advokat" />
         <Kpi v={agr.filter((a) => a.st === "DRAF").length} label="Menunggu verifikasi" tr="Status DRAF AI" />
-      </div>
+      </div>}>
+
       <div className="tblwrap">
         <table>
           <thead><tr><th>Perjanjian</th><th>Para Pihak</th><th>Tanggal Mulai</th><th>Tanggal Berakhir</th><th>Nilai</th><th>Status</th><th>Dokumen Sumber</th><th>Aksi</th></tr></thead>
@@ -109,7 +109,7 @@ export default function Agreement() {
       <Modal open={axOpen} title="Ekstraksi AI — Registrasi Perjanjian" onClose={() => setAxOpen(false)}
         footer={<>
           <button className="btn btn-line" onClick={() => setAxOpen(false)}>Batal</button>
-          <button className="btn btn-navy" disabled={saving} aria-busy={saving} onClick={() => void save()}>{saving ? "Menyimpan…" : "Simpan ke Rekam"}</button>
+          <button className="btn btn-navy" disabled={saving} aria-busy={saving} onClick={() => void save()}>{saving ? "Menyimpan…" : "Simpan"}</button>
         </>}>
         <Field label="Dokumen sumber"><input readOnly value={ax.dok} /></Field>
         <Field label="Nama / judul perjanjian"><input value={ax.nama} onChange={(e) => setAx({ ...ax, nama: e.target.value })} /></Field>

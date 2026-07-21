@@ -1,8 +1,10 @@
 "use client";
 import React, { useEffect, useState } from "react";
-import { Bot, FileSignature, FolderArchive, Building, Hourglass, PenLine, ReceiptText, Scale, ShieldCheck, Wrench, LifeBuoy } from "lucide-react";
+import { Bot, FileSignature, FolderArchive, Building, Hourglass, PenLine, ReceiptText, Scale, ShieldCheck, Wrench, LifeBuoy, CheckCircle2, Circle } from "lucide-react";
 import { useStore, ViewId } from "@/lib/store";
-import { Chip, Kpi, Panel, Ring, Row, Spark } from "@/components/ui";
+import { Chip, Jargon, Kpi, Panel, Ring, Row, Spark } from "@/components/ui";
+import Ldd from "@/components/views/Ldd";
+import HRDashboard from "@/components/views/HRDashboard";
 
 function useCountUp(target: number, dur = 1000) {
   const [v, setV] = useState(0);
@@ -18,6 +20,37 @@ function useCountUp(target: number, dur = 1000) {
     return () => cancelAnimationFrame(raf);
   }, [target, dur]);
   return v;
+}
+
+/* Onboarding 5 menit (5c-1): 3 langkah menuju Laporan LDD pertama.
+ * Progres diturunkan dari rekam nyata (corp/lic/emp) — nol tabel baru, tersimpan per tenant otomatis.
+ * Hilang sendiri saat ketiganya terisi. */
+function OnboardChecklist() {
+  const { ten, go } = useStore();
+  const t = ten!;
+  const steps: [boolean, string, string, ViewId][] = [
+    [!!t.corp.id || t.corp.docs.length > 0, "Unggah akta / dokumen perseroan", "Dasar aspek Legalitas Badan Hukum pada Laporan LDD.", "corpsec"],
+    [t.lic.length > 0, "Daftarkan izin usaha", "Izin terpantau tenggatnya — telat = risiko sanksi + status BERISIKO.", "licensing"],
+    [t.emp.length > 0, "Tambah karyawan pertama", "Dasar aspek Ketenagakerjaan (kontrak, BPJS, SP).", "hr-database"],
+  ];
+  const done = steps.filter((s) => s[0]).length;
+  if (done === steps.length) return null;
+  return (
+    <Panel title={`Mulai di sini — ${done}/3 langkah menuju Laporan LDD pertama Anda`} className="mt16">
+      <div style={{ display: "grid", gap: 10 }}>
+        {steps.map(([ok, b, d, view], i) => (
+          <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, opacity: ok ? 0.55 : 1 }}>
+            {ok ? <CheckCircle2 size={17} color="var(--gold-bright)" /> : <Circle size={17} color="var(--muted)" />}
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 12.5, color: "#fff", fontWeight: 600, textDecoration: ok ? "line-through" : undefined }}>{b}</div>
+              <div style={{ fontSize: 11, color: "var(--muted)" }}>{d}</div>
+            </div>
+            {!ok && <button className="btn btn-line btn-sm" onClick={() => go(view)}>Buka</button>}
+          </div>
+        ))}
+      </div>
+    </Panel>
+  );
 }
 
 export default function Ringkasan({ onOpenWizard }: { onOpenWizard: () => void }) {
@@ -57,9 +90,11 @@ export default function Ringkasan({ onOpenWizard }: { onOpenWizard: () => void }
           </div>
         </div>
         <div className="vh-acts">
-          <button className="btn btn-gold" onClick={() => go("lawyer")}>⚖️ Eskalasi ke Advokat</button>
+          <button className="btn btn-gold" onClick={() => go("lawyer")}>⚖️ Verifikasi ke Advokat</button>
         </div>
       </div>
+
+      <OnboardChecklist />
 
       <div className="grid g4">
         <Kpi ico={<FolderArchive size={42} strokeWidth={1} opacity={0.15} />} v={docs} label="Dokumen dalam rekam (CATAT)" tr={t.kpiDocsTr} trCls="up" />
@@ -128,6 +163,14 @@ export default function Ringkasan({ onOpenWizard }: { onOpenWizard: () => void }
           <p>3 perubahan regulasi relevan dengan bidang usaha Anda terdeteksi bulan ini — seluruh rujukan tertaut sumber resmi (JDIH · peraturan.go.id · Lembaran Negara).</p>
           <button className="btn btn-gold btn-sm mt16" onClick={() => go("assistant")}>Tanyakan ke AI Assistant</button>
         </Panel>
+      </div>
+
+      {/* Revisi owner 5y-#1: menu LDD & dashboard Employment dilebur ke Ringkasan. */}
+      <div className="mt16" style={{ borderTop: "1px solid var(--line)", paddingTop: 22 }}>
+        <Ldd embed />
+      </div>
+      <div className="mt16" style={{ borderTop: "1px solid var(--line)", paddingTop: 8 }}>
+        <HRDashboard />
       </div>
 
       <Panel title="Aksi Cepat" className="mt16">

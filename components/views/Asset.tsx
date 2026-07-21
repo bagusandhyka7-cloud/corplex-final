@@ -16,6 +16,8 @@ export default function Asset() {
   const t = ten!;
   const router = useRouter();
   const [q, setQ] = useState("");
+  const [af, setAf] = useState("semua"); // filter status Asset Management
+  const [hf, setHf] = useState("semua"); // filter status Intellectual Property
   const [ddName, setDdName] = useState<string | null>(null);
   const [ddLoading, setDdLoading] = useState(false);
   const mod = tab === 1 ? "hki" : "assets"; // modul CRUD ikut tab aktif
@@ -102,7 +104,8 @@ export default function Asset() {
       acts={vault ? undefined : <button className="btn btn-gold" onClick={() => { setMEdit(null); setMOpen(true); }}><Plus size={14} /> Daftarkan {tab === 1 ? "HKI" : "Aset"}</button>}
       dropNote={vault ? undefined : "Sertifikat, BPKB, akta, atau bukti pendaftaran HKI — AI mengekstrak nomor, jenis, dan masa berlaku; dokumen asli tersimpan di vault."}
       onDrop={vault ? undefined : (f) => void dropDok(f)}
-      filters={vault ? ["semua", "Aset", "HKI"] : undefined} active={vf} onFilter={setVf}
+      filters={vault ? ["semua", "Aset", "HKI"] : tab === 0 ? ["semua", "PERHATIAN", "AMAN"] : ["semua", "TERDAFTAR", "TERCATAT", "PROSES", "DITUTUP"]}
+      active={vault ? vf : tab === 0 ? af : hf} onFilter={vault ? setVf : tab === 0 ? setAf : setHf}
       q={vault ? vq : q} setQ={vault ? setVq : setQ}
       cariPh={vault ? "Cari dokumen / alasan akses / pembuka…" : tab === 1 ? "Cari HKI / nomor / kelas…" : "Cari aset / bukti kepemilikan…"}>
 
@@ -114,7 +117,7 @@ export default function Asset() {
             <table>
               <thead><tr><th>Aset</th><th>Bukti Kepemilikan</th><th>Pembebanan</th><th>Kewajiban Terpantau</th><th>Status</th><th>Aksi</th></tr></thead>
               <tbody>
-                {t.assets.filter((a) => (String(a[0]) + a[1] + a[2]).toLowerCase().includes(q.toLowerCase())).map((a, i) => {
+                {t.assets.filter((a) => (af === "semua" || a[6] === af) && (String(a[0]) + a[1] + a[2]).toLowerCase().includes(q.toLowerCase())).map((a, i) => {
                   const beban = a[3] as string[] | null;
                   return (
                     <tr key={i}>
@@ -163,7 +166,7 @@ export default function Asset() {
             <table>
               <thead><tr><th>Kekayaan Intelektual</th><th>Nomor / Kelas</th><th>Masa Perlindungan</th><th>Monitoring</th><th>Status</th><th>Aksi</th></tr></thead>
               <tbody>
-                {t.hki.filter((h) => (String(h[0]) + h[1] + h[2]).toLowerCase().includes(q.toLowerCase())).map((h, i) => {
+                {t.hki.filter((h) => (hf === "semua" || String((h[7] as string[])?.[1] || "").toUpperCase().includes(hf)) && (String(h[0]) + h[1] + h[2]).toLowerCase().includes(q.toLowerCase())).map((h, i) => {
                   const mon = h[6] as string[] | null, st = h[7] as string[];
                   return (
                     <tr key={i}>

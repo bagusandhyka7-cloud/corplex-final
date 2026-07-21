@@ -42,6 +42,7 @@ function Daftar({ rows, total }: { rows: { name: string; total: number }[]; tota
   );
 }
 
+/* Bar recharts (bentuk asli) — animasi bawaan recharts saat mount. */
 function BarPanel({ title, icon, note, rows, total }: { title: string; icon: React.ReactNode; note: string; rows: { name: string; total: number }[]; total: number }) {
   return (
     <div style={card}>
@@ -96,7 +97,6 @@ export default function HRDashboard() {
   const nTKA = emp.filter((e) => e.wn === "TKA").length;
   const nPKWT = emp.filter((e) => e.s === "PKWT").length;
   const nLokal = emp.filter((e) => e.lok).length;
-  const pctTKI = emp.length ? Math.round(((emp.length - nTKA) / emp.length) * 1000) / 10 : 0;
 
   const byProv = hitung(emp, (e) => e.prov);
   const byKota = hitung(emp, (e) => e.kota);
@@ -107,10 +107,8 @@ export default function HRDashboard() {
     return u < 25 ? "< 25 th" : u < 35 ? "25–34 th" : u < 45 ? "35–44 th" : u < 55 ? "45–54 th" : "≥ 55 th";
   });
 
-  const domData = [
-    { name: "Lokal (domisili kota perusahaan)", value: nLokal },
-    { name: "Non-Lokal (luar kota/provinsi)", value: emp.length - nLokal },
-  ];
+  const domData = [{ name: "Lokal", value: nLokal }, { name: "Non-Lokal", value: emp.length - nLokal }];
+  const wnData = [{ name: "TKI", value: emp.length - nTKA }, { name: "TKA", value: nTKA }];
   const genderData = [{ name: "Laki-laki", value: emp.length - nP }, { name: "Perempuan", value: nP }];
   const kontrakData = [{ name: "PKWTT", value: emp.length - nPKWT }, { name: "PKWT", value: nPKWT }];
 
@@ -132,18 +130,8 @@ export default function HRDashboard() {
   );
 
   return (
-    <div style={{ paddingBottom: 60, maxWidth: 1200, margin: "0 auto" }}>
-      <ViewHead h1="Dashboard Employment" sub="Visualisasi data demografi, performa kontrak, dan AI insight" />
-
-      {/* Laporan Eksekutif AI */}
-      <div style={{ background: "var(--sur)", borderRadius: "14px", padding: "20px 24px", marginBottom: "20px", boxShadow: "0 4px 20px rgba(217,188,128,0.1)" }}>
-        <h3 style={{ fontSize: "14px", fontWeight: 700, color: "var(--gold-bright)", textTransform: "uppercase", letterSpacing: "1px", marginBottom: "8px" }}>Laporan Eksekutif AI</h3>
-        <p style={{ fontSize: "13px", color: "var(--txt)", lineHeight: 1.6 }}>
-          {emp.length
-            ? <>Komposisi pekerja Indonesia (TKI) mencapai <strong>{pctTKI}%</strong> dari {emp.length} tenaga kerja tercatat. Terdapat <strong>{nPKWT} karyawan PKWT</strong> yang masa kontraknya perlu dipantau. <span style={{ color: "var(--gold-bright)", fontWeight: 600 }}>Disarankan peninjauan performa dan persiapan perpanjangan kontrak sebelum jatuh tempo.</span></>
-            : <>Belum ada rekam karyawan di database. <span style={{ color: "var(--gold-bright)", fontWeight: 600 }}>Tambahkan karyawan di Database Karyawan atau impor via template Excel.</span></>}
-        </p>
-      </div>
+    <div style={{ maxWidth: 1200, margin: "0 auto" }}>
+      <ViewHead h1="Dashboard Ketenagakerjaan" sub="Komposisi & demografi tenaga kerja dari rekam Database Karyawan — status kelokalan, kewarganegaraan (TKI/TKA), jenis kelamin, kontrak (PKWT/PKWTT), domisili, umur, pendidikan, departemen, kehadiran, dan surat peringatan. Seluruh angka dihitung langsung dari data karyawan, nol data contoh." />
 
       {/* KPI */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "14px", marginBottom: "20px" }}>
@@ -163,9 +151,10 @@ export default function HRDashboard() {
         ))}
       </div>
 
-      {/* Baris atas: Lokal/Non-Lokal (dipindah ke atas) + gender + kontrak */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "14px", marginBottom: "14px" }}>
-        <PiePanel title="LOKAL vs NON-LOKAL" data={domData} colors={[BLUE, "var(--gold-bright)"]} />
+      {/* Status kelokalan · kewarganegaraan · gender · kontrak — 1 baris sejajar */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "14px", marginBottom: "14px" }}>
+        <PiePanel title="STATUS KELOKALAN" data={domData} colors={[BLUE, "var(--gold-bright)"]} />
+        <PiePanel title="STATUS KEWARGANEGARAAN" data={wnData} colors={["var(--gold-bright)", BLUE]} />
         <PiePanel title="RASIO JENIS KELAMIN" data={genderData} colors={["var(--gold-bright)", BLUE]} />
         <PiePanel title="STATUS KONTRAK" data={kontrakData} colors={[BLUE, "var(--gold-bright)"]} />
       </div>

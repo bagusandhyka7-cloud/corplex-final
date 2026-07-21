@@ -5,7 +5,7 @@
 import React, { useState } from "react";
 import { Check, Lock, Plus } from "lucide-react";
 import { useStore } from "@/lib/store";
-import { Chip, Field, Modal, Panel, Row, Timeline } from "@/components/ui";
+import { Chip, Field, Jargon, Modal, Panel, Row, Timeline } from "@/components/ui";
 import { ModuleShell } from "@/components/ModuleShell";
 import { api } from "@/lib/api";
 import { useRouter } from "next/navigation";
@@ -28,6 +28,7 @@ export default function Corpsec() {
   const router = useRouter();
   const c = t.corp;
   const [addKey, setAddKey] = useState<string | null>(null);
+  const [pickOpen, setPickOpen] = useState(false); // satu pintu masuk manual (ganti 5 tombol + bertebaran)
   const [vals, setVals] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
 
@@ -81,21 +82,23 @@ export default function Corpsec() {
       toast("Dokumen perseroan tercatat", `${nama} — dokumen asli di vault, terbuka dari tombol Buka.`, "ok");
   };
 
-  const btnPlus = (key: string) => <button className="btn btn-line btn-sm" onClick={() => { setAddKey(key); setVals([]); }}><Plus size={11} /></button>;
 
   return (
     <ModuleShell h1="Sekretaris Perusahaan"
       sub="RUPS, keputusan pemegang saham, dan dokumen perseroan — tenggat dijaga otomatis."
       dropNote="Akta, risalah RUPS, atau keputusan sirkuler — dokumen asli tersimpan di vault dan tercatat pada rekam tata kelola."
       onDrop={(f) => void dropDok(f)}
-      acts={c.id ? <button className="btn-act" onClick={() => router.push(`/rekam/corp/${c.id}`)}><Lock size={10} style={{ display: "inline", marginRight: 4 }} />Buka Rekam</button> : undefined}>
+      acts={<>
+        <button className="btn btn-gold" onClick={() => setPickOpen(true)}><Plus size={14} /> Tambah Data</button>
+        {c.id && <button className="btn-act" onClick={() => router.push(`/rekam/corp/${c.id}`)}><Lock size={10} style={{ display: "inline", marginRight: 4 }} />Buka Rekam</button>}
+      </>}>
 
       <div className="grid g-wide">
         <div style={{ display: "grid", gap: 16, alignContent: "start" }}>
-          <Panel title={<>{c.entity} · RUPS {btnPlus("rups")}</>}>
-            {c.rups.length ? <Timeline items={c.rups} /> : <p style={{ fontSize: 12, color: "var(--muted)" }}>Belum ada tahapan RUPS tercatat — tambah lewat tombol +.</p>}
+          <Panel title={<>{c.entity} · RUPS</>}>
+            {c.rups.length ? <Timeline items={c.rups} /> : <p style={{ fontSize: 12, color: "var(--muted)" }}>Belum ada tahapan RUPS tercatat — lewat tombol Tambah Data di atas.</p>}
           </Panel>
-          <Panel title={<>Keputusan Sirkuler — Persetujuan Elektronik <Chip c={allOk ? "c-ver" : "c-draft"}>{allOk ? `SAH — ${done}/${c.dirs.length} (100%)` : `${done} / ${c.dirs.length || 0} SETUJU`}</Chip> {btnPlus("dirs")}</>}>
+          <Panel title={<><Jargon k="keputusan sirkuler">Keputusan Sirkuler</Jargon> — Persetujuan Elektronik <Chip c={allOk ? "c-ver" : "c-draft"}>{allOk ? `SAH — ${done}/${c.dirs.length} (100%)` : `${done} / ${c.dirs.length || 0} SETUJU`}</Chip></>}>
             <div className="rows">
               {c.dirs.map((d, i) => d[2] === "ok" ? (
                 <Row key={i} b={`${d[0]} — ${d[1]}`} d={`Disetujui · hash ttd tercatat · ${d[3]}`} right={<Chip c="c-ver"><Check size={9} style={{ display: "inline" }} /></Chip>} />
@@ -106,21 +109,21 @@ export default function Corpsec() {
               {!c.dirs.length && <Row b="Belum ada pihak sirkuler" d="Tambahkan direksi/pemegang saham yang wajib menyetujui." right={<Chip c="c-mon">KOSONG</Chip>} />}
             </div>
           </Panel>
-          <Panel title={<>Rapat Organ Perseroan {btnPlus("meetings")}</>}>
+          <Panel title={<>Rapat Organ Perseroan</>}>
             <div className="rows">
               {c.meetings.map((m, i) => <Row key={i} b={m[0]} d={m[1]} right={<Chip c="c-mon">TERJADWAL</Chip>} />)}
-              {!c.meetings.length && <Row b="Belum ada rapat terjadwal" d="Catat rapat direksi/komisaris lewat tombol +." right={<Chip c="c-mon">KOSONG</Chip>} />}
+              {!c.meetings.length && <Row b="Belum ada rapat terjadwal" d="Catat rapat direksi/komisaris lewat tombol Tambah Data di atas." right={<Chip c="c-mon">KOSONG</Chip>} />}
             </div>
           </Panel>
         </div>
         <div style={{ display: "grid", gap: 16, alignContent: "start" }}>
-          <Panel title={<>Cap Table {btnPlus("cap")}</>}>
+          <Panel title={<>Cap Table</>}>
             <div className="rows">
               {c.cap.map((x, i) => <Row key={i} b={x[0]} d={x[1]} right={<b style={{ color: "var(--ink)" }}>{x[2]}</b>} />)}
               {!c.cap.length && <Row b="Belum ada struktur kepemilikan" d="Isi pemegang saham + persentase — validasi Σ=100% menyusul saat lengkap." right={<Chip c="c-mon">KOSONG</Chip>} />}
             </div>
           </Panel>
-          <Panel title={<>Kewajiban Statutori {btnPlus("stat")}</>}>
+          <Panel title={<>Kewajiban Statutori</>}>
             <div className="rows">
               {c.stat.map((s, i) => <Row key={i} b={s[0]} d={s[1]} right={<Chip c={s[2]}>{s[3]}</Chip>} />)}
               {!c.stat.length && <Row b="Tidak ada kewajiban tercatat" d="Tenggat statutori (Menkumham, laporan tahunan) dicatat di sini." right={<Chip c="c-ver">BERSIH</Chip>} />}
@@ -135,9 +138,19 @@ export default function Corpsec() {
         </div>
       </div>
 
+      {/* Satu pintu masuk: pilih jenis data → form. Dokumen asli lewat dropzone di atas. */}
+      <Modal right open={pickOpen} title="Tambah Data Perseroan" onClose={() => setPickOpen(false)}>
+        <p className="note" style={{ marginBottom: 12 }}>Untuk dokumen asli (akta, risalah RUPS): seret ke <b>dropzone di atas</b> — tersimpan ke vault. Untuk mencatat data terstruktur, pilih:</p>
+        <div className="rows">
+          {Object.entries(ADD).map(([k, s]) => (
+            <Row key={k} b={s.title} d={s.fields.join(" · ")} onClick={() => { setAddKey(k); setVals([]); setPickOpen(false); }} />
+          ))}
+        </div>
+      </Modal>
+
       <Modal right open={!!addKey} title={`Tambah ${addKey ? ADD[addKey].title : ""}`} onClose={() => setAddKey(null)}
         footer={<><button className="btn btn-line" onClick={() => setAddKey(null)}>Batal</button>
-          <button className="btn btn-gold" disabled={busy} onClick={() => void tambahBaris()}>Simpan ke Rekam</button></>}>
+          <button className="btn btn-gold" disabled={busy} onClick={() => void tambahBaris()}>Simpan</button></>}>
         {addKey && ADD[addKey].fields.map((f, i) => (
           <Field key={f} label={i === 0 ? `${f} *` : f}>
             <input value={vals[i] || ""} onChange={(e) => setVals((v) => { const n = [...v]; n[i] = e.target.value; return n; })} />

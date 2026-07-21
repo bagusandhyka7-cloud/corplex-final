@@ -10,7 +10,7 @@ import { idOf, RecRow, stripId } from "@/lib/records";
 import { api } from "@/lib/api";
 import { useRouter } from "next/navigation";
 
-const SUBJUDUL = ["Polis & Pertanggungan", "Klaim", "Integrasi Aset & Karyawan"];
+const SUBJUDUL = ["Polis & Pertanggungan", "Klaim"];
 
 export default function Asuransi() {
   const { ten, toast, activeTab: tab, setActiveTab: setTab, pushQueue, patchTen, go } = useStore();
@@ -69,11 +69,12 @@ export default function Asuransi() {
   const bundelDokumen = async (judul: string, objek: string) => {
     const tid = localStorage.getItem("corplex_tid") || "";
     const r = await api.records.list(tid);
-    const berkas = r.ok ? r.data.filter((x) => x.dok_url).map((x) => x.dok_nama || x.module) : [];
-    const isi = [`Bundel — ${judul}`, `Objek: ${objek}`, t.name, "", "", 0, `${berkas.length} berkas tertaut: ${berkas.join(", ") || "belum ada dokumen terunggah"}`, "AKTIF", "c-mon", "BUNDEL", "detail"];
-    const c = await api.records.create(tid, "lic", isi, "ai");
+    /* daftar berkas ber-URL ikut tersimpan (index 11) — halaman detail merender preview + unduh per berkas */
+    const files = r.ok ? r.data.filter((x) => x.dok_url).map((x) => [x.dok_nama || x.module, x.dok_url as string]) : [];
+    const isi = [`Bundel — ${judul}`, `Objek: ${objek}`, t.name, "", "", 0, `${files.length} dokumen tertaut`, "AKTIF", "c-mon", "BUNDEL", "detail", files];
+    const c = await api.records.create(tid, "lic", isi as never, "ai");
     if (!c.ok) return toast("Gagal membuat bundel", c.error.message, "warn");
-    pushQueue(`Bundel dokumen klaim — ${objek}`, `${berkas.length} berkas ditarik dari vault · siap dikirim ke penanggung`, "c-mon", "BUNDEL");
+    pushQueue(`Bundel dokumen klaim — ${objek}`, `${files.length} dokumen ditarik dari vault · siap dikirim ke penanggung`, "c-mon", "BUNDEL");
   };
 
   /* Dropzone polis: dokumen ke Storage + rekam pol baru. */
@@ -97,19 +98,18 @@ export default function Asuransi() {
 
   return (
     <ModuleShell h1={SUBJUDUL[tab] || "Asuransi"}
-      sub="Semua polis perusahaan di satu tempat — jatuh tempo & klaim diingatkan otomatis."
+      sub="Polis kedaluwarsa = aset & karyawan tanpa perlindungan — jatuh tempo dan klaim diingatkan otomatis."
       acts={<button className="btn btn-gold" onClick={() => { setMEdit(null); setMOpen(true); }}><Plus size={14} /> Daftarkan Polis</button>}
       dropNote="Dokumen polis (PDF/pindaian) — AI mengekstrak penanggung, objek, nilai pertanggungan, dan masa berlaku; berkas asli tersimpan di vault."
       onDrop={(f2) => void dropDok(f2)}
       filters={tab === 0 ? ["semua", "AKTIF", "SEGERA", "KLAIM", "PENGURUSAN"] : undefined} active={f} onFilter={setF}
-      q={tab === 0 ? q : undefined} setQ={tab === 0 ? setQ : undefined} cariPh="Cari polis / penanggung / objek…">
-
-      <div className="grid g4 mb16">
+      q={tab === 0 ? q : undefined} setQ={tab === 0 ? setQ : undefined} cariPh="Cari polis / penanggung / objek…"
+      kpi={<div className="grid g4 mb16">
         <Kpi v={pol.length} label="Polis aktif dipantau" tr={t.asr.polTr} />
         <Kpi v={<span style={{ fontSize: 21 }}>{t.asr.nilai}</span>} label="Total nilai pertanggungan" tr="Tertaut rekam aset" trCls="up" />
         <Kpi v={klaim.filter((k) => k.tl).length} label="Klaim berjalan" tr="Alur klaim terpantau" />
         <Kpi v={t.asr.gap.length} label="Kesenjangan proteksi" tr="Objek tanpa polis tertaut" trCls="dn" />
-      </div>
+      </div>}>
 
 
 
@@ -146,25 +146,21 @@ export default function Asuransi() {
       )}
 
       {tab === 1 && (
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.6fr) minmax(300px,1fr)", gap: 16, alignItems: "start" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.6fr) minmax(300px,1fr)", gap: 16, alignItems: "stretch" }}>
           <div style={{ display: "grid", gap: 16, alignContent: "start", minWidth: 0 }}>
-            {klaim.map((k, i) => k.tl ? (
+            {klaim.filter((k) => k.tl).map((k, i) => (
               <Panel key={i} title={<>{k.t} <Chip c={k.cls}>{k.lbl}</Chip></>}>
                 <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12 }}>{k.obj} · {k.nilai}</p>
-                <Timeline items={k.tl} />
+                <Timeline items={k.tl!} />
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
                   <button className="btn btn-line btn-sm" onClick={() => void bundelDokumen(k.t, k.obj)}>Bundel Dokumen</button>
                   <button className="btn btn-gold btn-sm" onClick={() => { pushQueue(k.t, `Dampingi advokat · objek ${k.obj} · dokumen & kronologi terlampir`, "c-gold", "ESKALASI"); go("lawyer"); }}><Scale size={12} /> Dampingi Advokat</button>
                 </div>
               </Panel>
-            ) : (
-              <Panel key={i}>
-                <div className="rows"><Row b={k.t} d={`${k.obj} · ${k.nilai}`} right={<Chip c={k.cls}>{k.lbl}</Chip>} /></div>
-              </Panel>
             ))}
           </div>
-          <div style={{ display: "grid", gap: 16, alignContent: "start" }}>
-            <Panel title="Ajukan Klaim Baru">
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <Panel title="Ajukan Klaim Baru" style={{ flex: 1 }}>
               <Field label="Objek & polis (dari rekam)">
                 <select value={nkObj} onChange={(e) => setNkObj(e.target.value)}>
                   {pol.map((p, i) => <option key={i}>{p[3]} — {p[0]}</option>)}
@@ -179,37 +175,16 @@ export default function Asuransi() {
           </div>
         </div>
       )}
-
-      {tab === 2 && (
-        <div className="grid g2">
-          <Panel title="Peta Proteksi — Aset ↔ Polis · Karyawan ↔ Jaminan">
-            <div className="rows">
-              {pol.map((p, i) => (
-                <Row key={i} b={p[3]} d={`↔ ${p[0]} · ${p[5]}`} right={<Chip c={p[8]}>{p[9]}</Chip>} onClick={() => go(p[4] as ViewId)} />
-              ))}
-              {/* Relasi NYATA ke tabel employees: kepesertaan BPJS per karyawan */}
-              <Row b={`${t.emp.length} tenaga kerja · modul Employment`}
-                d={`BPJS Ketenagakerjaan terdata: ${bpjsTk}/${t.emp.length} · BPJS Kesehatan: ${bpjsKes}/${t.emp.length}`}
-                right={<Chip c={bpjsTk === t.emp.length && t.emp.length > 0 ? "c-ver" : "c-draft"}>{bpjsTk === t.emp.length && t.emp.length > 0 ? "LENGKAP" : "PERLU LENGKAP"}</Chip>}
-                onClick={() => go("hr-database")} />
-              {kurangBpjs.slice(0, 5).map((e) => (
-                <Row key={e.id} b={e.n} d={`${e.j || "—"} · nomor BPJS belum lengkap pada rekam`} right={<Chip c="c-draft">TANPA JAMINAN</Chip>} onClick={() => go("hr-database")} />
-              ))}
-            </div>
-          </Panel>
-          <Panel title={<>Deteksi Kesenjangan Proteksi <Chip c="c-gold"><RadioTower size={9} style={{ display: "inline" }} /> OTOMATIS</Chip></>}>
-            <div className="rows">
-              {t.asr.gap.map((g, i) => (
-                <Row key={i} b={g[0]} d={g[1]} right={<>
-                  <Chip c={g[2]}>{g[3]}</Chip>
-                  <button className="btn btn-gold btn-sm" onClick={() => pushQueue("Kesenjangan proteksi — " + g[0], "Dari Manajemen Asuransi · rekomendasi penutupan polis", "c-draft", "DRAF AI")}>Eskalasi</button>
-                </>} />
-              ))}
-            </div>
-            <p className="note mt16">Temuan kesenjangan tersinkron dengan hasil <b>Due Diligence aset (4.6)</b> — objek bernilai tanpa polis tertaut menurunkan skor kesehatan hukum pada Ringkasan.</p>
-          </Panel>
-        </div>
+      {tab === 1 && klaim.some((k) => !k.tl) && (
+        /* S6: riwayat klaim selesai — satu panel FULL-WIDTH (tak menyisakan area kosong kanan) */
+        <Panel title="Riwayat Klaim Selesai" className="mt16">
+          <div className="rows">
+            {klaim.filter((k) => !k.tl).map((k, i) => <Row key={i} b={k.t} d={`${k.obj} · ${k.nilai}`} right={<Chip c={k.cls}>{k.lbl}</Chip>} />)}
+          </div>
+        </Panel>
       )}
+
+      {/* Revisi owner (5y-#5): tab Integrasi Aset & Karyawan dihapus. */}
 
       <RecordModal mod="pol" open={mOpen} editRow={mEdit} tenantName={t.name} toast={toast} onClose={() => setMOpen(false)} onDone={onDone} />
     </ModuleShell>

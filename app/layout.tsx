@@ -8,8 +8,14 @@ const serif = Source_Serif_4({ subsets: ["latin"], variable: "--font-serif", wei
 const mono = IBM_Plex_Mono({ subsets: ["latin"], variable: "--font-mono", weight: ["500", "600"], display: "swap" });
 
 export const metadata: Metadata = {
-  title: "Corplex — Platform | PT Contoh Sejahtera",
-  description: "Rekam Hukum Hidup Perusahaan — CORPLEX by MRWP Law Firm",
+  title: "Corplex — Rekam Hukum Hidup",
+  description: "Legal Due Diligence perusahaan Anda, selalu siap. CORPLEX by MRWP Law Firm.",
+  icons: { icon: "/logo-mrwp.svg" },
+  openGraph: {
+    title: "Corplex — Rekam Hukum Hidup",
+    description: "Legal Due Diligence perusahaan Anda, selalu siap. CORPLEX by MRWP Law Firm.",
+    siteName: "Corplex", type: "website",
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

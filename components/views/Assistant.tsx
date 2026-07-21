@@ -29,7 +29,7 @@ const THINK_STEPS = [
   "Mencocokkan regulasi yang relevan…",
   "Menyusun jawaban…",
 ];
-/* Deteksi isu hukum rumit → tombol Eskalasi ke Advokat muncul otomatis.
+/* Deteksi isu hukum rumit → tombol Verifikasi ke Advokat muncul otomatis.
  * ponytail: heuristik kata kunci atas jawaban AI — ganti klasifikasi model bila meleset. */
 const perluEskalasi = (s: string) =>
   /PHK|pesangon|sengketa|gugatan|pidana|somasi|litigasi|wanprestasi|pailit|arbitrase|SP3|risiko tinggi|verifikasi advokat|berakibat hukum/i.test(s);
@@ -397,7 +397,7 @@ export default function Assistant() {
                               <button title="Salin" onClick={() => salin(m.content)}><Copy size={14} /></button>
                               {/* muncul otomatis hanya bila AI mendeteksi isu hukum rumit */}
                               {perluEskalasi(m.content) && (
-                                <button title="Isu hukum rumit terdeteksi — eskalasikan ke advokat MRWP" className="btn btn-gold btn-sm esk-pulse" style={{ marginLeft: 6 }} onClick={escalate}>⚖ Eskalasi ke Advokat</button>
+                                <button title="Isu hukum rumit terdeteksi — eskalasikan ke advokat MRWP" className="btn btn-gold btn-sm esk-pulse" style={{ marginLeft: 6 }} onClick={escalate}>⚖ Verifikasi ke Advokat</button>
                               )}
                             </div>
                           </>
@@ -415,7 +415,10 @@ export default function Assistant() {
                   )}
                 </div>
               </div>
-              <div className="ai-foot">{pill}</div>
+              <div className="ai-foot" style={{ flexDirection: "column", gap: 6 }}>
+                {pill}
+                <span style={{ fontSize: 10, color: "var(--muted)", textAlign: "center" }}>Informasi AI — bukan nasihat hukum sampai diverifikasi advokat MRWP.</span>
+              </div>
             </>
           )}
         </div>

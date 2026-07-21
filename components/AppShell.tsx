@@ -14,7 +14,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div className={`app ${isCollapsed ? "lg:!grid-cols-[72px_1fr]" : ""}`} style={{ transition: "grid-template-columns 0.3s ease" }} key={ten?.id || "shell"}>
         <Sidebar open={sbOpen} onClose={() => setSbOpen(false)} isCollapsed={isCollapsed} />
         <div className="main">
-          <Topbar onBurger={() => { setSbOpen((v) => !v); setIsCollapsed((v) => !v); }} />
+          <Topbar collapsed={isCollapsed} onBurger={() => { setSbOpen((v) => !v); setIsCollapsed((v) => !v); }} />
           <div className="content">
             {children}
           </div>

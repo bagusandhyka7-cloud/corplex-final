@@ -3,11 +3,11 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   BadgeCheck, Bell, Bot, Building2, Coins, FileBadge, FileSignature, FileText, Gavel, Gem,
   HardHat, Landmark, LayoutDashboard, Lock, LogOut, PenLine, RadioTower, ReceiptText, Scale,
-  Shield, ShieldCheck, Users, Wrench, CircleUser, ChevronDown, ChevronRight, Search,
+  Shield, ShieldCheck, Users, Wrench, CircleUser, ChevronDown, ChevronLeft, ChevronRight, Search,
   Home, Sparkles, Briefcase, FileSearch,
   BarChart3, IdCard, FileWarning, Calculator, Copyright, Vault, Umbrella, ClipboardList, Link2, CalendarDays, FileUp,
 } from "lucide-react";
-import { useStore, ViewId } from "@/lib/store";
+import { useStore, useToasts, ViewId } from "@/lib/store";
 import { ROUTE } from "@/lib/routes";
 import { useRouter, usePathname } from "next/navigation";
 
@@ -20,15 +20,12 @@ const BrandMark = ({ size, className = "" }: { size?: number, className?: string
 /* ===== SIDEBAR ===== */
 export const NAV: { v: ViewId; label: string; icon: React.ReactNode; section: string; subItems?: { label: string; tab: number; icon?: React.ReactNode }[] }[] = [
   { v: "ringkasan", label: "Ringkasan", icon: <LayoutDashboard size={16} />, section: "" },
-  { v: "ldd", label: "Legal Due Diligence", icon: <FileSearch size={16} />, section: "" },
   { v: "lawyer", label: "Pengacara MRWP", icon: <Gavel size={16} />, section: "" },
   { v: "assistant", label: "AI Assistant", icon: <Bot size={16} />, section: "AI" },
   { v: "drafter", label: "AI Drafting", icon: <PenLine size={16} />, section: "AI" },
-  { v: "hr-dashboard" as ViewId, label: "Dashboard", icon: <BarChart3 size={16} />, section: "Employment" },
-  { v: "hr-database" as ViewId, label: "Database Karyawan", icon: <IdCard size={16} />, section: "Employment" },
-  { v: "hr-sp" as ViewId, label: "Surat Peringatan", icon: <FileWarning size={16} />, section: "Employment" },
-  { v: "hr-kalkulator" as ViewId, label: "Kalkulator Hukum", icon: <Calculator size={16} />, section: "Employment" },
-  { v: "hr-compliance" as ViewId, label: "Kepatuhan", icon: <ShieldCheck size={16} />, section: "Employment" },
+  { v: "hr-database" as ViewId, label: "Database Karyawan", icon: <IdCard size={16} />, section: "Ketenagakerjaan" },
+  { v: "hr-sp" as ViewId, label: "Surat Peringatan", icon: <FileWarning size={16} />, section: "Ketenagakerjaan" },
+  { v: "hr-kalkulator" as ViewId, label: "Kalkulator Hukum", icon: <Calculator size={16} />, section: "Ketenagakerjaan" },
   { v: "asset", label: "Aset & Merek", icon: <Gem size={16} />, section: "", subItems: [
     { label: "Asset Management", tab: 0, icon: <Building2 size={13} /> },
     { label: "Intellectual Property", tab: 1, icon: <Copyright size={13} /> },
@@ -37,28 +34,40 @@ export const NAV: { v: ViewId; label: string; icon: React.ReactNode; section: st
   { v: "asuransi", label: "Asuransi", icon: <Umbrella size={16} />, section: "", subItems: [
     { label: "Polis & Pertanggungan", tab: 0, icon: <FileSignature size={13} /> },
     { label: "Klaim", tab: 1, icon: <ClipboardList size={13} /> },
-    { label: "Integrasi Aset & Karyawan", tab: 2, icon: <Link2 size={13} /> },
   ]},
   { v: "pajak", label: "Kepatuhan Pajak", icon: <ReceiptText size={16} />, section: "", subItems: [
     { label: "Kalender Kewajiban", tab: 0, icon: <CalendarDays size={13} /> },
     { label: "Profil Pajak", tab: 1, icon: <Landmark size={13} /> },
-    { label: "Integrasi Lintas Modul", tab: 2, icon: <Link2 size={13} /> },
   ]},
   { v: "licensing", label: "Perizinan", icon: <FileBadge size={16} />, section: "" },
   { v: "corpsec", label: "Sekretaris Perusahaan", icon: <Landmark size={16} />, section: "" },
   { v: "case", label: "Perkara", icon: <Scale size={16} />, section: "" },
   { v: "tools", label: "Alat Legal", icon: <Wrench size={16} />, section: "" },
-  { v: "agreement", label: "Perjanjian", icon: <FileSignature size={16} />, section: "" },
+  { v: "agreement", label: "Manajemen Kontrak", icon: <FileSignature size={16} />, section: "" },
 ];
 
 const SECTION_ICONS: Record<string, React.ReactNode> = {
   "AI": <Sparkles size={13} />,
   "OPERASIONAL": <Briefcase size={13} />,
-  "Employment": <Users size={13} />,
+  "Ketenagakerjaan": <Users size={13} />,
 };
 
+/* Dual-bahasa (5y-A): kamus EN utk label MENU & judul (fokus arahan owner: menu tak boleh campur).
+ * ponytail: terjemah isi tiap modul = inkremental + istilah hukum wajib review MRWP — tak dipalsukan AI. */
+const EN: Record<string, string> = {
+  "Ringkasan": "Summary", "Pengacara MRWP": "MRWP Lawyers", "AI Assistant": "AI Assistant", "AI Drafting": "AI Drafting",
+  "Database Karyawan": "Employee Database", "Surat Peringatan": "Warning Letter", "Kalkulator Hukum": "Legal Calculator",
+  "Aset & Merek": "Assets & Trademark", "Asuransi": "Insurance", "Kepatuhan Pajak": "Tax Compliance",
+  "Perizinan": "Licensing", "Sekretaris Perusahaan": "Corporate Secretary", "Perkara": "Litigation",
+  "Alat Legal": "Legal Tools", "Manajemen Kontrak": "Contract Management", "Ketenagakerjaan": "Employment",
+  "Asset Management": "Asset Management", "Intellectual Property": "Intellectual Property", "Digital Vault": "Digital Vault",
+  "Polis & Pertanggungan": "Policies & Coverage", "Klaim": "Claims",
+  "Kalender Kewajiban": "Obligation Calendar", "Profil Pajak": "Tax Profile",
+};
+export const tr = (s: string, lang: string) => (lang === "en" && EN[s]) ? EN[s] : s;
+
 export function Sidebar({ open, onClose, isCollapsed }: { open: boolean; onClose: () => void; isCollapsed?: boolean }) {
-  const { queueCount, logout, activeTab, setActiveTab } = useStore();
+  const { queueCount, logout, activeTab, setActiveTab, lang } = useStore();
   const [shut, setShut] = useState<Record<string, boolean>>({}); // seksi tertutup; default semua terbuka
   const [openMenus, setOpenMenus] = useState<Record<string, boolean>>({});
   const asideRef = useRef<HTMLElement>(null);
@@ -91,6 +100,9 @@ export function Sidebar({ open, onClose, isCollapsed }: { open: boolean; onClose
    * .on sudah menandai menu aktif; ink sering nyasar/tertinggal saat submenu ditutup. */
   return (
     <aside ref={asideRef} className={`sidebar${open ? " open" : ""}`} style={isCollapsed ? { overflowX: "hidden" } : undefined}>
+      {/* Bug scroll: aside kini mengisi SELURUH kolom (background solid tanpa celah);
+          bagian sticky = .sb-body agar navigasi tetap statis saat konten di-scroll. */}
+      <div className="sb-body">
       <div className={`sb-brand ${isCollapsed ? "!px-0 !justify-center" : ""}`}>
         <BrandMark className="w-10 h-10 scale-[1.85] origin-center" />
         <div className={isCollapsed ? "!hidden" : ""}><b>CORPLEX</b><span>MRWP LAW FIRM</span></div>
@@ -103,7 +115,7 @@ export function Sidebar({ open, onClose, isCollapsed }: { open: boolean; onClose
             {sec && (
               <button className={`sb-label sb-sec ${isCollapsed ? "!hidden" : ""}`} onClick={() => setShut((s) => ({ ...s, [sec]: open }))} aria-expanded={open}>
                 {SECTION_ICONS[sec]}
-                {sec}
+                {tr(sec, lang)}
                 <ChevronDown size={13} className="sb-chev" style={{ transform: open ? "rotate(180deg)" : "none" }} />
               </button>
             )}
@@ -131,7 +143,7 @@ export function Sidebar({ open, onClose, isCollapsed }: { open: boolean; onClose
                         }
                       }}>
                         {n.icon}
-                        <span className={isCollapsed ? "!hidden" : ""}>{n.label}</span>
+                        <span className={isCollapsed ? "!hidden" : ""}>{tr(n.label, lang)}</span>
                         {n.v === "lawyer" && !isCollapsed ? <span className="bdg">{queueCount}</span> : null}
                         {hasSub && !isCollapsed && (
                           <ChevronDown size={14} className="ml-auto transition-transform duration-200" style={{ transform: isMenuOpen ? "rotate(180deg)" : "none", color: "var(--txt2)" }} />
@@ -150,7 +162,7 @@ export function Sidebar({ open, onClose, isCollapsed }: { open: boolean; onClose
                                   onClose();
                                 }}>
                                   {sub.icon}
-                                  <span>{sub.label}</span>
+                                  <span>{tr(sub.label, lang)}</span>
                                 </button>
                               );
                             })}
@@ -173,6 +185,7 @@ export function Sidebar({ open, onClose, isCollapsed }: { open: boolean; onClose
         </div>
         <span className="mono" style={{ paddingLeft: 20 }}>@2026 MRWP LAW FIRM</span>
       </div>
+      </div>
     </aside>
   );
 }
@@ -185,8 +198,8 @@ const BELL_ICONS: Record<string, React.ReactNode> = {
   coins: <Coins size={16} />, lock: <Lock size={16} />, badge: <BadgeCheck size={16} />,
 };
 
-export function Topbar({ onBurger }: { onBurger: () => void }) {
-  const { ten, go } = useStore();
+export function Topbar({ onBurger, collapsed }: { onBurger: () => void; collapsed?: boolean }) {
+  const { ten, go, lang, setLang } = useStore();
   const [q, setQ] = useState("");
   const [bellOpen, setBellOpen] = useState(false);
   const [resOpen, setResOpen] = useState(false);
@@ -204,15 +217,16 @@ export function Topbar({ onBurger }: { onBurger: () => void }) {
   const hits = q.trim() ? ten.idx.filter((x) => (x.t + " " + x.s).toLowerCase().includes(q.toLowerCase())).slice(0, 5) : [];
 
   const activeNav = NAV.find((n) => n.v !== ("logout" as ViewId) && pathname.startsWith(ROUTE[n.v]));
-  const modTitle = activeNav?.label || "Ringkasan";
+  const modTitle = tr(activeNav?.label || "Ringkasan", lang);
 
   return (
     <div className="topbar">
+      {/* S1: panah dinamis — terbuka=kiri (lipat), terlipat=kanan (buka) */}
       <button className="burger !flex items-center justify-center" onClick={onBurger} aria-label="Menu" style={{ display: 'flex' }}>
-        <ChevronRight size={16} />
+        {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
       </button>
-      
-      <div className="ent"><Building2 size={15} /> {ten.name} <span className="badge-plan">{ten.plan}</span></div>
+
+      <div className="ent"><Building2 size={15} /> {ten.name}</div>
       
       <div className="search ml-4 mr-6">
         <div className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--txt2)]">
@@ -237,6 +251,12 @@ export function Topbar({ onBurger }: { onBurger: () => void }) {
       </div>
 
       <div className="flex items-center gap-4 ml-auto">
+        {/* Toggle dual-bahasa (5y-A): ID | EN — menu tak campur */}
+        <div style={{ display: "inline-flex", border: "1px solid var(--line)", borderRadius: 8, overflow: "hidden", fontSize: 11, fontFamily: "var(--mono)" }}>
+          {(["id", "en"] as const).map((l) => (
+            <button key={l} onClick={() => setLang(l)} style={{ padding: "6px 10px", cursor: "pointer", border: "none", fontWeight: 700, letterSpacing: ".08em", color: lang === l ? "#0B1526" : "var(--txt2)", background: lang === l ? "var(--gold-bright)" : "transparent" }}>{l.toUpperCase()}</button>
+          ))}
+        </div>
         <div ref={bellRef} style={{ position: "relative" }}>
           <button className="bell" onClick={() => setBellOpen(!bellOpen)} aria-label="Notifikasi"><Bell size={15} /><span className="dot" /></button>
           <div className={`bell-drop${bellOpen ? " open" : ""}`}>
@@ -263,7 +283,7 @@ export function Topbar({ onBurger }: { onBurger: () => void }) {
 
 /* ===== TOASTS ===== */
 export function Toasts() {
-  const { toasts } = useStore();
+  const toasts = useToasts();
   return (
     <div id="toasts">
       {toasts.map((t) => (

@@ -38,10 +38,12 @@ import { NextRequest } from "next/server";
  *       pasangan klausul hasil ekstraksi (5), klasifikasi MENGUNTUNGKAN/NETRAL/MERUGIKAN.
  */
 import { PDFDocument, degrees, rgb, StandardFonts } from "pdf-lib";
+import { limited, tooMany } from "@/lib/ratelimit";
 
 /* ENGINE NYATA #2 (pdf-lib): multipart POST { op: merge|split|watermark, file(s), rentang?, teks? }
  * → balasan bytes application/pdf. Alat lain tetap stub JSON. */
 export async function POST(req: NextRequest) {
+  if (limited(req, "tools", 10)) return tooMany();
   const ct = req.headers.get("content-type") || "";
   if (!ct.includes("multipart/form-data")) {
     const { tool } = await req.json().catch(() => ({ tool: "?" })) as { tool?: string };

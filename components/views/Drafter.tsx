@@ -14,7 +14,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
   AlertTriangle, ArrowUp, Brain, Check, ChevronDown, ClipboardList, Copy, MoreHorizontal,
-  Plus, RefreshCw, Save, Sparkles, ThumbsDown, ThumbsUp, Trash2, Zap,
+  FileDown, Plus, RefreshCw, Save, Sparkles, ThumbsDown, ThumbsUp, Trash2, Zap,
 } from "lucide-react";
 import "remixicon/fonts/remixicon.css";
 import { useStore } from "@/lib/store";
@@ -909,6 +909,14 @@ export default function Drafter() {
                 <button onClick={() => editor?.chain().focus().undo().run()} disabled={!editor?.can().undo()}><i className="ri-arrow-go-back-line"></i></button>
                 <button onClick={() => editor?.chain().focus().redo().run()} disabled={!editor?.can().redo()}><i className="ri-arrow-go-forward-line"></i></button>
 
+                <button className="dr-save" title="Unduh DOCX" style={{ background: "none", color: "var(--gold-bright)", border: "1px solid rgba(217,188,128,.35)" }} onClick={async () => {
+                  const html = editor?.getHTML(); if (!html || html === "<p></p>") return toast("Dokumen kosong", "Tulis draf dulu sebelum mengunduh.", "warn");
+                  const title = projects.find((x) => x.id === curId)?.title || "Draf-Corplex";
+                  const r = await fetch("/api/docx", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ html, title }) }).catch(() => null);
+                  if (!r || !r.ok) return toast("Gagal membuat DOCX", "Coba lagi.", "warn");
+                  const a = document.createElement("a"); a.href = URL.createObjectURL(await r.blob()); a.download = `${title}.docx`; a.click(); URL.revokeObjectURL(a.href);
+                  toast("DOCX terunduh", `${title}.docx — margin & format surat formal siap disunting di Word.`, "ok");
+                }}><FileDown size={15} /></button>
                 <button className="dr-save" title="Simpan ke Projek" onClick={() => void simpanKeProjek()}><Save size={15} /></button>
                 <button className="dr-save" style={{ background: "none", color: "#F07A76", border: "1px solid rgba(240,122,118,.35)", marginLeft: 6 }} title="Hapus draft ini"
                   onClick={async () => {

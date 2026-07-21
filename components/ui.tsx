@@ -24,7 +24,7 @@ export function Panel({ title, className, style, children }: { title?: React.Rea
   );
 }
 
-export function Kpi({ v, label, tr, trCls, ico, onClick }: { v: React.ReactNode; label: string; tr?: React.ReactNode; trCls?: string; ico?: React.ReactNode; onClick?: () => void }) {
+export function Kpi({ v, label, tr, trCls, ico, onClick }: { v: React.ReactNode; label: React.ReactNode; tr?: React.ReactNode; trCls?: string; ico?: React.ReactNode; onClick?: () => void }) {
   return (
     <div className={`kpi${onClick ? " clickable" : ""}`} onClick={onClick}>
       {ico ? <i className="kico">{ico}</i> : null}
@@ -90,7 +90,7 @@ export function ConfirmHost() {
   );
 }
 
-export function Field({ label, children }: { label: string; children: React.ReactNode }) {
+export function Field({ label, children }: { label: React.ReactNode; children: React.ReactNode }) {
   return <div className="field"><label>{label}</label>{children}</div>;
 }
 
@@ -121,6 +121,28 @@ export function Spark({ points, stroke = "url(#sparkStroke)", fill }: { points: 
       {fill ? <polyline points={`${points} 300,60 0,60`} fill="url(#sparkFill)" stroke="none" /> : null}
       <polyline points={points} fill="none" stroke={stroke} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
+  );
+}
+
+/* Bantuan jargon (5c-5): istilah hukum + "?" kecil, hover/focus tampilkan 1 kalimat awam. */
+export const GLOSARIUM: Record<string, string> = {
+  "PKWT": "Kontrak kerja dengan batas waktu (karyawan kontrak).",
+  "PKWTT": "Kontrak kerja tanpa batas waktu (karyawan tetap).",
+  "LKPM": "Laporan kegiatan penanaman modal yang wajib disetor berkala ke BKPM.",
+  "RPTKA": "Rencana penggunaan tenaga kerja asing — wajib sebelum mempekerjakan TKA.",
+  "wanprestasi": "Ingkar janji: salah satu pihak tidak memenuhi isi perjanjian.",
+  "somasi": "Surat teguran resmi sebelum menempuh jalur hukum.",
+  "keputusan sirkuler": "Keputusan pemegang saham yang sah tanpa menggelar rapat fisik.",
+  "chain of custody": "Catatan urutan siapa memegang bukti — menjaga bukti sah di persidangan.",
+  "uji tuntas": "Pemeriksaan menyeluruh status hukum perusahaan (legal due diligence).",
+  "eskalasi": "Meneruskan persoalan ke advokat MRWP untuk ditangani langsung.",
+};
+export function Jargon({ k, children }: { k: string; children?: React.ReactNode }) {
+  const tip = GLOSARIUM[k];
+  return (
+    <span className="jargon" tabIndex={0} data-tip={tip || k}>
+      {children || k}<i>?</i>
+    </span>
   );
 }
 

@@ -60,7 +60,7 @@ export function RecordModal({ mod, open, editRow, tenantName, onClose, onDone, t
   return (
     <Modal right open={open} title={`${editId ? "Edit" : "Tambah"} ${spec.title}`} onClose={onClose}
       footer={<><button className="btn btn-line" onClick={onClose}>Batal</button>
-        <button className="btn btn-gold" disabled={saving} aria-busy={saving} onClick={() => void simpan()}>{saving ? "Menyimpan…" : editId ? "Simpan Perubahan" : "Simpan ke Rekam"}</button></>}>
+        <button className="btn btn-gold" disabled={saving} aria-busy={saving} onClick={() => void simpan()}>{saving ? "Menyimpan…" : editId ? "Simpan" : "Simpan"}</button></>}>
       {/* Format Employment: field pendek berpasangan 2 kolom, presisi sejajar */}
       <div className="grid g2" style={{ gap: 10, gridAutoRows: "min-content" }}>
         {spec.fields.map((f, i) => (

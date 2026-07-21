@@ -2,12 +2,12 @@
 /* Alat Legal — full-width (panel "Sifat Modul" dihapus). Translator = 2 panel sejajar,
  * terjemahan NYATA via /api/chat (Gemini). Template Form = grid nyata unduh .xlsx. */
 import React, { useRef, useState } from "react";
-import { ArrowLeftRight, Download, FileText, Globe, KeyRound, Paperclip, PenTool, RefreshCw, Scale, ScanSearch } from "lucide-react";
+import { ArrowLeftRight, Download, FileText, Globe, KeyRound, Paperclip, PenTool, RefreshCw, Scale, ScanSearch, Upload } from "lucide-react";
 import { TOOLS } from "@/lib/data";
-import { api } from "@/lib/api";
+import { api, empToRow } from "@/lib/api";
 import { useStore } from "@/lib/store";
-import { Chip, Panel, Row, ViewHead } from "@/components/ui";
-import { SHEETS, buatTemplateSatu } from "@/lib/impor";
+import { Chip, Modal, Panel, Row, ViewHead } from "@/components/ui";
+import { parseWorkbook, SHEETS, buatTemplateSatu, toPayload } from "@/lib/impor";
 
 const ICONS: Record<string, React.ReactNode> = {
   convert: <RefreshCw size={19} />, clip: <Paperclip size={19} />, sign: <PenTool size={19} />,
@@ -216,6 +216,76 @@ function PdfTool() {
   );
 }
 
+/* Template Form: unduh template kosong + UNGGAH terisi → pratinjau → simpan massal (tanpa AI).
+ * ponytail: simpan loop sekuensial; batch/pool jika ribuan baris terasa lambat. */
+function TemplateForm() {
+  const { ten, toast } = useStore();
+  const [prev, setPrev] = useState<{ items: ReturnType<typeof parseWorkbook>["items"]; skipped: number; unknownSheets: string[] } | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [prog, setProg] = useState(0);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const tid = () => localStorage.getItem("corplex_tid") || "";
+
+  const pick = async (f: File) => {
+    const r = parseWorkbook(await f.arrayBuffer());
+    if (!r.items.length) { toast("Tak ada baris valid", `Sheet dikenal: ${SHEETS.map((s) => s.sheet).join(", ")}. Pastikan header & isi sesuai template.`, "warn"); return; }
+    setPrev(r);
+  };
+
+  const simpan = async () => {
+    if (!prev) return;
+    setSaving(true); setProg(0);
+    const name = ten?.name || "";
+    let ok = 0, gagal = 0;
+    for (let i = 0; i < prev.items.length; i++) {
+      const it = prev.items[i];
+      const p = toPayload(it, name);
+      const res = it.mod === "emp"
+        ? await api.employees.create(tid(), empToRow(p as unknown as Parameters<typeof empToRow>[0]))
+        : await api.records.create(tid(), it.mod, p);
+      res.ok ? ok++ : gagal++;
+      setProg(Math.round(((i + 1) / prev.items.length) * 100));
+    }
+    setSaving(false); setPrev(null);
+    toast("Impor selesai", `${ok} tersimpan${gagal ? ` · ${gagal} gagal` : ""}. Memuat ulang…`, gagal ? "warn" : "ok");
+    if (ok) setTimeout(() => location.reload(), 1200);
+  };
+
+  const perMod = prev ? prev.items.reduce<Record<string, number>>((a, x) => ((a[x.mod] = (a[x.mod] || 0) + 1), a), {}) : {};
+
+  return (
+    <>
+      <input ref={fileRef} type="file" accept=".xlsx,.xls" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) void pick(f); e.target.value = ""; }} />
+      <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+        <button className="btn btn-gold" onClick={() => fileRef.current?.click()}><Upload size={14} /> Unggah Template Terisi</button>
+        <span className="sub" style={{ fontSize: 11, alignSelf: "center" }}>Isi template lalu unggah di sini — data masuk otomatis, tanpa ketik ulang.</span>
+      </div>
+      <div className="rows">
+        {SHEETS.map((s) => (
+          <Row key={s.sheet} b={`Template ${s.sheet}`} d={`${s.fields.length} kolom · .xlsx siap isi`}
+            right={<button className="btn btn-line btn-sm" onClick={() => buatTemplateSatu(s.sheet)}><Download size={12} /> Unduh</button>} />
+        ))}
+      </div>
+
+      <Modal open={!!prev} title="Pratinjau Impor" onClose={() => setPrev(null)}
+        footer={<><button className="btn btn-line" onClick={() => setPrev(null)}>Batal</button>
+          <button className="btn btn-gold" disabled={saving} aria-busy={saving} onClick={() => void simpan()}>{saving ? `Menyimpan… ${prog}%` : `Simpan ${prev?.items.length || 0} Baris`}</button></>}>
+        {prev && (
+          <div className="rows">
+            {SHEETS.filter((s) => perMod[s.mod]).map((s) => (
+              <Row key={s.mod} b={s.sheet} d={`${perMod[s.mod]} baris siap disimpan`} right={<Chip c="c-ver">{perMod[s.mod]}</Chip>} />
+            ))}
+            {prev.skipped > 0 && <Row b="Baris dilewati" d="Field wajib (*) kosong" right={<Chip c="c-draft">{prev.skipped}</Chip>} />}
+            {prev.unknownSheets.length > 0 && <Row b="Sheet tak dikenal" d={prev.unknownSheets.join(", ")} right={<Chip c="c-red">{prev.unknownSheets.length}</Chip>} />}
+            {!prev.items.length && <Row b="Tidak ada baris valid" d="Periksa header & isi template." right={<Chip c="c-red">0</Chip>} />}
+          </div>
+        )}
+        <div className="note mt16">Baris contoh bawaan template & baris kosong dilewati otomatis. Nilai berkonsekuensi hukum diambil apa adanya dari sel — koreksi di modul bila ada salah ketik.</div>
+      </Modal>
+    </>
+  );
+}
+
 export default function Tools() {
   const { toast } = useStore();
   const [cur, setCur] = useState(7);
@@ -245,15 +315,7 @@ export default function Tools() {
           ) : STUB_KEY[tool.t] ? (
             <StubTool nama={tool.t} />
           ) : tool.kind === "template" ? (
-            <>
-              <div className="rows">
-                {SHEETS.map((s) => (
-                  <Row key={s.sheet} b={`Template ${s.sheet}`} d={`${s.fields.length} kolom · format .xlsx siap isi — dipakai AI Extractor modul ${s.sheet}`}
-                    right={<button className="btn btn-gold btn-sm" onClick={() => buatTemplateSatu(s.sheet)}><Download size={12} /> Unduh</button>} />
-                ))}
-              </div>
-              <p className="note mt16">Isi template lalu seret ke <b>dropzone Ekstrak AI</b> di modul terkait — sistem membaca kolomnya secara deterministik.</p>
-            </>
+            <TemplateForm />
           ) : null}
         </Panel>
       </div>

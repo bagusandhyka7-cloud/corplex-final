@@ -5,7 +5,7 @@
  * tak baku menyusul saat AI_API_KEY terisi.
  */
 import * as XLSX from "xlsx";
-import { RecField, SPECS } from "./records";
+import { RecField, RecRow, SPECS } from "./records";
 
 /* Karyawan tidak lewat SPECS (tabel employees sendiri) — 1:1 dengan form Database Karyawan
  * (label kolom = label field form; skema penuh tabel employees). */
@@ -74,4 +74,56 @@ export function buatTemplateSatu(sheetName: string) {
   ws["!cols"] = headers.map((h) => ({ wch: Math.max(h.length + 4, 18) }));
   XLSX.utils.book_append_sheet(wb, ws, cfg.sheet);
   XLSX.writeFile(wb, `Template_${cfg.sheet.replace(/\s+/g, "_")}_Corplex.xlsx`);
+}
+
+const norm = (s: unknown) => String(s ?? "").toLowerCase().replace(/[*]/g, "").trim();
+export type ParsedItem = { mod: string; label: string; vals: Record<string, string> };
+
+/* Parse workbook terisi → daftar item siap simpan (per baris). Baris kosong/contoh/tanpa field wajib dilewati.
+ * Pemetaan kolom deterministik: header sheet → label field → key. */
+export function parseWorkbook(buf: ArrayBuffer): { items: ParsedItem[]; skipped: number; unknownSheets: string[] } {
+  const wb = XLSX.read(buf, { type: "array" });
+  const items: ParsedItem[] = [];
+  let skipped = 0;
+  const unknownSheets: string[] = [];
+  for (const name of wb.SheetNames) {
+    const cfg = SHEETS.find((s) => norm(s.sheet) === norm(name));
+    if (!cfg) { unknownSheets.push(name); continue; }
+    const rows = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[name], { header: 1, defval: "" });
+    if (rows.length < 2) continue;
+    const colKey = (rows[0] as unknown[]).map((h) => cfg.fields.find((f) => norm(f.l) === norm(h))?.k ?? null);
+    for (const row of rows.slice(1)) {
+      const vals: Record<string, string> = {};
+      colKey.forEach((k, i) => { if (k) vals[k] = String((row as unknown[])[i] ?? "").trim(); });
+      if (!Object.values(vals).some(Boolean)) continue; // baris kosong
+      const wajib = cfg.fields.filter((f) => f.l.includes("*"));
+      if (wajib.some((f) => !vals[f.k])) { skipped++; continue; }
+      // lewati baris contoh bawaan template
+      if (cfg.fields.every((f) => vals[f.k] === (f.opts ? f.opts[0] : f.ph || "") || !vals[f.k])) continue;
+      items.push({ mod: cfg.mod, label: vals[cfg.fields[0].k], vals });
+    }
+  }
+  return { items, skipped, unknownSheets };
+}
+
+const angka = (s?: string) => (s ? Number(s.replace(/[^\d]/g, "")) || null : null);
+
+/* vals → payload siap tulis. emp → bentuk app Emp (lalu empToRow di pemanggil) · tax → vals langsung ·
+ * modul SPECS → toData (array RecRow). */
+export function toPayload(item: ParsedItem, tenantName: string): RecRow | Record<string, unknown> {
+  const v = item.vals;
+  if (item.mod === "emp") {
+    return {
+      n: v.n, j: v.j || "—", jk: v.jk === "P" ? "P" : "L", wn: v.wn === "TKA" ? "TKA" : "TKI",
+      lok: norm(v.lok) !== "tidak", s: v.s === "PKWTT" ? "PKWTT" : "PKWT",
+      m: v.m || (v.s === "PKWTT" ? "Sejak 2026" : "2026 – 2027"), sisa: v.s === "PKWTT" ? null : 60,
+      mulaiKerja: v.mulaiKerja, gajiPokok: angka(v.gajiPokok), tunjTetap: angka(v.tunjTetap),
+      dept: v.dept, prov: v.prov, kota: v.kota, desa: v.desa, alamatKtp: v.alamatKtp, lahir: v.lahir,
+      pend: v.pend, pendInst: v.pendInst, agama: v.agama, nikah: v.nikah, nik: v.nik, kk: v.kk,
+      npwp: v.npwp, sim: v.sim, bpjsKes: v.bpjsKes, bpjsTk: v.bpjsTk, bankNama: v.bankNama,
+      bankRek: v.bankRek, golDarah: v.golDarah, kdNama: v.kdNama, kdTelp: v.kdTelp, pengalaman: v.pengalaman,
+    };
+  }
+  if (item.mod === "tax") return v; // key TAX_FIELDS = kolom tabel Tax (nama/jenis/tenggat/status)
+  return SPECS[item.mod].toData(v, tenantName);
 }

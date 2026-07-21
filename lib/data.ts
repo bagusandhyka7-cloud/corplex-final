@@ -9,7 +9,7 @@ export interface Emp {
   id?: string; foto?: string | null; n: string; j: string; jk: "L" | "P"; wn: "TKI" | "TKA"; lok: boolean; s: "PKWT" | "PKWTT"; m: string; sisa: number | null; hari?: string | null; komp: string; pat: string; rem: boolean; dok: string; sp?: SP[]; prov?: string; kota?: string; desa?: string;
   nik?: string; kk?: string; npwp?: string; bpjsKes?: string; bpjsTk?: string; sim?: string; pend?: string; lahir?: string; dept?: string; kdNama?: string; kdTelp?: string; pengalaman?: string; dokUrl?: string;
   agama?: string; nikah?: string; golDarah?: string; bankNama?: string; bankRek?: string; alamatKtp?: string; pendInst?: string;
-  gajiPokok?: number | null; tunjTetap?: number | null; upah?: number | null; mulaiKerja?: string;
+  gajiPokok?: number | null; tunjTetap?: number | null; upah?: number | null; mulaiKerja?: string; akhirKontrak?: string;
 }
 export interface Case { id?: string; dokUrl?: string | null; dokNama?: string | null; tab?: string; head: string; tl: string[][]; bukti: string[][]; biaya: string[][]; aksi: { t: string; d: string; btn?: string; toast?: [string, string] }[]; custody?: boolean }
 export interface Agr { n: string; p1: string; p2: string; mulai: string; akhir: string; nilai: string; st: string; cls: string; lbl: string; dok: string }

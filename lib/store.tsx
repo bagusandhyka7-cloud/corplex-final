@@ -6,7 +6,7 @@ import { RecRow, withId } from "./records";
 import { useRouter } from "next/navigation";
 import { ROUTE } from "./routes";
 
-export type ViewId = "ldd" | "ringkasan" | "assistant" | "drafter" | "employment" | "licensing" | "corpsec" | "asset" | "case" | "tools" | "agreement" | "asuransi" | "pajak" | "lawyer" | "hr-dashboard" | "hr-database" | "hr-sp" | "hr-kalkulator" | "hr-compliance";
+export type ViewId = "ringkasan" | "assistant" | "drafter" | "employment" | "licensing" | "corpsec" | "asset" | "case" | "tools" | "agreement" | "asuransi" | "pajak" | "lawyer" | "hr-database" | "hr-sp" | "hr-kalkulator";
 
 interface ToastItem { id: number; t: string; d: string; k?: string }
 /* Sesi tenant nyata (dari login_user) — bukan fixtur seed. */
@@ -19,7 +19,6 @@ interface Store {
   login: (tid: string, real?: RealSession) => void;
   logout: () => void;
   toast: (t: string, d: string, k?: string) => void;
-  toasts: ToastItem[];
   queue: QItem[];
   setQueue: React.Dispatch<React.SetStateAction<QItem[]>>;
   pushQueue: (t: string, m: string, chip: string, lbl: string) => void;
@@ -31,9 +30,14 @@ interface Store {
   patchTen: (p: Partial<Tenant>) => void;
   activeTab: number;
   setActiveTab: React.Dispatch<React.SetStateAction<number>>;
+  lang: "id" | "en";
+  setLang: (l: "id" | "en") => void;
 }
 
 const Ctx = createContext<Store | null>(null);
+/* Toasts dipisah: auto-hilang tiap 4,5s → tak lagi render ulang 26 konsumen store lain (perf). */
+const ToastCtx = createContext<ToastItem[]>([]);
+export const useToasts = () => useContext(ToastCtx);
 export const useStore = () => useContext(Ctx)!;
 export const clone = <T,>(o: T): T => JSON.parse(JSON.stringify(o));
 /* Bangun ulang tenant nyata dari localStorage (refresh) — null bila tak ada/rusak. */
@@ -55,7 +59,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [quotaMax, setQuotaMax] = useState(10);
   const [verified, setVerified] = useState(0);
   const [activeTab, setActiveTab] = useState(0);
+  const [lang, setLangState] = useState<"id" | "en">("id");
   const [isHydrated, setIsHydrated] = useState(false);
+  useEffect(() => { const l = localStorage.getItem("corplex_lang"); if (l === "en" || l === "id") setLangState(l); }, []);
+  const setLang = useCallback((l: "id" | "en") => { setLangState(l); localStorage.setItem("corplex_lang", l); }, []);
   const router = useRouter();
   const tid = useRef(0);
   const timers = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
@@ -162,6 +169,17 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     toast("Sesi diakhiri", "Seluruh data tenant dibersihkan dari memori dan dari tampilan. Silakan pilih perusahaan untuk masuk kembali.");
   }, [toast]);
 
+  // Auto-logout idle 30 mnt — aplikasi hukum sering dibuka di komputer bersama (5u-B).
+  useEffect(() => {
+    if (!ten) return;
+    let h: ReturnType<typeof setTimeout>;
+    const reset = () => { clearTimeout(h); h = setTimeout(logout, 30 * 60 * 1000); };
+    const evs = ["mousedown", "keydown", "touchstart", "scroll"] as const;
+    evs.forEach((e) => window.addEventListener(e, reset, { passive: true }));
+    reset();
+    return () => { clearTimeout(h); evs.forEach((e) => window.removeEventListener(e, reset)); };
+  }, [ten, logout]);
+
   const queueCount = queue.filter((q) => q.status === "masuk").length;
 
   const patchTen = useCallback((p: Partial<Tenant>) => setTen((t) => (t ? { ...t, ...p } : t)), []);
@@ -200,8 +218,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     });
   }, [ten?.id]);
 
-  const value = useMemo(() => ({ isHydrated, ten, go, login, logout, toast, toasts, queue, setQueue, pushQueue, quota, quotaMax, verified, setQuota, setVerified, queueCount, patchTen, activeTab, setActiveTab }),
-    [isHydrated, ten, go, router, login, logout, toast, toasts, queue, pushQueue, quota, quotaMax, verified, queueCount, patchTen, activeTab, setActiveTab]);
+  const value = useMemo(() => ({ isHydrated, ten, go, login, logout, toast, queue, setQueue, pushQueue, quota, quotaMax, verified, setQuota, setVerified, queueCount, patchTen, activeTab, setActiveTab, lang, setLang }),
+    [isHydrated, ten, go, router, login, logout, toast, queue, pushQueue, quota, quotaMax, verified, queueCount, patchTen, activeTab, setActiveTab, lang, setLang]);
 
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={value}><ToastCtx.Provider value={toasts}>{children}</ToastCtx.Provider></Ctx.Provider>;
 }

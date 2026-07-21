@@ -6,17 +6,18 @@ import { fmt, useStore } from "@/lib/store";
 import { downloadDoc, registerVault, vaultHash } from "@/lib/vault";
 import { api, empToRow, empFromRow, withRetry } from "@/lib/api";
 import { useAsyncAction, useUpload } from "@/lib/hooks";
-import { askConfirm, Chip, Field, Kpi, Modal, Panel, Row, RpInput, ViewHead } from "@/components/ui";
+import { askConfirm, Chip, Field, Jargon, Kpi, Modal, Panel, Row, RpInput, ViewHead } from "@/components/ui";
 import { RowActions } from "@/components/RecordModal";
 import { useRouter } from "next/navigation";
 
 const hasExpiredSP = (e: Emp) => (e.sp || []).some(s => !!(s.expISO && new Date(s.expISO + "T23:59:59") < new Date()));
+const fmtTgl = (s?: string) => s ? new Date(s).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" }) : "—";
 const tidNow = () => localStorage.getItem("corplex_tid") || "";
 const BLANK = {
   n: "", j: "", jk: "L" as "L" | "P", wn: "TKI" as "TKI" | "TKA", lok: true, s: "PKWT" as "PKWT" | "PKWTT", m: "", prov: "", kota: "", desa: "", foto: null as string | null,
   nik: "", kk: "", npwp: "", bpjsKes: "", bpjsTk: "", sim: "", pend: "", lahir: "", dept: "", kdNama: "", kdTelp: "", pengalaman: "", dokUrl: null as string | null,
   agama: "", nikah: "", golDarah: "", bankNama: "", bankRek: "", alamatKtp: "", pendInst: "",
-  gajiPokok: "", tunjTetap: "", mulaiKerja: "",
+  gajiPokok: "", tunjTetap: "", mulaiKerja: "", akhirKontrak: "",
 };
 const PENDIDIKAN = ["", "SD", "SMP", "SMA/SMK", "D3", "S1", "S2", "S3"];
 const SIM_OPTS = ["", "A", "B1", "B2", "C", "A & C", "Tidak punya"];
@@ -99,7 +100,7 @@ export default function DatabaseKaryawan() {
       nik: e.nik || "", kk: e.kk || "", npwp: e.npwp || "", bpjsKes: e.bpjsKes || "", bpjsTk: e.bpjsTk || "", sim: e.sim || "", pend: e.pend || "", lahir: e.lahir || "",
       dept: e.dept || "", kdNama: e.kdNama || "", kdTelp: e.kdTelp || "", pengalaman: e.pengalaman || "", dokUrl: e.dokUrl || null,
       agama: e.agama || "", nikah: e.nikah || "", golDarah: e.golDarah || "", bankNama: e.bankNama || "", bankRek: e.bankRek || "", alamatKtp: e.alamatKtp || "", pendInst: e.pendInst || "",
-      gajiPokok: e.gajiPokok ? String(e.gajiPokok) : "", tunjTetap: e.tunjTetap ? String(e.tunjTetap) : "", mulaiKerja: e.mulaiKerja || "",
+      gajiPokok: e.gajiPokok ? String(e.gajiPokok) : "", tunjTetap: e.tunjTetap ? String(e.tunjTetap) : "", mulaiKerja: e.mulaiKerja || "", akhirKontrak: e.akhirKontrak || "",
     });
     setEdOpen(true);
   };
@@ -120,7 +121,9 @@ export default function DatabaseKaryawan() {
       dokUrl = up.data.url; dokNama = up.data.name;
     }
     const rec = empToRow({
-      ...ed, n: ed.n.trim(), j: ed.j.trim(), m: ed.m.trim() || (ed.s === "PKWTT" ? "Sejak 2026" : "2026 – 2027"), foto, dokUrl, dok: dokNama || undefined, sisa: ed.s === "PKWT" ? 60 : null,
+      ...ed, n: ed.n.trim(), j: ed.j.trim(),
+      m: ed.mulaiKerja ? (ed.s === "PKWTT" ? `Sejak ${ed.mulaiKerja}` : `${ed.mulaiKerja} – ${ed.akhirKontrak || "?"}`) : (ed.m || (ed.s === "PKWTT" ? "Sejak 2026" : "2026 – 2027")),
+      foto, dokUrl, dok: dokNama || undefined, sisa: ed.s === "PKWT" ? 60 : null,
       gajiPokok: ed.gajiPokok ? Number(ed.gajiPokok) : null, tunjTetap: ed.tunjTetap ? Number(ed.tunjTetap) : null,
     });
     if (!dokNama) delete (rec as Record<string, unknown>).dok; // jangan timpa nama dokumen lama bila tak unggah baru
@@ -191,7 +194,7 @@ export default function DatabaseKaryawan() {
   return (
     <div>
       <ViewHead h1="Database Karyawan"
-        sub="Data karyawan lengkap, kontrak kerja, surat peringatan, dan kalkulator PHK."
+        sub="Kontrak & BPJS tak lengkap = status BERISIKO pada aspek Ketenagakerjaan LDD — lengkapi rekam tiap karyawan di sini."
         acts={<>
           <input ref={fileRef} type="file" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" style={{ display: "none" }} onChange={(e) => { const file = e.target.files?.[0]; if (file) empUpload(file); e.target.value = ""; }} />
           <button className="btn btn-gold" onClick={bukaTambah}><UserPlus size={14} /> Tambah Karyawan</button>
@@ -224,7 +227,7 @@ export default function DatabaseKaryawan() {
         
         <div className="tblwrap">
           <table>
-            <thead><tr><th>Tenaga Kerja</th><th>Jenis Kelamin</th><th>TKI / TKA</th><th>Lokal</th><th>Status &amp; Masa Kerja</th><th>Dokumen Sumber</th><th>Kepatuhan</th><th>Aksi</th></tr></thead>
+            <thead><tr><th>Tenaga Kerja</th><th>Jenis Kelamin</th><th>TKI / TKA</th><th>Lokal</th><th>Status</th><th>Tanggal Masuk</th><th>Habis Kontrak</th><th>Kontrak Kerja</th><th>Kepatuhan</th><th>Aksi</th></tr></thead>
             <tbody>
               {rows.map(({ e, i }) => {
                 const slug = e.n.toLowerCase().replace(/\s+/g, '-');
@@ -240,12 +243,9 @@ export default function DatabaseKaryawan() {
                   <td>{e.jk === "P" ? "Perempuan" : "Laki-laki"}</td>
                   <td><Chip c={e.wn === "TKA" ? "c-gold" : "c-mon"}>{e.wn}</Chip></td>
                   <td>{e.lok ? "Ya" : "—"}</td>
-                  <td>
-                    <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                      <Chip c={e.s === "PKWTT" ? "c-mon" : "c-gold"}>{e.s}</Chip>
-                      <span className="sub" style={{ marginTop: 0 }}>{e.m}</span>
-                    </div>
-                  </td>
+                  <td><Chip c={e.s === "PKWTT" ? "c-mon" : "c-gold"}>{e.s}</Chip></td>
+                  <td><span className="sub mono" style={{ fontSize: 10.5 }}>{fmtTgl(e.mulaiKerja)}</span></td>
+                  <td><span className="sub mono" style={{ fontSize: 10.5 }}>{e.s === "PKWTT" ? "Tetap" : fmtTgl(e.akhirKontrak)}</span></td>
                   <td>
                     <span className="sub mono" style={{ fontSize: 10, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "flex", alignItems: "center", gap: 5, maxWidth: 180 }}>
                       {(e.dok || e.dokUrl) && <FileText size={11} style={{ flexShrink: 0, color: "var(--gold-deep)" }} />}
@@ -319,7 +319,7 @@ export default function DatabaseKaryawan() {
 
       {/* modal tambah/edit manual — jaring pengaman di samping Extract AI */}
       <Modal right open={edOpen} title={edId ? "Edit Karyawan" : "Tambah Karyawan"} onClose={() => setEdOpen(false)}
-        footer={cropSrc ? undefined : <><button className="btn btn-line" onClick={() => setEdOpen(false)}>Batal</button><button className="btn btn-gold" disabled={savingManual} aria-busy={savingManual} onClick={() => void simpanManual()}>{savingManual ? "Menyimpan…" : edId ? "Simpan Perubahan" : "Simpan ke Rekam"}</button></>}>
+        footer={cropSrc ? undefined : <><button className="btn btn-line" onClick={() => setEdOpen(false)}>Batal</button><button className="btn btn-gold" disabled={savingManual} aria-busy={savingManual} onClick={() => void simpanManual()}>{savingManual ? "Menyimpan…" : edId ? "Simpan" : "Simpan"}</button></>}>
         {/* Single-form: saat crop aktif, isi modal berganti jadi area crop — selesai/batal kembali ke form */}
         {cropSrc ? <CropPane src={cropSrc} onClose={() => setCropSrc(null)}
           onDone={(f2) => { setFotoFile(f2); setCropSrc(null); }} /> : <>
@@ -344,11 +344,14 @@ export default function DatabaseKaryawan() {
           <Field label="Klasifikasi"><select value={ed.wn} onChange={(e) => setEd({ ...ed, wn: e.target.value as "TKI" | "TKA" })}><option value="TKI">TKI — Tenaga Kerja Indonesia</option><option value="TKA">TKA — Tenaga Kerja Asing</option></select></Field>
         </div>
         <div className="grid g2" style={{ gap: 10 }}>
-          <Field label="Status hubungan kerja"><select value={ed.s} onChange={(e) => setEd({ ...ed, s: e.target.value as "PKWT" | "PKWTT" })}><option>PKWT</option><option>PKWTT</option></select></Field>
+          <Field label={<>Status hubungan kerja — <Jargon k="PKWT" /> / <Jargon k="PKWTT" /></>}><select value={ed.s} onChange={(e) => setEd({ ...ed, s: e.target.value as "PKWT" | "PKWTT" })}><option>PKWT</option><option>PKWTT</option></select></Field>
           <Field label="Lokal setempat"><select value={ed.lok ? "1" : "0"} onChange={(e) => setEd({ ...ed, lok: e.target.value === "1" })}><option value="1">Ya — domisili sesuai lokasi usaha</option><option value="0">Tidak</option></select></Field>
         </div>
-        <Field label="Masa kerja / kontrak"><input value={ed.m} onChange={(e) => setEd({ ...ed, m: e.target.value })} placeholder="mis. Sep 2026 – Agu 2028 atau Sejak 2026" /></Field>
-        <Field label="Tanggal mulai kerja"><input type="date" value={ed.mulaiKerja} onChange={(e) => setEd({ ...ed, mulaiKerja: e.target.value })} /></Field>
+        {/* Revisi owner 5y-#2: masa kerja bebas dipisah jadi Tanggal Masuk + Tanggal Habis Kontrak. */}
+        <div className="grid g2" style={{ gap: 10 }}>
+          <Field label="Tanggal masuk"><input type="date" value={ed.mulaiKerja} onChange={(e) => setEd({ ...ed, mulaiKerja: e.target.value })} /></Field>
+          <Field label="Tanggal habis kontrak"><input type="date" value={ed.akhirKontrak} disabled={ed.s === "PKWTT"} onChange={(e) => setEd({ ...ed, akhirKontrak: e.target.value })} placeholder="—" /></Field>
+        </div>
         <div className="grid g2" style={{ gap: 10 }}>
           <Field label="Gaji pokok / bulan"><RpInput value={ed.gajiPokok} placeholder="5.000.000" onChange={(v) => setEd({ ...ed, gajiPokok: v })} /></Field>
           <Field label="Tunjangan tetap / bulan"><RpInput value={ed.tunjTetap} placeholder="1.000.000" onChange={(v) => setEd({ ...ed, tunjTetap: v })} /></Field>

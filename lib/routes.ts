@@ -3,15 +3,12 @@ import type { ViewId } from "./store";
 /* Satu sumber kebenaran URL tiap menu. go(viewId) di store me-resolve lewat map ini. */
 export const ROUTE: Record<ViewId, string> = {
   "ringkasan": "/beranda",
-  "ldd": "/due-diligence",
   "lawyer": "/pengacara",
   "assistant": "/asisten",
   "drafter": "/drafting",
-  "hr-dashboard": "/hr/dashboard",
   "hr-database": "/hr/database",
   "hr-sp": "/hr/sp",
   "hr-kalkulator": "/hr/kalkulator",
-  "hr-compliance": "/hr/compliance",
   "asset": "/aset",
   "asuransi": "/asuransi",
   "pajak": "/pajak",

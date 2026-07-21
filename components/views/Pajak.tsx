@@ -8,7 +8,7 @@ import { api } from "@/lib/api";
 import { askConfirm, Chip, Field, Kpi, Modal, Panel, Row } from "@/components/ui";
 import { ModuleShell } from "@/components/ModuleShell";
 
-const SUBJUDUL = ["Kalender Kewajiban", "Profil Pajak", "Integrasi Lintas Modul"];
+const SUBJUDUL = ["Kalender Kewajiban", "Profil Pajak"];
 type Tax = { id?: string; nama: string; jenis: string; tenggat: string; status: "TERBUKA" | "DIPENUHI" };
 const JENIS = ["PPN Masa", "PPh 21", "PPh 25 Angsuran", "PPh Badan Tahunan", "PBB", "PPh Final UMKM", "Lainnya"];
 
@@ -81,19 +81,18 @@ export default function Pajak() {
 
   return (
     <ModuleShell h1={SUBJUDUL[tab] || "Kepatuhan Pajak"}
-      sub="Kalender pajak perusahaan — tenggat lapor & setor diingatkan otomatis."
+      sub="Telat lapor/setor = denda + bunga sanksi — tenggat pajak perusahaan diingatkan otomatis."
       acts={<button className="btn btn-gold" onClick={() => setOpen(true)}><Plus size={14} /> Tambah Kewajiban</button>}
       dropNote="SPT, bukti potong, atau tagihan pajak — AI mengekstrak jenis & tenggat; berkas asli tersimpan di vault."
       onDrop={(file) => void dropDok(file)}
       filters={tab === 0 ? ["semua", "TERBUKA", "DIPENUHI"] : undefined} active={f} onFilter={setF}
-      q={tab === 0 ? q : undefined} setQ={tab === 0 ? setQ : undefined} cariPh="Cari kewajiban / jenis pajak…">
-
-      <div className="grid g4 mb16">
+      q={tab === 0 ? q : undefined} setQ={tab === 0 ? setQ : undefined} cariPh="Cari kewajiban / jenis pajak…"
+      kpi={<div className="grid g4 mb16">
         <Kpi v={`${skor}%`} label="Skor kepatuhan pajak" tr={rows.length ? `${dipenuhi}/${rows.length} dipenuhi` : "belum ada kewajiban"} trCls="up" />
         <Kpi v={terbuka.length} label="Kewajiban terbuka" tr="Masa + tahunan" trCls="dn" />
         <Kpi v={dipenuhi} label="Dipenuhi (bukti di vault)" trCls="up" />
         <Kpi v={t.emp.length} label="Dasar PPh 21 — tenaga kerja" tr="Relasi modul Employment" />
-      </div>
+      </div>}>
 
       {tab === 0 && (
         <Panel title="Kalender Pemenuhan — Lapor & Setor">
@@ -133,23 +132,10 @@ export default function Pajak() {
         </div>
       )}
 
-      {tab === 2 && (
-        <div>
-          <div className="rows">
-            {integ.map((x, i) => (
-              <Row key={i} b={x.b} d={x.d} right={<Chip c={x.ok ? "c-ver" : "c-draft"}>{x.lbl}</Chip>} onClick={() => go(x.v)} />
-            ))}
-          </div>
-          <Panel className="dark mt16" title="Sengketa & Pemeriksaan">
-            <p>Bila terbit SP2DK atau pemeriksaan, satu aksi membentuk perkara Sengketa Pajak di Perkara — seluruh bukti lapor/setor terbawa dari vault dengan hash terverifikasi.</p>
-            <button className="btn btn-gold btn-sm mt16" onClick={() => pushQueue("Konsultasi pajak — persiapan pemeriksaan", `Eskalasi dari Kepatuhan Pajak · ${rows.length} kewajiban tercatat, skor ${skor}%`, "c-gold", "ESKALASI")}><Scale size={12} /> Eskalasi ke Advokat</button>
-          </Panel>
-          <p className="note mt16"><b>Satu sumber kebenaran:</b> pajak tidak dihitung dari input manual — dasar pengenaan ditarik dari rekam hidup (karyawan, aset, perjanjian, izin), sehingga setiap angka dapat diaudit ke dokumen sumbernya.</p>
-        </div>
-      )}
+      {/* Revisi owner (5y-#6): tab Integrasi Lintas Modul dihapus. */}
 
       <Modal open={open} title="Tambah Kewajiban Pajak" onClose={() => setOpen(false)}
-        footer={<><button className="btn btn-line" onClick={() => setOpen(false)}>Batal</button><button className="btn btn-gold" onClick={() => void simpan()}>Simpan ke Rekam</button></>}>
+        footer={<><button className="btn btn-line" onClick={() => setOpen(false)}>Batal</button><button className="btn btn-gold" onClick={() => void simpan()}>Simpan</button></>}>
         <Field label="Nama kewajiban *"><input value={form.nama} placeholder="mis. PPN Masa Juli 2026" onChange={(e) => setForm({ ...form, nama: e.target.value })} /></Field>
         <Field label="Jenis pajak"><select value={form.jenis} onChange={(e) => setForm({ ...form, jenis: e.target.value })}>{JENIS.map((j) => <option key={j}>{j}</option>)}</select></Field>
         <Field label="Tenggat"><input type="date" value={form.tenggat} onChange={(e) => setForm({ ...form, tenggat: e.target.value })} /></Field>
