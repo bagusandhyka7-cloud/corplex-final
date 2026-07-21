@@ -1,5 +1,5 @@
 "use client";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Check, ChevronDown, Eye, EyeOff, Lock, Mail, Paperclip, ShieldCheck, User } from "lucide-react";
 import { ACCOUNTS } from "@/lib/data";
 import { useStore } from "@/lib/store";
@@ -55,6 +55,12 @@ export function AuthScreen() {
   const [demoSent, setDemoSent] = useState(false);
 
   const goMode = (m: Mode) => { setMode(m); setStep(0); setSubmitted(false); setDemoSent(false); };
+
+  /* Tautan undangan admin: /login?kode=MRWP-XXXXXX → langsung mode daftar + kode terisi. */
+  useEffect(() => {
+    const k = new URLSearchParams(window.location.search).get("kode");
+    if (k) { setKode(k.toUpperCase()); setMode("daftar"); }
+  }, []);
 
   /* ================= actions ================= */
   const { run: doLogin, pending: loggingIn } = useAsyncAction(async () => {

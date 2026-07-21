@@ -251,7 +251,7 @@ function AdminInner() {
     if (!res.ok) { toast("Gagal membuat kode", res.error.message, "warn"); return; }
     setInv((xs) => [{ code, email: nEmail, tier: nTier, expiresAt: isLifetime || !nExp ? null : now() + nExp, status: "active" }, ...xs]);
     setNOpen(false); setNEmail("");
-    void navigator.clipboard?.writeText(`${location.origin}/?kode=${code}`).catch(() => {});
+    void navigator.clipboard?.writeText(`${location.origin}/login?kode=${code}`).catch(() => {});
     log(`Kode ${code} dibuat (${nTier}${nEmail ? " → " + nEmail : ""})`);
     toast("Kode dibuat & link disalin", `${code} · ${nTier} · 2 kursi — bagikan ke calon klien.`, "ok");
   });
@@ -539,7 +539,7 @@ function AdminInner() {
                             <td><Chip c={cls}>{lbl}</Chip></td>
                             <td>
                               <div className="flex items-center gap-2">
-                                <button className="btn btn-line btn-sm" title="Salin link" onClick={() => { void navigator.clipboard?.writeText(`${location.origin}/?kode=${x.code}`); toast("Link disalin", x.code, "ok"); }}><Copy size={11} /></button>
+                                <button className="btn btn-line btn-sm" title="Salin link" onClick={() => { void navigator.clipboard?.writeText(`${location.origin}/login?kode=${x.code}`); toast("Link disalin", x.code, "ok"); }}><Copy size={11} /></button>
                                 {lbl === "AKTIF" && <button className="btn btn-red btn-sm" onClick={() => void cabut(x.code)}>Cabut</button>}
                               </div>
                             </td>

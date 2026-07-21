@@ -29,13 +29,14 @@ export default function Lawyer() {
   const [noteQ, setNoteQ] = useState<QItem | null>(null); // drawer kanan: catatan advokat
   const [prBidang, setPrBidang] = useState("Legal Due Diligence");
   const [prSkema, setPrSkema] = useState("Fixed fee");
-  const [premList, setPremList] = useState([
-    { b: "Pendampingan restrukturisasi", d: "Strategic Advisory · fixed fee · tahap 3/5", chip: "c-ver", lbl: "BERJALAN" },
-    { b: "PHI eks-karyawan", d: "Litigation · capped fee · sisa plafon 62%", chip: "c-mon", lbl: "SIDANG" },
-  ]);
+  /* Penugasan Premium NYATA: baris verification_queue berjudul khusus (bug lama: seed lokal
+   * yang hilang saat reload dan tak pernah sampai ke Konsol Advokat). */
+  const isPrem = (t2: string) => t2.startsWith("Penugasan Premium");
+  const premList = queue.filter((q) => isPrem(q.t));
 
   const sisa = Math.max(0, quotaMax - quota);
   const rows = queue.filter((q) => {
+    if (isPrem(q.t)) return false; // tampil di panel Penugasan Premium, bukan daftar pengajuan
     if (f === "berjalan" && q.status !== "masuk") return false;
     if (f === "selesai" && q.status !== "verified") return false;
     if (f === "revisi" && q.status !== "rejected") return false;
@@ -49,7 +50,8 @@ export default function Lawyer() {
 
   const sendPremium = () => {
     setPremOpen(false);
-    setPremList((l) => [{ b: prBidang, d: `${prSkema} · cek konflik kepentingan berjalan → penawaran disusun`, chip: "c-draft", lbl: "PENAWARAN" }, ...l]);
+    /* nyata: masuk verification_queue → tampil di panel ini, badge sidebar, dan Konsol Advokat admin */
+    pushQueue(`Penugasan Premium — ${prBidang}`, `${prSkema} · cek konflik kepentingan berjalan → penawaran disusun`, "c-gold", "PENAWARAN");
     toast("Permintaan terkirim", "Cek konflik kepentingan dijalankan sebelum penugasan tim — penawaran transparan menyusul.", "ok");
   };
 
@@ -140,10 +142,14 @@ export default function Lawyer() {
         )}
       </div>
 
-      {/* S4: Penugasan Premium pindah ke BAWAH daftar */}
+      {/* Penugasan Premium — rekam nyata verification_queue (judul "Penugasan Premium — …") */}
       <Panel title="Penugasan Premium Aktif" className="mt16">
         <div className="rows">
-          {premList.map((p, i) => <Row key={i} b={p.b} d={p.d} right={<Chip c={p.chip}>{p.lbl}</Chip>} />)}
+          {premList.map((p, i) => (
+            <Row key={p.id || i} b={p.t.replace(/^Penugasan Premium — /, "")} d={p.m}
+              right={<Chip c={p.status === "verified" ? "c-ver" : p.status === "rejected" ? "c-red" : p.chip}>{p.status === "verified" ? "DISETUJUI" : p.status === "rejected" ? "DITOLAK" : p.lbl}</Chip>} />
+          ))}
+          {!premList.length && <Row b="Belum ada penugasan premium" d="Ajukan lewat tombol Ajukan Penugasan Premium di atas — permintaan langsung masuk meja advokat MRWP." right={<Chip c="c-mon">KOSONG</Chip>} />}
         </div>
       </Panel>
 
