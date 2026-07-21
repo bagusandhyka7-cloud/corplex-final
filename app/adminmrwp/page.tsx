@@ -195,6 +195,17 @@ function AdminInner() {
     });
   }, [toast]);
 
+  /* permintaan demo — nyata dari DB (bug lama: form menulis, panel tak pernah membaca) */
+  type DemoReq = { id: string; nama: string | null; perusahaan: string | null; email: string | null; kebutuhan: string | null; status: string | null; created_at: string };
+  const [demoReq, setDemoReq] = useState<DemoReq[]>([]);
+  useEffect(() => { void admin.listDemo().then((r) => { if (r.ok) setDemoReq(r.data); }); }, []);
+  const tandaiDemo = async (id: string, status: string) => {
+    const r = await admin.decideDemo(id, status);
+    if (!r.ok) return toast("Gagal", r.error.message, "warn");
+    setDemoReq((xs) => xs.map((x) => (x.id === id ? { ...x, status } : x)));
+    toast("Status diperbarui", "Permintaan demo ditandai " + status + ".", "ok");
+  };
+
   /* konsol advokat — antrean verifikasi nyata dari DB */
   type VQ = { id: string; tenant_id: string; title: string; meta: string; chip: string; label: string; sla: string; status: string; note: string | null };
   const [vq, setVq] = useState<VQ[]>([]);
@@ -614,6 +625,32 @@ function AdminInner() {
                   </table>
                 </div>
                 <p className="note mt16">Setujui → tenant aktif + email selamat datang. Tolak → alasan wajib, pendaftar boleh submit ulang.</p>
+
+                {/* Permintaan Demo (form "Minta Demo" halaman login) — bug lama: tersimpan di DB tapi tak pernah tampil */}
+                <h4 style={{ fontFamily: "var(--serif)", fontSize: 14, margin: "22px 0 10px", color: "#fff" }}>Permintaan Demo</h4>
+                <div className="tblwrap">
+                  <table>
+                    <thead><tr><th>Nama</th><th>Perusahaan</th><th>Email</th><th>Kebutuhan</th><th>Masuk</th><th>Status</th><th>Aksi</th></tr></thead>
+                    <tbody>
+                      {demoReq.map((d) => (
+                        <tr key={d.id}>
+                          <td>{d.nama || "—"}</td>
+                          <td>{d.perusahaan || "—"}</td>
+                          <td>{d.email || "—"}</td>
+                          <td style={{ maxWidth: 220, whiteSpace: "normal" }}>{d.kebutuhan || "—"}</td>
+                          <td>{new Date(d.created_at).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}</td>
+                          <td><Chip c={d.status === "dihubungi" ? "c-ver" : "c-draft"}>{(d.status || "baru").toUpperCase()}</Chip></td>
+                          <td><div className="flex items-center gap-2">
+                            {d.status !== "dihubungi" && <button className="btn btn-ok btn-sm" onClick={() => void tandaiDemo(d.id, "dihubungi")}>Tandai Dihubungi</button>}
+                            <button className="btn btn-line btn-sm" onClick={() => { void navigator.clipboard.writeText(d.email || ""); toast("Email disalin", d.email || "", "ok"); }}>Salin Email</button>
+                          </div></td>
+                        </tr>
+                      ))}
+                      {!demoReq.length && <tr><td colSpan={7} style={{ color: "var(--muted)" }}>Belum ada permintaan demo.</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="note mt16">Tindak lanjut: hubungi pemohon lalu kirim kode undangan dari menu Kode Undangan. Status tersimpan ke database.</p>
               </div>
             )}
           </div>

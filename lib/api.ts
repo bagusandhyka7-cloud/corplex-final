@@ -450,6 +450,12 @@ export const admin = {
     })));
   },
   /* Tenant aktif + kursi (users) — untuk Akun & Seat. */
+  /* Permintaan demo dari halaman login (bug lama: tersimpan tapi tak pernah ditampilkan). */
+  async listDemo(): Promise<ApiResult<{ id: string; nama: string | null; perusahaan: string | null; email: string | null; kebutuhan: string | null; status: string | null; created_at: string }[]>> {
+    return adminPost("listDemo");
+  },
+  async decideDemo(id: string, status: string) { return adminPost<{ ok: true }>("decideDemo", { id, status }); },
+
   async listTenants(): Promise<ApiResult<TenantRow[]>> { return adminPost<TenantRow[]>("listTenants"); },
   async decideTenant(id: string, approve: boolean, reason?: string) {
     return adminPost<{ ok: true }>("decideTenant", { id, approve, reason });

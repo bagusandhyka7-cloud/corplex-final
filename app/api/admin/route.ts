@@ -43,6 +43,20 @@ export async function POST(req: NextRequest) {
       return by;
     };
 
+    /* Permintaan demo dari halaman login — dibaca panel Approval (bug: dulu tak pernah ditampilkan). */
+    if (op === "listDemo") {
+      const { data, error } = await sb.from("demo_requests").select("*").order("created_at", { ascending: false });
+      if (error) throw error;
+      return Response.json({ ok: true, data: data || [] });
+    }
+    if (op === "decideDemo") {
+      const { id, status } = (args || {}) as { id?: string; status?: string };
+      if (!id || !status) return Response.json({ error: "id/status wajib" }, { status: 400 });
+      const { error } = await sb.from("demo_requests").update({ status }).eq("id", id);
+      if (error) throw error;
+      await sb.from("audit_logs").insert({ action: "decide_demo", detail: { id, status }, actor: "adminmrwp" });
+      return Response.json({ ok: true });
+    }
     if (op === "listPending") {
       const { data, error } = await sb.from("tenants")
         .select("id,name,created_at,company_documents(id,jenis,nama,dok_url)")
