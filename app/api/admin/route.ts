@@ -14,7 +14,7 @@ const svc = () => createClient(
 );
 
 export async function POST(req: NextRequest) {
-  if (limited(req, "admin", 30)) return tooMany();
+  if (limited(req, "admin", 60)) return tooMany(); // panel internal memanggil banyak op per muat
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.ADMIN_PASSWORD) {
     return Response.json({ error: "SUPABASE_SERVICE_ROLE_KEY / ADMIN_PASSWORD belum diisi di .env.local." }, { status: 501 });
   }
@@ -164,7 +164,8 @@ export async function POST(req: NextRequest) {
     }
 
     return Response.json({ error: "Operasi tidak dikenal." }, { status: 400 });
-  } catch {
+  } catch (e) {
+    console.error("[api/admin]", op, e); // jejak diagnosis — catch-all sempat menelan error asli
     return Response.json({ error: "Gagal memproses permintaan admin." }, { status: 500 });
   }
 }
