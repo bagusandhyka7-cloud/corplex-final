@@ -87,6 +87,7 @@ export const api = {
       const st = data.tenant?.status;
       if (st === "pending_review") { await sb.auth.signOut(); return err("auth", "Pendaftaran masih ditinjau tim MRWP — biasanya < 1×24 jam."); }
       if (st === "rejected") { await sb.auth.signOut(); return err("auth", "Pendaftaran ditolak — periksa email Anda untuk alasannya."); }
+      if (st === "expired") { await sb.auth.signOut(); return err("auth", "Masa demo berakhir — hubungi tim MRWP untuk perpanjangan akses."); }
       return ok({ user: data.user, tenant: data.tenant });
     },
     /* Sign-in JWT untuk jalur demo t1 (akun auth demo sudah dibuat di migrasi). */
@@ -251,7 +252,7 @@ export const api = {
   /* Antrean verifikasi advokat — verification_queue (nyata di Supabase).
    * User push dari modul mana pun; advokat memutuskan di Konsol Advokat /adminmrwp. */
   verifq: {
-    async list(tenantId?: string, status?: string): Promise<ApiResult<{ id: string; tenant_id: string; title: string; meta: string; chip: string; label: string; sla: string; status: string; note: string | null }[]>> {
+    async list(tenantId?: string, status?: string): Promise<ApiResult<{ id: string; tenant_id: string; title: string; meta: string; chip: string; label: string; sla: string; status: string; note: string | null; created_at: string; created_by: string | null; ref_mod: string | null; ref_id: string | null; refs: { mod: string; id: string; label: string }[]; detail: string | null }[]>> {
       let q = sb.from("verification_queue").select("*").order("created_at", { ascending: false });
       if (tenantId) q = q.eq("tenant_id", tenantId);
       if (status) q = q.eq("status", status);
@@ -259,9 +260,23 @@ export const api = {
       if (error) return err("network", "Gagal memuat antrean.");
       return ok(data);
     },
-    async push(tenantId: string, title: string, meta: string, chip: string, label: string) {
-      const { data, error } = await sb.from("verification_queue").insert({ tenant_id: tenantId, title, meta, chip, label }).select("id").single();
+    async push(tenantId: string, title: string, meta: string, chip: string, label: string, extra?: { by?: string; refs?: { mod: string; id: string; label: string }[]; detail?: string }) {
+      const r0 = extra?.refs?.[0]; // kolom lama tetap diisi (kompat pengajuan sebelum smart attachment)
+      const { data, error } = await sb.from("verification_queue")
+        .insert({ tenant_id: tenantId, title, meta, chip, label, created_by: extra?.by || null, ref_mod: r0?.mod || null, ref_id: r0?.id || null, refs: extra?.refs || [], detail: extra?.detail || null })
+        .select("id").single();
       return error ? err("server", "Gagal mengirim ke antrean.") : ok(data);
+    },
+    /* admin membuka detail: masuk → meninjau (tersinkron ke timeline klien via realtime) */
+    async review(id: string) {
+      const { error } = await sb.from("verification_queue").update({ status: "meninjau" }).eq("id", id).eq("status", "masuk");
+      return error ? err("server", "Gagal menandai peninjauan.") : ok(null);
+    },
+    /* advokat bertanya tanpa menolak — catatan tampil di portal klien, status tetap ditinjau */
+    async askInfo(id: string, note: string) {
+      const { error } = await sb.from("verification_queue").update({ status: "meninjau", note: "PERTANYAAN ADVOKAT: " + note }).eq("id", id);
+      void sb.from("audit_logs").insert({ action: "advokat_minta_info", detail: { id, note }, actor: "adminmrwp" }).then(() => {});
+      return error ? err("server", "Gagal mengirim pertanyaan.") : ok(null);
     },
     async decide(id: string, status: "verified" | "rejected", note: string) {
       const { error } = await sb.from("verification_queue").update({ status, note, decided_by: "Adv. MRWP", decided_at: new Date().toISOString() }).eq("id", id);
@@ -366,7 +381,7 @@ export const api = {
   },
 };
 
-export type InviteRow = { code: string; email_target: string | null; tier: string; seats: number; expires_at: string | null; status: string; used_count: number; max_uses: number };
+export type InviteRow = { code: string; email_target: string | null; tier: string; seats: number; expires_at: string | null; status: string; used_count: number; max_uses: number; created_at: string };
 
 export type AttRow = { id: string; tenant_id: string; employee_id: string; periode: string; hadir: number; izin: number; sakit: number; alpha: number };
 
@@ -427,7 +442,7 @@ async function adminPost<T>(op: string, args?: Record<string, unknown>): Promise
 
 export type PendDoc = { id: string; jenis: string; nama: string; dok_url: string | null };
 type PendRow = { id: string; name: string; created_at: string; users: { nama: string | null; email: string }[]; company_documents: PendDoc[] };
-export type TenantRow = { id: string; name: string; tier: string; status: string; users: { nama: string | null; email: string; jabatan: string | null; active: boolean }[] };
+export type TenantRow = { id: string; name: string; sector: string | null; entity: string | null; tier: string; status: string; created_at: string; expires_at: string | null; users: { nama: string | null; email: string; jabatan: string | null; active: boolean }[] };
 
 export const admin = {
   /* Verifikasi password admin lewat route (bukan konstanta klien). */
@@ -457,6 +472,11 @@ export const admin = {
   async decideDemo(id: string, status: string) { return adminPost<{ ok: true }>("decideDemo", { id, status }); },
 
   async listTenants(): Promise<ApiResult<TenantRow[]>> { return adminPost<TenantRow[]>("listTenants"); },
+  /* Pusat Data: kelola profil perusahaan */
+  async editTenant(id: string, name: string, sector: string, tier: string) { return adminPost<{ ok: true }>("editTenant", { id, name, sector, tier }); },
+  async removeTenant(id: string) { return adminPost<{ ok: true }>("removeTenant", { id }); },
+  /* +N jam dari max(now, tenggat lama); 0 = permanen */
+  async extendTenant(id: string, hours: number) { return adminPost<{ expires_at: string | null }>("extendTenant", { id, hours }); },
   async decideTenant(id: string, approve: boolean, reason?: string) {
     return adminPost<{ ok: true }>("decideTenant", { id, approve, reason });
   },
@@ -464,7 +484,8 @@ export const admin = {
   async inviteSeat(tenant: string, email: string) { return adminPost<{ link: string | null }>("inviteSeat", { tenant, email }); },
   async resetSeat(email: string) { return adminPost<{ link: string | null }>("resetSeat", { email }); },
   async removeSeat(email: string) { return adminPost<{ ok: true }>("removeSeat", { email }); },
-  async tenantDocs(tenant: string) { return adminPost<{ docs: { kel: string; nama: string; jenis: string; url: string }[]; karyawan: number }>("tenantDocs", { tenant }); },
+  async logView(tenant: string) { return adminPost<{ ok: true }>("logView", { tenant }); },
+  async listAudit() { return adminPost<{ action: string; detail: unknown; actor: string | null; created_at: string }[]>("listAudit"); },
   async metrics() { return adminPost<{ metrics: { tenantAktif: number; tenantPending: number; aktif30h: number; karyawan: number; dokumen: number; perModul: Record<string, number>; vqMasuk: number; vqVerified: number } }>("metrics", {}); },
   async act(action: string, payload: Record<string, unknown>, signal?: AbortSignal): Promise<ApiResult<Record<string, unknown>>> {
     if (action === "create_invite") {

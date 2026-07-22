@@ -180,9 +180,9 @@ html,body{overflow-x:clip} /* S1: nol scroll horizontal — clip (bukan hidden) 
 .logo img, .logo svg{width:100%;height:100%}
 .sb-brand b{color:#fff;font-family:var(--serif);font-size:18px;display:block;line-height:1;letter-spacing:.01em}
 .sb-brand span{font-family:var(--mono);font-size:8.5px;letter-spacing:.18em;color:var(--blue-300)}
-.sb-label{font-size:13px;font-weight:500;letter-spacing:normal;color:var(--txt2);padding:10px 20px;display:flex;align-items:center;gap:11px;position:relative}
+.sb-label{font-size:13px;font-weight:500;letter-spacing:normal;color:var(--txt2);padding:10px 20px;border-left:3px solid transparent;display:flex;align-items:center;gap:11px;position:relative} /* border-left 3px = sejajar ikon tombol menu */
 /* seksi sidebar = tombol dropdown */
-.sb-sec{width:100%;background:none;border:none;text-align:left;cursor:pointer;transition:color .18s}
+.sb-sec{width:100%;background:none;border:none;border-left:3px solid transparent;text-align:left;cursor:pointer;transition:color .18s} /* border-left ikut, jangan tertimpa border:none */
 .sb-sec .lucide{flex:0 0 auto;opacity:.75}
 /* tanpa lingkaran fokus saat klik — seluruh tombol sidebar */
 .sidebar button:focus{outline:none}
@@ -191,7 +191,7 @@ html,body{overflow-x:clip} /* S1: nol scroll horizontal — clip (bukan hidden) 
 .sb-chev{flex:0 0 auto;transition:transform .32s cubic-bezier(.4,0,.2,1);opacity:.7}
 .sb-drop{display:grid;grid-template-rows:0fr;transition:grid-template-rows .36s cubic-bezier(.4,0,.2,1)}
 .sb-drop.open{grid-template-rows:1fr}
-.sb-drop>.sb-nav{overflow:hidden;min-height:0;padding-left:10px}
+.sb-drop>.sb-nav{overflow:hidden;min-height:0} /* rata kiri seragam — indent 10px dihapus (ikon semua menu sejajar) */
 .sb-drop .sb-it{opacity:0;transform:translateY(-6px);transition:opacity .28s ease,transform .28s cubic-bezier(.2,.8,.3,1.05)}
 .sb-drop.open .sb-it{opacity:1;transform:none}
 .sb-drop.open .sb-it:nth-child(1){transition-delay:.06s}
@@ -707,6 +707,19 @@ th{background:linear-gradient(150deg,var(--navy-800),var(--navy-700))}
 
 /* Status di dalam TABEL = teks polos berwarna (bukan pill). Bentuk tombol hanya di kolom Aksi. */
 .tblwrap table td .chip{background:none!important;border:none!important;padding:0!important;font-weight:700;letter-spacing:.06em}
+
+/* Panel admin: tabel LANGSUNG tanpa kotak panel pembungkus (arahan owner 22 Jul) */
+.adm-main .panel{background:transparent;border:none;box-shadow:none;padding:0;border-radius:0}
+/* Halaman DETAIL (Konsol Advokat dst) tetap berkotak grid rapi — override .boxed */
+.adm-main .panel.boxed{background:var(--sur);border:1px solid var(--line);border-radius:14px;padding:18px 20px;box-shadow:var(--shadow-xs)}
+.adm-main .panel>h4{margin:0 0 10px}
+.adm-main .panel .note{margin-top:12px}
+/* Tipografi tabel admin SERAGAM + minimalis: 12px, baris rapat, sekunder redup;
+   kolom-1 bold, sisanya regular. !important mengalahkan inline kecil (sub/mono/chip mini). */
+.adm-main table td,.adm-main table td *{font-size:12px!important;font-weight:400!important;letter-spacing:normal!important}
+.adm-main table td{padding:6px 14px!important;color:var(--muted)!important}
+.adm-main table td:first-child,.adm-main table td:first-child *{font-weight:600!important;color:var(--txt)!important}
+.adm-main table th{font-size:9.5px!important;padding:7px 14px!important}
 
 /* Bantuan jargon (5c-5) — tooltip CSS murni, tema gelap */
 .jargon{position:relative;display:inline-flex;align-items:center;gap:3px;cursor:help;border-bottom:1px dotted var(--muted)}

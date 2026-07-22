@@ -17,6 +17,7 @@ const STEPS = ["Diajukan", "Antre verifikasi", "Ditinjau advokat", "Selesai"];
 const progress = (q: QItem): { at: number; done: boolean; kalimat: string } => {
   if (q.status === "verified") return { at: 3, done: true, kalimat: "Selesai — ditandatangani digital oleh advokat MRWP." };
   if (q.status === "rejected") return { at: 3, done: true, kalimat: "Dikembalikan dengan catatan advokat — perbaiki lalu ajukan ulang." };
+  if (q.status === "meninjau") return { at: 2, done: false, kalimat: "Sedang ditinjau advokat MRWP — dokumen dibuka di meja advokat." };
   return { at: 1, done: false, kalimat: "Sedang antre verifikasi advokat — estimasi selesai < 24 jam." };
 };
 
@@ -29,6 +30,7 @@ export default function Lawyer() {
   const [noteQ, setNoteQ] = useState<QItem | null>(null); // drawer kanan: catatan advokat
   const [prBidang, setPrBidang] = useState("Legal Due Diligence");
   const [prSkema, setPrSkema] = useState("Fixed fee");
+  const [prUraian, setPrUraian] = useState(""); // bug lama: textarea uncontrolled — uraian dibuang saat submit
   /* Penugasan Premium NYATA: baris verification_queue berjudul khusus (bug lama: seed lokal
    * yang hilang saat reload dan tak pernah sampai ke Konsol Advokat). */
   const isPrem = (t2: string) => t2.startsWith("Penugasan Premium");
@@ -37,7 +39,7 @@ export default function Lawyer() {
   const sisa = Math.max(0, quotaMax - quota);
   const rows = queue.filter((q) => {
     if (isPrem(q.t)) return false; // tampil di panel Penugasan Premium, bukan daftar pengajuan
-    if (f === "berjalan" && q.status !== "masuk") return false;
+    if (f === "berjalan" && q.status !== "masuk" && q.status !== "meninjau") return false;
     if (f === "selesai" && q.status !== "verified") return false;
     if (f === "revisi" && q.status !== "rejected") return false;
     return (q.t + " " + q.m).toLowerCase().includes(cari.toLowerCase());
@@ -51,7 +53,9 @@ export default function Lawyer() {
   const sendPremium = () => {
     setPremOpen(false);
     /* nyata: masuk verification_queue → tampil di panel ini, badge sidebar, dan Konsol Advokat admin */
-    pushQueue(`Penugasan Premium — ${prBidang}`, `${prSkema} · cek konflik kepentingan berjalan → penawaran disusun`, "c-gold", "PENAWARAN");
+    if (!prUraian.trim()) { toast("Uraian kebutuhan wajib diisi", "Advokat butuh konteks masalah untuk menyusun penawaran.", "warn"); setPremOpen(true); return; }
+    pushQueue(`Penugasan Premium — ${prBidang}`, `${prSkema} · cek konflik kepentingan berjalan → penawaran disusun`, "c-gold", "PENAWARAN", undefined, prUraian.trim());
+    setPrUraian("");
     toast("Permintaan terkirim", "Cek konflik kepentingan dijalankan sebelum penugasan tim — penawaran transparan menyusul.", "ok");
   };
 
@@ -118,6 +122,9 @@ export default function Lawyer() {
                 {q.status === "rejected" && (
                   <button className="btn btn-red btn-sm" onClick={() => setNoteQ(q)}><FileText size={12} /> Ditolak, lihat catatan</button>
                 )}
+                {q.status === "meninjau" && q.note && (
+                  <button className="btn btn-gold btn-sm" onClick={() => setNoteQ(q)}><FileText size={12} /> Pertanyaan advokat</button>
+                )}
               </div>
 
               <div className="lw-tl">
@@ -147,7 +154,10 @@ export default function Lawyer() {
         <div className="rows">
           {premList.map((p, i) => (
             <Row key={p.id || i} b={p.t.replace(/^Penugasan Premium — /, "")} d={p.m}
-              right={<Chip c={p.status === "verified" ? "c-ver" : p.status === "rejected" ? "c-red" : p.chip}>{p.status === "verified" ? "DISETUJUI" : p.status === "rejected" ? "DITOLAK" : p.lbl}</Chip>} />
+              right={<>
+                {p.note && <button className="btn btn-gold btn-sm" onClick={() => setNoteQ(p)}><FileText size={12} /> {p.status === "meninjau" ? "Pertanyaan advokat" : "Lihat catatan"}</button>}
+                <Chip c={p.status === "verified" ? "c-ver" : p.status === "rejected" ? "c-red" : p.status === "meninjau" ? "c-gold" : p.chip}>{p.status === "verified" ? "DISETUJUI" : p.status === "rejected" ? "DITOLAK" : p.status === "meninjau" ? "DITINJAU" : p.lbl}</Chip>
+              </>} />
           ))}
           {!premList.length && <Row b="Belum ada penugasan premium" d="Ajukan lewat tombol Ajukan Penugasan Premium di atas — permintaan langsung masuk meja advokat MRWP." right={<Chip c="c-mon">KOSONG</Chip>} />}
         </div>
@@ -161,7 +171,7 @@ export default function Lawyer() {
         </>}>
         {noteQ && <>
           <Field label="Pengajuan"><input value={noteQ.t} readOnly /></Field>
-          <Field label="Status"><input value={noteQ.status === "verified" ? "Disetujui / terverifikasi" : "Ditolak — perlu revisi"} readOnly /></Field>
+          <Field label="Status"><input value={noteQ.status === "verified" ? "Disetujui / terverifikasi" : noteQ.status === "meninjau" ? "Sedang ditinjau — advokat butuh info tambahan" : "Ditolak — perlu revisi"} readOnly /></Field>
           <Field label="Catatan dari advokat"><textarea rows={7} value={noteQ.note || "— tidak ada catatan —"} readOnly /></Field>
         </>}
       </Modal>
@@ -176,7 +186,7 @@ export default function Lawyer() {
             <option>Legal Due Diligence</option><option>Merger &amp; Acquisition</option><option>Litigation</option><option>Legal Audit</option><option>Restrukturisasi</option>
           </select>
         </Field>
-        <Field label="Uraian kebutuhan"><textarea rows={3} defaultValue="Due diligence atas rencana akuisisi 60% saham PT Target Pangan." /></Field>
+        <Field label="Uraian kebutuhan *"><textarea rows={3} value={prUraian} placeholder="Uraikan masalah/kebutuhan hukum Anda — dibaca langsung oleh advokat." onChange={(e) => setPrUraian(e.target.value)} /></Field>
         <Field label="Preferensi skema">
           <select value={prSkema} onChange={(e) => setPrSkema(e.target.value)}>
             <option>Fixed fee</option><option>Capped fee</option><option>Hourly</option>

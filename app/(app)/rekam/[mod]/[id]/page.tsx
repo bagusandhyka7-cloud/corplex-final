@@ -125,7 +125,8 @@ export default function DetailRekam({ params }: { params: Promise<{ mod: string;
                           onChange={(e) => { const fl = e.target.files?.[0]; if (fl) void caseBukti(fl); e.target.value = ""; }} />
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                           <button className="btn btn-line btn-sm" onClick={() => buktiRef.current?.click()}><Upload size={12} /> Unggah bukti</button>
-                          <button className="btn btn-gold btn-sm" onClick={() => { pushQueue(`Perkara — ${cd.tab}`, `Verifikasi dari modul Perkara · ${cd.bukti?.length || 0} bukti · ${cd.tl?.length || 0} tahapan`, "c-gold", "ESKALASI"); }}><Scale size={12} /> Verifikasi ke Advokat</button>
+                          <button className="btn btn-gold btn-sm" onClick={() => { pushQueue(`Perkara — ${cd.tab}`, `Verifikasi dari modul Perkara · ${cd.bukti?.length || 0} bukti · ${cd.tl?.length || 0} tahapan`, "c-gold", "ESKALASI", [{ mod: "case", id, label: `Rekam Perkara — ${cd.tab || ""}` }],
+                            `${cd.head || cd.tab}\n\nKronologi:\n${(cd.tl || []).map((s) => `${s[0]} · ${s[1]}`).join("\n") || "-"}\n\nBukti terindeks:\n${(cd.bukti || []).map((b) => b[0]).join("\n") || "— belum ada"}`); }}><Scale size={12} /> Verifikasi ke Advokat</button>
                         </div>
                       </div>
                     </div>

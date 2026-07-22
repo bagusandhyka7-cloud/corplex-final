@@ -18,9 +18,16 @@ const BrandMark = ({ size, className = "" }: { size?: number, className?: string
 );
 
 /* ===== SIDEBAR ===== */
+/* Urutan (arahan owner 22 Jul): prioritas Ringkasan + Pengacara, lalu SEMUA menu tanpa dropdown,
+ * baru kelompok ber-dropdown (AI, Ketenagakerjaan, Aset, Asuransi, Pajak) di bawah. */
 export const NAV: { v: ViewId; label: string; icon: React.ReactNode; section: string; subItems?: { label: string; tab: number; icon?: React.ReactNode }[] }[] = [
   { v: "ringkasan", label: "Ringkasan", icon: <LayoutDashboard size={16} />, section: "" },
   { v: "lawyer", label: "Pengacara MRWP", icon: <Gavel size={16} />, section: "" },
+  { v: "agreement", label: "Manajemen Kontrak", icon: <FileSignature size={16} />, section: "" },
+  { v: "licensing", label: "Perizinan", icon: <FileBadge size={16} />, section: "" },
+  { v: "corpsec", label: "Sekretaris Perusahaan", icon: <Landmark size={16} />, section: "" },
+  { v: "case", label: "Perkara", icon: <Scale size={16} />, section: "" },
+  { v: "tools", label: "Alat Legal", icon: <Wrench size={16} />, section: "" },
   { v: "assistant", label: "AI Assistant", icon: <Bot size={16} />, section: "AI" },
   { v: "drafter", label: "AI Drafting", icon: <PenLine size={16} />, section: "AI" },
   { v: "hr-database" as ViewId, label: "Database Karyawan", icon: <IdCard size={16} />, section: "Ketenagakerjaan" },
@@ -39,11 +46,6 @@ export const NAV: { v: ViewId; label: string; icon: React.ReactNode; section: st
     { label: "Kalender Kewajiban", tab: 0, icon: <CalendarDays size={13} /> },
     { label: "Profil Pajak", tab: 1, icon: <Landmark size={13} /> },
   ]},
-  { v: "licensing", label: "Perizinan", icon: <FileBadge size={16} />, section: "" },
-  { v: "corpsec", label: "Sekretaris Perusahaan", icon: <Landmark size={16} />, section: "" },
-  { v: "case", label: "Perkara", icon: <Scale size={16} />, section: "" },
-  { v: "tools", label: "Alat Legal", icon: <Wrench size={16} />, section: "" },
-  { v: "agreement", label: "Manajemen Kontrak", icon: <FileSignature size={16} />, section: "" },
 ];
 
 const SECTION_ICONS: Record<string, React.ReactNode> = {

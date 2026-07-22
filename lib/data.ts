@@ -14,7 +14,7 @@ export interface Emp {
 export interface Case { id?: string; dokUrl?: string | null; dokNama?: string | null; tab?: string; head: string; tl: string[][]; bukti: string[][]; biaya: string[][]; aksi: { t: string; d: string; btn?: string; toast?: [string, string] }[]; custody?: boolean }
 export interface Agr { n: string; p1: string; p2: string; mulai: string; akhir: string; nilai: string; st: string; cls: string; lbl: string; dok: string }
 export interface Klaim { t: string; obj: string; nilai: string; cls: string; lbl: string; tl: string[][] | null }
-export interface QItem { id?: string; t: string; m: string; chip: string; lbl: string; sla: string; status: "masuk" | "verified" | "rejected"; note?: string }
+export interface QItem { id?: string; t: string; m: string; chip: string; lbl: string; sla: string; status: "masuk" | "meninjau" | "verified" | "rejected"; note?: string }
 export interface IdxItem { t: string; s: string; v: string }
 
 export interface Tenant {

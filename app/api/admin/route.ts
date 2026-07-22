@@ -68,25 +68,65 @@ export async function POST(req: NextRequest) {
 
     if (op === "listTenants") {
       const { data, error } = await sb.from("tenants")
-        .select("id,name,tier,status")
+        .select("id,name,sector,entity,tier,status,created_at,expires_at")
         .eq("status", "active").order("created_at");
       if (error) throw error;
       const by = await seatsFor((data || []).map((t) => String(t.id)));
       return Response.json({ ok: true, data: (data || []).map((t) => ({ ...t, users: by[String(t.id)] || [] })) });
+    }
+    /* Pusat Data: kelola profil perusahaan */
+    if (op === "editTenant") {
+      const { id, name, sector, tier } = (args || {}) as { id?: string; name?: string; sector?: string; tier?: string };
+      if (!id || !name) return Response.json({ error: "id/name wajib" }, { status: 400 });
+      const { error } = await sb.from("tenants").update({ name, sector: sector || null, tier: tier || "Demo" }).eq("id", id);
+      if (error) throw error;
+      await sb.from("audit_logs").insert({ action: "edit_tenant", detail: { id, name, sector, tier }, actor: "adminmrwp" });
+      return Response.json({ ok: true });
+    }
+    if (op === "removeTenant") {
+      const { id } = (args || {}) as { id?: string };
+      if (!id) return Response.json({ error: "id wajib" }, { status: 400 });
+      /* hapus akses (app_users) + baris perusahaan; data modul/karyawan TIDAK disentuh (arsip) */
+      await sb.from("app_users").delete().eq("tenant_id", id);
+      const { error } = await sb.from("tenants").delete().eq("id", id);
+      if (error) throw error;
+      await sb.from("audit_logs").insert({ action: "remove_tenant", detail: { id }, actor: "adminmrwp" });
+      return Response.json({ ok: true });
     }
 
     if (op === "decideTenant") {
       const id = String(args?.id || "");
       const approve = !!args?.approve;
       const reason = String(args?.reason || "");
+      /* tier Demo = akses 24 jam sejak disetujui; tier lain permanen (expires_at NULL) */
+      let exp: string | null = null;
+      if (approve) {
+        const { data: t } = await sb.from("tenants").select("tier").eq("id", id).single();
+        if ((t?.tier || "Demo") === "Demo") exp = new Date(Date.now() + 24 * 3600_000).toISOString();
+      }
       const { error } = await sb.from("tenants").update(
         approve
-          ? { status: "active", decided_at: new Date().toISOString() }
+          ? { status: "active", decided_at: new Date().toISOString(), expires_at: exp }
           : { status: "rejected", rejected_reason: reason || "Ditolak.", decided_at: new Date().toISOString() },
       ).eq("id", id);
       if (error) throw error;
-      await sb.from("audit_logs").insert({ action: approve ? "approve_tenant" : "reject_tenant", detail: { id, reason }, actor: "adminmrwp" });
+      await sb.from("audit_logs").insert({ action: approve ? "approve_tenant" : "reject_tenant", detail: { id, reason, expires_at: exp }, actor: "adminmrwp" });
       return Response.json({ ok: true });
+    }
+    /* Perpanjang tenggat 1 tombol: +N jam dari max(sekarang, tenggat lama). 0/null jam = jadikan permanen. */
+    if (op === "extendTenant") {
+      const { id, hours } = (args || {}) as { id?: string; hours?: number };
+      if (!id) return Response.json({ error: "id wajib" }, { status: 400 });
+      let exp: string | null = null;
+      if (hours && hours > 0) {
+        const { data: t } = await sb.from("tenants").select("expires_at").eq("id", id).single();
+        const base = Math.max(Date.now(), t?.expires_at ? new Date(t.expires_at).getTime() : 0);
+        exp = new Date(base + hours * 3600_000).toISOString();
+      }
+      const { error } = await sb.from("tenants").update({ expires_at: exp }).eq("id", id);
+      if (error) throw error;
+      await sb.from("audit_logs").insert({ action: "extend_tenant", detail: { id, hours: hours || "permanen", expires_at: exp }, actor: "adminmrwp" });
+      return Response.json({ ok: true, expires_at: exp });
     }
 
     /* Seat NYATA via Supabase Auth Admin API (service role). Reset = generateLink recovery
@@ -121,20 +161,21 @@ export async function POST(req: NextRequest) {
 
     /* PUSAT DATA: seluruh dokumen 1 tenant (pendaftaran + rekam modul + dokumen karyawan).
      * Akses dicatat audit (buku tamu). Legitimasi: perjanjian + NDA (MRWP = firma klien). */
-    if (op === "tenantDocs") {
-      const tenant = String(args?.tenant || "");
-      const [cd, mr, emp] = await Promise.all([
-        sb.from("company_documents").select("jenis,nama,dok_url").eq("tenant_id", tenant),
-        sb.from("module_records").select("module,dok_nama,dok_url").eq("tenant_id", tenant).not("dok_url", "is", null),
-        sb.from("employees").select("nama,dok,dok_url").eq("tenant_id", tenant),
-      ]);
-      await sb.from("audit_logs").insert({ action: "akses_pusat_data", detail: { tenant }, actor: "adminmrwp" });
-      const docs = [
-        ...(cd.data || []).map((d) => ({ kel: "Pendaftaran", nama: d.nama, jenis: d.jenis, url: d.dok_url })),
-        ...(mr.data || []).map((d) => ({ kel: d.module.toUpperCase(), nama: d.dok_nama, jenis: "rekam", url: d.dok_url })),
-        ...(emp.data || []).filter((e) => e.dok_url).map((e) => ({ kel: "KARYAWAN", nama: e.dok || e.nama, jenis: "dok kerja", url: e.dok_url })),
-      ].filter((d) => d.url);
-      return Response.json({ ok: true, docs, karyawan: (emp.data || []).length });
+    /* Op tenantDocs/tenantData DIHAPUS — Detail Pusat Data dicabut (owner): akses data klien
+     * kini via Mode Pengawasan (Masuk Dashboard), tercatat lewat op logView. */
+
+    /* Mode pengawasan: admin masuk dashboard klien — WAJIB tercatat (tata kelola). */
+    if (op === "logView") {
+      const { tenant } = (args || {}) as { tenant?: string };
+      await sb.from("audit_logs").insert({ action: "masuk_dashboard_klien", detail: { tenant }, actor: "adminmrwp" });
+      return Response.json({ ok: true });
+    }
+
+    /* Jejak audit NYATA utk Beranda panel (dulu string sesi in-memory — buatan). */
+    if (op === "listAudit") {
+      const { data, error } = await sb.from("audit_logs").select("action,detail,actor,created_at").order("created_at", { ascending: false }).limit(15);
+      if (error) throw error;
+      return Response.json({ ok: true, data: data || [] });
     }
 
     /* METRIK dihitung dari DB operasional sendiri (bukan pelacak pihak ketiga — PDP + zero-budget). */

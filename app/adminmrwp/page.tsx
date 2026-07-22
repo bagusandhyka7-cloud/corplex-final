@@ -11,12 +11,27 @@ import { admin, api, InviteRow } from "@/lib/api";
 import { sb } from "@/lib/supabase";
 import { useAsyncAction } from "@/lib/hooks";
 import { askConfirm, Chip, ConfirmHost, Field, Modal, Row } from "@/components/ui";
+import { RowActions } from "@/components/RecordModal";
+import { RecRow, SPECS, stripId } from "@/lib/records";
 import { Toasts } from "@/components/shell";
 
 /* ===== tipe & seed (in-memory; PROD: Supabase) ===== */
-type Invite = { code: string; email: string; tier: string; expiresAt: number | null; status: "active" | "used" | "expired" | "revoked" };
+type Invite = { code: string; email: string; tier: string; expiresAt: number | null; createdAt: number; status: "active" | "used" | "expired" | "revoked" };
+/* Durasi asli yang dipilih saat kode dibuat — diturunkan dari (expires_at − created_at), tanpa kolom baru */
+const durLabel = (inv: Invite) => {
+  if (!inv.expiresAt) return "Tanpa batas";
+  const jam = Math.round((inv.expiresAt - inv.createdAt) / 3_600_000);
+  return jam <= 24 ? "24 jam" : `${Math.round(jam / 24)} hari`;
+};
 type Seat = { nama: string; email: string; peran: string; status: "aktif" | "undangan" | "nonaktif" };
-type Tenant = { id: string; nama: string; tier: string; seats: Seat[] };
+type Tenant = { id: string; nama: string; sector: string; entity: string; tier: string; sejak: string; exp: string | null; seats: Seat[] };
+const expLabel = (exp: string | null) => {
+  if (!exp) return { t: "Permanen", c: "c-ver" };
+  const sisa = new Date(exp).getTime() - Date.now();
+  if (sisa <= 0) return { t: "KEDALUWARSA", c: "c-red" };
+  const jam = Math.ceil(sisa / 3600_000);
+  return { t: jam >= 48 ? `${Math.ceil(jam / 24)} hari lagi` : `${jam} jam lagi`, c: jam <= 24 ? "c-draft" : "c-mon" };
+};
 type Pending = { id: string; nama: string; pendaftar: string; email: string; masuk: string; docs: { id: string; jenis: string; nama: string; dok_url: string | null }[] };
 
 const DAY = 86_400_000;
@@ -24,19 +39,12 @@ const now = () => Date.now();
 const fromRow = (r: InviteRow): Invite => ({
   code: r.code, email: r.email_target || "", tier: r.tier,
   expiresAt: r.expires_at ? new Date(r.expires_at).getTime() : null,
+  createdAt: r.created_at ? new Date(r.created_at).getTime() : Date.now(),
   status: r.status as Invite["status"],
 });
 const TIERS = ["Demo", "Tier 1", "Tier 2", "Tier 3 Lifetime"];
 const EXP = [["24 jam", DAY], ["3 hari", 3 * DAY], ["7 hari", 7 * DAY], ["30 hari", 30 * DAY], ["Tanpa batas", 0]] as const;
 
-const sisaLabel = (inv: Invite) => {
-  if (inv.status === "revoked") return "dicabut";
-  if (inv.status === "used") return "terpakai";
-  if (!inv.expiresAt) return "tanpa batas";
-  const d = inv.expiresAt - now();
-  if (d <= 0) return "kedaluwarsa";
-  return `berlaku ${Math.ceil(d / DAY)} hari lagi`;
-};
 const chipOf = (inv: Invite) => {
   const eff = inv.status === "active" && inv.expiresAt && inv.expiresAt < now() ? "expired" : inv.status;
   return eff === "active" ? ["c-ver", "AKTIF"] : eff === "used" ? ["c-mon", "TERPAKAI"] : eff === "revoked" ? ["c-red", "DICABUT"] : ["c-red", "KEDALUWARSA"];
@@ -97,45 +105,73 @@ function AdminLogin({ onOk }: { onOk: () => void }) {
 
 function AdminInner() {
   const { toast } = useStore();
-  const [menu, setMenu] = useState<"beranda" | "kode" | "seat" | "approval" | "advokat" | "modul" | "pusat" | "metrik">("kode");
+  const [menu, setMenu] = useState<"beranda" | "kode" | "seat" | "approval" | "advokat" | "pusat">("beranda");
   type Metrics = { tenantAktif: number; tenantPending: number; aktif30h: number; karyawan: number; dokumen: number; perModul: Record<string, number>; vqMasuk: number; vqVerified: number };
   const [mx, setMx] = useState<Metrics | null>(null);
   const loadMetrik = async () => { const r = await admin.metrics(); if (r.ok) setMx(r.data.metrics); else toast("Gagal memuat metrik", r.error.message, "warn"); };
-  const [pdTenant, setPdTenant] = useState<string | null>(null);
-  const [pdDocs, setPdDocs] = useState<{ kel: string; nama: string; jenis: string; url: string }[]>([]);
-  const [pdKaryawan, setPdKaryawan] = useState(0);
-  const [pdLoading, setPdLoading] = useState(false);
-  const loadPusat = async (id: string) => {
-    setPdTenant(id); setPdLoading(true);
-    const r = await admin.tenantDocs(id);
-    setPdLoading(false);
-    if (r.ok) { setPdDocs(r.data.docs); setPdKaryawan(r.data.karyawan); } else toast("Gagal memuat", r.error.message, "warn");
+  useEffect(() => { void loadMetrik(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  /* Detail Pusat Data DIHAPUS total (keputusan owner): akses data klien = Mode Pengawasan
+   * (Masuk Dashboard) — lihat & unduh dari dashboard Corplex klien langsung. */
+
+  /* Mode pengawasan: masuk dashboard Corplex klien (JWT super admin lolos RLS tenant tsb).
+   * Tercatat audit; banner mencolok tampil di sisi klien. Tutup mode = kembali ke panel. */
+  const masukDashboard = (t: { id: string; nama: string; tier?: string }) => {
+    void admin.logView(t.id);
+    localStorage.setItem("corplex_tid", t.id);
+    localStorage.setItem("corplex_ten", JSON.stringify({ tenant: { id: t.id, name: t.nama, tier: t.tier || "Demo", status: "active" }, user: { nama: "Pengawasan MRWP", email: "adminmrwp", jabatan: "Super Admin" } }));
+    localStorage.setItem("corplex_impersonate", t.nama);
+    window.open("/beranda", "_blank");
+    toast("Mode pengawasan dibuka", `${t.nama} — tab baru; akses tercatat pada jejak audit.`, "ok");
+  };
+
+  /* Edit/Hapus perusahaan (Pusat Data) */
+  const [tEdit, setTEdit] = useState<Tenant | null>(null);
+  const [teNama, setTeNama] = useState(""); const [teSector, setTeSector] = useState(""); const [teTier, setTeTier] = useState("Demo");
+  const bukaEditTenant = (t: Tenant) => { setTEdit(t); setTeNama(t.nama); setTeSector(t.sector === "—" ? "" : t.sector); setTeTier(t.tier); };
+  const simpanTenant = async () => {
+    if (!tEdit || !teNama.trim()) return toast("Nama wajib diisi", "Nama perusahaan tidak boleh kosong.", "warn");
+    const r = await admin.editTenant(tEdit.id, teNama.trim(), teSector.trim(), teTier);
+    if (!r.ok) return toast("Gagal menyimpan", r.error.message, "warn");
+    setTens((xs) => xs.map((x) => (x.id === tEdit.id ? { ...x, nama: teNama.trim(), sector: teSector.trim() || "—", tier: teTier } : x)));
+    setTEdit(null); log("edit_tenant"); toast("Profil perusahaan diperbarui", teNama.trim(), "ok");
+  };
+  const hapusTenant = async (t: Tenant) => {
+    if (!(await askConfirm(`Hapus perusahaan "${t.nama}"? Akses login seluruh kursinya ikut dicabut. Data modul & dokumen TIDAK dihapus (arsip).`))) return;
+    const r = await admin.removeTenant(t.id);
+    if (!r.ok) return toast("Gagal menghapus", r.error.message, "warn");
+    setTens((xs) => xs.filter((x) => x.id !== t.id));
+    log("remove_tenant"); toast("Perusahaan dihapus", `${t.nama} — akses dicabut, data diarsipkan.`, "warn");
   };
 
   /* Data Modul — agregat NYATA lintas tenant dari Supabase (employees + module_records +
    * attendance + verification_queue), realtime via postgres_changes. Nol seed. */
-  type ModStat = { tenant: string; emp: number; att: number; vq: number; mods: Record<string, number> };
+  type ModStat = { tenant: string; emp: number; att: number; vq: number; chat: number; draf: number; mods: Record<string, number> };
   const [modStats, setModStats] = useState<ModStat[]>([]);
   const [modLoading, setModLoading] = useState(false);
   const muatModul = React.useCallback(async () => {
     setModLoading(true);
-    const [e, m, a, v] = await Promise.all([
+    /* PDP: chat/draf hanya COUNT tenant_id (sinyal engagement) — nol isi konten ditarik. */
+    const [e, m, a, v, c, d] = await Promise.all([
       sb.from("employees").select("tenant_id"),
       sb.from("module_records").select("tenant_id,module"),
       sb.from("attendance").select("tenant_id"),
       sb.from("verification_queue").select("tenant_id"),
+      sb.from("chat_sessions").select("tenant_id,domain"),
+      sb.from("draft_projects").select("tenant_id"),
     ]);
     const byTen: Record<string, ModStat> = {};
-    const get = (t: string) => (byTen[t] ??= { tenant: t, emp: 0, att: 0, vq: 0, mods: {} });
+    const get = (t: string) => (byTen[t] ??= { tenant: t, emp: 0, att: 0, vq: 0, chat: 0, draf: 0, mods: {} });
     (e.data || []).forEach((r) => { get(r.tenant_id).emp++; });
     (a.data || []).forEach((r) => { get(r.tenant_id).att++; });
     (v.data || []).forEach((r) => { get(r.tenant_id).vq++; });
+    (c.data || []).forEach((r) => { if (r.domain !== "draft") get(r.tenant_id).chat++; });
+    (d.data || []).forEach((r) => { get(r.tenant_id).draf++; });
     (m.data || []).forEach((r) => { const s = get(r.tenant_id); s.mods[r.module] = (s.mods[r.module] || 0) + 1; });
     setModStats(Object.values(byTen).sort((x, y) => x.tenant.localeCompare(y.tenant)));
     setModLoading(false);
   }, []);
   useEffect(() => {
-    if (menu !== "modul") return;
+    if (menu !== "pusat") return;
     void muatModul();
     const ch = sb.channel(`admin-modul:${Date.now()}`) // topik unik — hindari reuse channel ter-subscribe
       .on("postgres_changes", { event: "*", schema: "public", table: "module_records" }, () => void muatModul())
@@ -144,8 +180,13 @@ function AdminInner() {
     return () => { void sb.removeChannel(ch); };
   }, [menu, muatModul]);
   const [authOpen, setAuthOpen] = useState(true);
-  const [audit, setAudit] = useState<string[]>(["Sesi admin dimulai — akses /adminmrwp tercatat."]);
-  const log = (s: string) => setAudit((a) => [`${new Date().toLocaleTimeString("id-ID")} · ${s}`, ...a]);
+  /* Jejak audit NYATA dari tabel audit_logs (dulu string sesi in-memory — buatan). */
+  type AuditRow = { action: string; detail: unknown; actor: string | null; created_at: string };
+  const [audit, setAudit] = useState<AuditRow[]>([]);
+  const muatAudit = React.useCallback(() => { void admin.listAudit().then((r) => { if (r.ok) setAudit(r.data); }); }, []);
+  useEffect(() => { muatAudit(); }, [muatAudit]);
+  /* log(): aksi besar sudah diaudit server-side — cukup segarkan daftar */
+  const log = (_s: string) => { setTimeout(muatAudit, 600); };
 
   /* kode undangan — dimuat dari Supabase */
   const [inv, setInv] = useState<Invite[]>([]);
@@ -171,13 +212,15 @@ function AdminInner() {
     void admin.listTenants().then((r) => {
       if (!r.ok) return;
       setTens(r.data.map((t) => ({
-        id: t.id, nama: t.name, tier: t.tier || "Demo",
+        id: t.id, nama: t.name, sector: t.sector || "—", entity: t.entity || "—", tier: t.tier || "Demo", exp: t.expires_at,
+        sejak: t.created_at ? new Date(t.created_at).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" }) : "—",
         seats: (t.users || []).map((u) => ({ nama: u.nama || u.email.split("@")[0], email: u.email, peran: u.jabatan || "—", status: (u.active ? "aktif" : "nonaktif") as Seat["status"] })),
       })));
     });
   }, []);
-  /* id tenant → nama PT (utk Konsol Advokat & Data Modul — jangan tampilkan uuid mentah) */
-  const tenNama = (id: string) => tens.find((t) => t.id === id)?.nama || id;
+  /* id tenant → nama PT (utk Konsol Advokat & Data Modul — jangan tampilkan uuid mentah).
+   * t1 = tenant demo tanpa baris tenants (seed) — beri nama baku. */
+  const tenNama = (id: string) => id === "t1" ? "PT Contoh Sejahtera (Demo)" : tens.find((t) => t.id === id)?.nama || id;
 
   const [sel, setSel] = useState<string | null>(null);
   const [seatOpen, setSeatOpen] = useState(false);
@@ -210,7 +253,8 @@ function AdminInner() {
   };
 
   /* konsol advokat — antrean verifikasi nyata dari DB */
-  type VQ = { id: string; tenant_id: string; title: string; meta: string; chip: string; label: string; sla: string; status: string; note: string | null };
+  type VQRef = { mod: string; id: string; label: string };
+  type VQ = { id: string; tenant_id: string; title: string; meta: string; chip: string; label: string; sla: string; status: string; note: string | null; created_at?: string; created_by?: string | null; ref_mod?: string | null; ref_id?: string | null; refs?: VQRef[]; detail?: string | null };
   const [vq, setVq] = useState<VQ[]>([]);
   const [vqLoading, setVqLoading] = useState(true);
   const muatVq = React.useCallback(() => {
@@ -223,17 +267,56 @@ function AdminInner() {
   }, [toast]);
   useEffect(() => { muatVq(); }, [muatVq]);
 
+  /* Detail pengajuan (halaman penuh) — aksi HANYA di sini; membuka otomatis menandai MENINJAU
+   * (tersinkron ke timeline klien via realtime verification_queue). */
+  const [vqSel, setVqSel] = useState<VQ | null>(null);
+  /* Smart attachment: daftar lampiran (refs jsonb; fallback kolom lama) — chip aktif menentukan
+   * rekam yang tampil; klik chip = ganti data + dokumen di viewer TANPA reload. */
+  type SrcRec = { data: unknown; dok_url: string | null; dok_nama: string | null; created_at: string };
+  const [srcRec, setSrcRec] = useState<SrcRec | null>(null);
+  const [refAktif, setRefAktif] = useState<VQRef | null>(null);
+  const lampiran = (x: VQ | null): VQRef[] => !x ? [] :
+    (x.refs?.length ? x.refs : (x.ref_id && x.ref_mod && x.ref_mod !== "emp" ? [{ mod: x.ref_mod, id: x.ref_id, label: SPECS[x.ref_mod]?.title || x.ref_mod }] : []));
+  useEffect(() => { setRefAktif(lampiran(vqSel)[0] || null); }, [vqSel?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    setSrcRec(null);
+    if (!refAktif) return;
+    void api.records.get(refAktif.id).then((r) => { if (r.ok) setSrcRec(r.data); });
+  }, [refAktif]);
+  const mintaInfo = (item: VQ) => {
+    setNoteForm({ title: `Minta Info — ${item.title}`, label: "Pertanyaan untuk klien (tampil di portal klien, status tetap ditinjau)", val: "", onOk: (v) => {
+      void api.verifq.askInfo(item.id, v).then((r) => {
+        if (!r.ok) return toast("Gagal", r.error.message, "warn");
+        const note = "PERTANYAAN ADVOKAT: " + v;
+        setVq((xs) => xs.map((x) => (x.id === item.id ? { ...x, status: "meninjau", note } : x)));
+        setVqSel((s) => (s && s.id === item.id ? { ...s, status: "meninjau", note } : s));
+        toast("Pertanyaan terkirim", "Klien melihatnya pada kartu pengajuan di portal Corplex.", "ok");
+      });
+    } });
+  };
+  const bukaVq = (x: VQ) => {
+    setVqSel(x);
+    if (x.status === "masuk") {
+      void api.verifq.review(x.id).then((r) => {
+        if (!r.ok) return;
+        setVq((xs) => xs.map((y) => (y.id === x.id ? { ...y, status: "meninjau" } : y)));
+        setVqSel((s) => (s && s.id === x.id ? { ...s, status: "meninjau" } : s));
+        log(`Advokat MENINJAU: ${x.title} (${tenNama(x.tenant_id)})`);
+      });
+    }
+  };
+
   /* Drawer catatan — pengganti window.prompt (dilarang standar Enterprise).
    * {label, def, onOk} generik: dipakai Koreksi, Tolak antrean, dan Tolak approval. */
   const [noteForm, setNoteForm] = useState<{ title: string; label: string; val: string; onOk: (v: string) => void } | null>(null);
 
   const putuskanVq = async (item: VQ, status: "verified" | "rejected", modeKoreksi?: boolean) => {
     if (status === "rejected") {
-      setNoteForm({ title: `Tolak — ${item.title}`, label: "Catatan profesional (wajib — dikirim ke klien)", val: "Perlu penyesuaian dasar hukum pada bagian III", onOk: (v) => void eksekusiVq(item, "rejected", "Catatan: " + v) });
+      setNoteForm({ title: `Tolak — ${item.title}`, label: "Catatan profesional (wajib — dikirim ke klien)", val: "", onOk: (v) => void eksekusiVq(item, "rejected", "Catatan: " + v) });
       return;
     }
     if (modeKoreksi) {
-      setNoteForm({ title: `Koreksi — ${item.title}`, label: "Ringkasan koreksi (tersimpan sebagai versi baru)", val: "Klausul denda disesuaikan ke standar library", onOk: (v) => void eksekusiVq(item, "verified", `Disetujui dengan koreksi: ${v} · versi baru dibuat · ttd digital.`) });
+      setNoteForm({ title: `Koreksi — ${item.title}`, label: "Ringkasan koreksi (tersimpan sebagai versi baru)", val: "", onOk: (v) => void eksekusiVq(item, "verified", `Disetujui dengan koreksi: ${v} · versi baru dibuat · ttd digital.`) });
       return;
     }
     await eksekusiVq(item, "verified", "Disetujui tanpa koreksi · ttd digital atas hash versi final.");
@@ -242,6 +325,7 @@ function AdminInner() {
     const r = await api.verifq.decide(item.id, status, note);
     if (!r.ok) return toast("Gagal", r.error.message, "warn");
     setVq((xs) => xs.map((x) => x.id === item.id ? { ...x, status, note } : x));
+    setVqSel((s) => (s && s.id === item.id ? { ...s, status, note } : s));
     log(`Advokat ${status === "verified" ? "SETUJUI" : "TOLAK"}: ${item.title} (${item.tenant_id})`);
     toast(status === "verified" ? "TERVERIFIKASI ADVOKAT ✓" : "Ditolak dengan catatan", status === "verified" ? "Ttd digital tercatat · status klien diperbarui." : "Catatan dikirim — klien dapat memperbaiki & mengajukan ulang.", status === "verified" ? "ok" : "warn");
   };
@@ -252,11 +336,11 @@ function AdminInner() {
     const code = genCode();
     const res = await admin.act("create_invite", { code, email: nEmail, tier: nTier, expMs: isLifetime ? 0 : nExp });
     if (!res.ok) { toast("Gagal membuat kode", res.error.message, "warn"); return; }
-    setInv((xs) => [{ code, email: nEmail, tier: nTier, expiresAt: isLifetime || !nExp ? null : now() + nExp, status: "active" }, ...xs]);
+    setInv((xs) => [{ code, email: nEmail, tier: nTier, expiresAt: isLifetime || !nExp ? null : now() + nExp, createdAt: now(), status: "active" }, ...xs]);
     setNOpen(false); setNEmail("");
-    void navigator.clipboard?.writeText(`${location.origin}/login?kode=${code}`).catch(() => {});
+    void navigator.clipboard?.writeText(code).catch(() => {});
     log(`Kode ${code} dibuat (${nTier}${nEmail ? " → " + nEmail : ""})`);
-    toast("Kode dibuat & link disalin", `${code} · ${nTier} · 2 kursi — bagikan ke calon klien.`, "ok");
+    toast("Kode dibuat & disalin", `${code} · ${nTier} · 2 kursi — bagikan ke calon klien.`, "ok");
   });
 
   const cabut = async (code: string) => {
@@ -283,13 +367,13 @@ function AdminInner() {
 
   const putuskan = async (p: Pending, ok: boolean, alasan = "") => {
     if (!ok && !alasan) {
-      setNoteForm({ title: `Tolak pendaftaran — ${p.nama}`, label: "Alasan penolakan (wajib, dikirim ke pendaftar)", val: "Dokumen NIB tidak terbaca — mohon unggah ulang.", onOk: (v) => void putuskan(p, false, v) });
+      setNoteForm({ title: `Tolak pendaftaran — ${p.nama}`, label: "Alasan penolakan (wajib, dikirim ke pendaftar)", val: "", onOk: (v) => void putuskan(p, false, v) });
       return;
     }
     const res = await admin.decideTenant(p.id, ok, alasan);
     if (!res.ok) return toast("Gagal", res.error.message, "warn");
     setPend((xs) => xs.filter((x) => x.id !== p.id));
-    if (ok) setTens((xs) => [...xs, { id: p.id, nama: p.nama, tier: "Demo", seats: [{ nama: p.pendaftar, email: p.email, peran: "Pendaftar", status: "aktif" }] }]);
+    if (ok) setTens((xs) => [...xs, { id: p.id, nama: p.nama, sector: "—", entity: "—", tier: "Demo", sejak: p.masuk, exp: new Date(Date.now() + 24 * 3600_000).toISOString(), seats: [{ nama: p.pendaftar, email: p.email, peran: "Pendaftar", status: "aktif" }] }]);
     log(`${p.nama} ${ok ? "DISETUJUI — tenant aktif" : "DITOLAK: " + alasan}`);
     toast(ok ? "Disetujui — tenant aktif" : "Ditolak", ok ? `${p.nama} kini bisa login. Email selamat datang terkirim.` : `Alasan dikirim ke ${p.email}.`, ok ? "ok" : "warn");
   };
@@ -301,11 +385,12 @@ function AdminInner() {
     return (x.code + " " + x.email).toLowerCase().includes(q.toLowerCase());
   });
 
-  const S = { side: { width: 232, background: "linear-gradient(180deg,#0A1832,#060E1D)", borderRight: "1px solid rgba(130,160,215,.1)", padding: "18px 12px", display: "flex", flexDirection: "column" as const, gap: 4 },
+  const S = { side: { width: 232, flexShrink: 0, position: "sticky" as const, top: 0, height: "100vh", overflowY: "auto" as const, background: "linear-gradient(180deg,#0A1832,#060E1D)", borderRight: "1px solid rgba(130,160,215,.1)", padding: "18px 12px", display: "flex", flexDirection: "column" as const, gap: 4 },
     item: (on: boolean) => ({ display: "flex", alignItems: "center", gap: 10, padding: "10px 13px", borderRadius: 10, cursor: "pointer", fontSize: 13, fontWeight: 600, color: on ? "#fff" : "#A9BDE4", background: on ? "linear-gradient(90deg,rgba(58,96,166,.3),rgba(58,96,166,.05))" : "none", borderLeft: on ? "3px solid var(--gold-bright)" : "3px solid transparent" }) };
 
   return (
-    <div style={{ display: "flex", minHeight: "100vh", background: "var(--bg, #091124)" }}>
+    // overflowX clip (bukan hidden) — hidden merusak position:sticky sidebar (pelajaran kasus sidebar Corplex)
+    <div style={{ display: "flex", minHeight: "100vh", maxWidth: "100vw", overflowX: "clip", background: "var(--bg, #091124)" }}>
       <style>{`
         .adm-drop{display:grid;grid-template-rows:0fr;transition:grid-template-rows .38s cubic-bezier(.4,0,.2,1)}
         .adm-drop.open{grid-template-rows:1fr}
@@ -315,6 +400,7 @@ function AdminInner() {
         .adm-drop.open .it:nth-child(1){transition-delay:.08s}
         .adm-drop.open .it:nth-child(2){transition-delay:.16s}
         .adm-drop.open .it:nth-child(3){transition-delay:.24s}
+        .dash-tbl th:last-child,.dash-tbl td:last-child{text-align:left}
       `}</style>
       {/* sidebar */}
       <aside style={S.side}>
@@ -325,7 +411,12 @@ function AdminInner() {
             <span style={{ fontFamily: "var(--mono)", fontSize: 8, letterSpacing: ".18em", color: "var(--gold-deep)" }}>SUPER ADMIN · RAHASIA</span>
           </div>
         </div>
-        <div style={S.item(menu === "beranda")} onClick={() => setMenu("beranda")}><LayoutDashboard size={15} /> Beranda</div>
+        <div style={S.item(menu === "beranda")} onClick={() => { setMenu("beranda"); if (!mx) void loadMetrik(); }}><LayoutDashboard size={15} /> Beranda</div>
+        {/* Konsol Advokat bukan bagian dropdown — langsung di bawah Beranda (arahan owner) */}
+        <div style={S.item(menu === "advokat")} onClick={() => setMenu("advokat")}>
+          <Gavel size={15} /> Konsol Advokat
+          {vq.filter((x) => x.status === "masuk" || x.status === "meninjau").length > 0 && <span style={{ marginLeft: "auto", background: "linear-gradient(145deg,var(--gold-bright),var(--gold))", color: "#060E1D", fontFamily: "var(--mono)", fontSize: 9, fontWeight: 700, minWidth: 17, height: 17, borderRadius: 100, display: "grid", placeItems: "center", padding: "0 5px" }}>{vq.filter((x) => x.status === "masuk" || x.status === "meninjau").length}</span>}
+        </div>
         {/* parent dropdown — teks saja, klik = buka/tutup */}
         <div style={{ ...S.item(false), color: authOpen ? "#fff" : "#A9BDE4" }} onClick={() => setAuthOpen((v) => !v)}>
           <ShieldCheck size={15} /> Autentikasi &amp; Akses
@@ -341,205 +432,351 @@ function AdminInner() {
             </div>
           </div>
         </div>
-        <div style={S.item(menu === "advokat")} onClick={() => setMenu("advokat")}>
-          <Gavel size={15} /> Konsol Advokat
-          {vq.filter((x) => x.status === "masuk").length > 0 && <span style={{ marginLeft: "auto", background: "linear-gradient(145deg,var(--gold-bright),var(--gold))", color: "#060E1D", fontFamily: "var(--mono)", fontSize: 9, fontWeight: 700, minWidth: 17, height: 17, borderRadius: 100, display: "grid", placeItems: "center", padding: "0 5px" }}>{vq.filter((x) => x.status === "masuk").length}</span>}
-        </div>
-        <div style={S.item(menu === "modul")} onClick={() => setMenu("modul")}><LayoutDashboard size={15} /> Data Modul</div>
         <div style={S.item(menu === "pusat")} onClick={() => setMenu("pusat")}><Lock size={15} /> Pusat Data</div>
-        <div style={S.item(menu === "metrik")} onClick={() => { setMenu("metrik"); if (!mx) void loadMetrik(); }}><BadgeCheck size={15} /> Metrik</div>
         <div style={{ ...S.item(false), marginTop: "auto" }} onClick={() => { sessionStorage.removeItem(SESSION_KEY); void sb.auth.signOut().finally(() => location.reload()); }}><LogOut size={15} /> Keluar</div>
         <div style={{ fontFamily: "var(--mono)", fontSize: 8.5, color: "#5E76A8", padding: 10, lineHeight: 1.8 }}>SERVICE-ROLE · SERVER-SIDE<br />SEMUA AKSI MASUK AUDIT</div>
       </aside>
 
       {/* konten */}
-      <main style={{ flex: 1, padding: "26px 30px", overflow: "auto" }}>
+      <main className="adm-main" style={{ flex: 1, minWidth: 0, padding: "26px 30px", overflowX: "hidden" }}>
         {menu === "beranda" ? (
           <div>
-            <h1 style={{ fontFamily: "var(--serif)", color: "#fff", fontSize: 24, marginBottom: 18 }}>Beranda</h1>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 4 }}>
+              <h1 style={{ fontFamily: "var(--serif)", color: "#fff", fontSize: 24, margin: 0 }}>Beranda</h1>
+              <button className="btn btn-line btn-sm" onClick={() => void loadMetrik()}>Muat Ulang</button>
+            </div>
+            <p style={{ color: "var(--txt2)", fontSize: 12.5, marginBottom: 16 }}>Dasbor perusahaan — dihitung dari database operasional sendiri, bukan pelacak pihak ketiga (PDP-aman, zero-budget).</p>
+
+            {/* KPI utama — adopsi & aktivitas nyata (dari /api/admin metrics) */}
+            <div className="grid g4 mb16">
+              <div className="kpi"><b>{mx ? mx.tenantAktif : tens.length}</b><span>Perusahaan aktif</span></div>
+              <div className="kpi"><b>{mx ? mx.aktif30h : "—"}</b><span>Aktif 30 hari (isi data)</span></div>
+              <div className="kpi"><b>{mx ? mx.karyawan : "—"}</b><span>Total karyawan</span></div>
+              <div className="kpi"><b>{mx ? mx.dokumen : "—"}</b><span>Dokumen tersimpan</span></div>
+            </div>
+            {/* KPI operasional — onboarding, kursi, antrean advokat */}
             <div className="grid g4 mb16">
               <div className="kpi"><b>{inv.filter((x) => chipOf(x)[1] === "AKTIF").length}</b><span>Kode undangan aktif</span></div>
               <div className="kpi"><b>{pend.length}</b><span>Menunggu approval</span></div>
-              <div className="kpi"><b>{tens.length}</b><span>Perusahaan aktif</span></div>
               <div className="kpi"><b>{tens.reduce((s, t) => s + t.seats.filter((x) => x.status !== "nonaktif").length, 0)}</b><span>Kursi terpakai</span></div>
+              <div className="kpi"><b>{mx ? mx.vqMasuk : vq.filter((x) => x.status === "masuk" || x.status === "meninjau").length}</b><span>Antre verifikasi advokat</span></div>
             </div>
-            <div className="panel"><h4>Audit — Aksi Terakhir</h4>
-              <div className="rows">{audit.slice(0, 8).map((a, i) => <div key={i} className="row"><span style={{ fontSize: 12 }}>{a}</span></div>)}</div>
+
+            <div className="grid g2 mb16" style={{ alignItems: "start" }}>
+              <div className="panel" style={{ minWidth: 0 }}><h4>Adopsi per Modul</h4>
+                {/* tinggi statis = kapasitas 10 baris (41px) + header; scroll-Y bila >10, X mati (info 2 kolom) */}
+                <div className="tblwrap" style={{ height: 452, overflowX: "hidden", overflowY: "auto" }}>
+                  <table className="dash-tbl" style={{ minWidth: 0 }}>
+                    <thead><tr><th>Modul</th><th>Jumlah Rekam</th></tr></thead>
+                    <tbody>
+                      {mx && Object.entries(mx.perModul).sort((a, b) => b[1] - a[1]).map(([m, n]) => <tr key={m}><td>{m.toUpperCase()}</td><td>{n}</td></tr>)}
+                      {mx && !Object.keys(mx.perModul).length && <tr><td colSpan={2} style={{ color: "var(--muted)" }}>Belum ada rekam modul.</td></tr>}
+                      {!mx && <tr><td colSpan={2} style={{ color: "var(--muted)" }}>Memuat…</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <div className="panel" style={{ minWidth: 0 }}><h4>Verifikasi &amp; Pipeline</h4>
+                <div className="tblwrap" style={{ height: 452, overflowX: "hidden", overflowY: "auto" }}>
+                  <table className="dash-tbl" style={{ minWidth: 0 }}>
+                    <thead><tr><th>Tahap</th><th>Jumlah</th></tr></thead>
+                    <tbody>
+                      <tr><td>Antre verifikasi advokat</td><td>{mx ? mx.vqMasuk : "—"}</td></tr>
+                      <tr><td>Terverifikasi advokat</td><td>{mx ? mx.vqVerified : "—"}</td></tr>
+                      <tr><td>Pendaftaran menunggu approval</td><td>{mx ? mx.tenantPending : pend.length}</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+            <p className="note mb16"><b>Adopsi per Modul</b> = jumlah rekam nyata tiap modul lintas seluruh tenant (modul terbanyak dipakai di atas) — ukuran seberapa dalam klien memakai Corplex. <b>Verifikasi &amp; Pipeline</b> = alur kerja advokat: berapa antre ditinjau, berapa sudah terverifikasi, dan berapa pendaftaran perusahaan menunggu approval. Aktivitas menurun = sinyal awal churn.</p>
+
+            <div className="panel"><h4>Audit — Aksi Terakhir (tabel audit_logs)</h4>
+              <div className="tblwrap" style={{ maxHeight: 360 }}>
+                <table>
+                  <thead><tr><th>Aksi</th><th>Detail</th><th>Waktu</th></tr></thead>
+                  <tbody>
+                    {audit.map((a, i) => (
+                      <tr key={i}>
+                        <td>{a.action}</td>
+                        <td style={{ maxWidth: 380, whiteSpace: "normal", overflowWrap: "anywhere" }}>{typeof a.detail === "string" ? a.detail : JSON.stringify(a.detail)?.slice(0, 120)}</td>
+                        <td><span className="sub mono" style={{ fontSize: 9.5 }}>{new Date(a.created_at).toLocaleString("id-ID", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span></td>
+                      </tr>
+                    ))}
+                    {!audit.length && <tr><td colSpan={3} style={{ color: "var(--muted)" }}>Belum ada aksi tercatat.</td></tr>}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
-        ) : menu === "modul" ? (
+        ) : menu === "pusat" ? (
+          /* Pusat Data = daftar perusahaan + Mode Pengawasan (Detail dihapus — keputusan owner:
+           * lihat & unduh data langsung dari dashboard Corplex klien via Masuk Dashboard). */
           <div>
-            <h1 style={{ fontFamily: "var(--serif)", color: "#fff", fontSize: 24, marginBottom: 4 }}>Data Modul</h1>
-            <p style={{ color: "var(--txt2)", fontSize: 12.5, marginBottom: 16 }}>Rekap rekam nyata seluruh tenant — langsung dari tabel Supabase, ter-update realtime saat modul menulis data.</p>
+            <h1 style={{ fontFamily: "var(--serif)", color: "#fff", fontSize: 24, marginBottom: 4 }}>Pusat Data</h1>
+            <p style={{ color: "var(--txt2)", fontSize: 12.5, marginBottom: 16 }}>Seluruh perusahaan klien — gunakan <b>Masuk Dashboard</b> untuk melihat &amp; mengunduh datanya dari dashboard Corplex mereka. Setiap akses tercatat pada jejak audit.</p>
             <div className="panel">
-              <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
-                <button className="btn btn-line btn-sm" disabled={modLoading} onClick={() => void muatModul()}>{modLoading ? "Memuat…" : "Muat Ulang"}</button>
-              </div>
               <div className="tblwrap">
                 <table>
-                  <thead><tr><th>Tenant</th><th>Karyawan</th><th>SP</th><th>Izin</th><th>Aset</th><th>HKI</th><th>Polis</th><th>Perjanjian</th><th>Pajak</th><th>Kalkulator</th><th>Vault</th><th>Absensi</th><th>Verifikasi</th></tr></thead>
+                  <thead><tr><th>Perusahaan</th><th>Bidang Usaha</th><th>Badan</th><th>Paket</th><th>Kursi</th><th>Terdaftar</th><th>Berlaku Sampai</th><th>Aksi</th></tr></thead>
+                  <tbody>
+                    {/* t1 = tenant demo (tanpa baris tenants) — datanya nyata, Edit/Hapus tak berlaku */}
+                    {[{ id: "t1", nama: "PT Contoh Sejahtera (Demo)", sector: "FMCG / Distribusi", entity: "PT", tier: "Demo", sejak: "—", exp: null as string | null, seats: [] as Seat[] }, ...tens].map((t) => (
+                      <tr key={t.id}>
+                        <td>{t.nama}</td>
+                        <td>{t.sector}</td>
+                        <td>{t.entity}</td>
+                        <td><Chip c="c-mon">{t.tier.toUpperCase()}</Chip></td>
+                        <td>{t.id === "t1" ? "—" : t.seats.filter((s) => s.status !== "nonaktif").length}</td>
+                        <td>{t.sejak}</td>
+                        <td>
+                          <Chip c={expLabel(t.exp).c}>{expLabel(t.exp).t}</Chip>
+                          {t.exp && <span className="sub" style={{ display: "block", fontSize: 9.5 }}>{new Date(t.exp).toLocaleString("id-ID", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>}
+                        </td>
+                        <td><div style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+                          {t.id !== "t1" && t.exp && (
+                            <button className="btn btn-line btn-sm" title="Perpanjang 24 jam dari tenggat" onClick={async () => {
+                              const r = await admin.extendTenant(t.id, 24);
+                              if (!r.ok) return toast("Gagal memperpanjang", r.error.message, "warn");
+                              setTens((xs) => xs.map((x) => (x.id === t.id ? { ...x, exp: r.data.expires_at } : x)));
+                              log("extend_tenant");
+                              toast("Diperpanjang +24 jam", `${t.nama} kini berlaku s.d. ${r.data.expires_at ? new Date(r.data.expires_at).toLocaleString("id-ID", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "—"}.`, "ok");
+                            }}>+24 jam</button>
+                          )}
+                          <button className="btn btn-gold btn-sm" onClick={() => masukDashboard(t)}><Lock size={11} style={{ display: "inline", marginRight: 4 }} />Masuk Dashboard</button>
+                          {/* titik-3: Edit/Hapus — t1 (demo bawaan) dijawab jujur, tak bisa diubah */}
+                          <RowActions
+                            onEdit={() => t.id === "t1" ? toast("Tenant demo bawaan", "PT Contoh Sejahtera tidak memiliki baris database untuk diedit.", "warn") : bukaEditTenant(t)}
+                            onDelete={() => t.id === "t1" ? toast("Tenant demo bawaan", "Tenant demo tidak dapat dihapus.", "warn") : void hapusTenant(t)} />
+                        </div></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="note mt16">Hapus mencabut akses login perusahaan; data modul &amp; dokumen tetap tersimpan sebagai arsip (tidak ikut terhapus).</p>
+            </div>
+
+            {/* Modul Per Tenant (dulu menu Data Modul) — di bawah tabel perusahaan; realtime */}
+            <div style={{ marginTop: 28 }}>
+              <h1 style={{ fontFamily: "var(--serif)", color: "#fff", fontSize: 24, marginBottom: 4 }}>Modul Per Tenant</h1>
+              <p style={{ color: "var(--txt2)", fontSize: 12.5, marginBottom: 16 }}>Rekap rekam nyata seluruh tenant — langsung dari tabel Supabase, ter-update realtime saat modul menulis data.</p>
+              <div className="panel">
+              {/* tinggi statis = kapasitas 10 baris; scroll-Y bila >10. X tetap auto (13 kolom, lebar) */}
+              <div className="tblwrap" style={{ height: 452 }}>
+                <table>
+                  <thead><tr><th>Tenant</th><th>Karyawan</th><th>SP</th><th>Izin</th><th>Aset</th><th>HKI</th><th>Polis</th><th>Perjanjian</th><th>Pajak</th><th>Kalkulator</th><th>Vault</th><th>Absensi</th><th>Verifikasi</th><th>Chat AI</th><th>Draf AI</th></tr></thead>
                   <tbody>
                     {modStats.map((s) => (
                       <tr key={s.tenant}>
                         <td><b>{tenNama(s.tenant)}</b></td>
                         <td>{s.emp}</td><td>{s.mods.sp || 0}</td><td>{s.mods.lic || 0}</td><td>{s.mods.assets || 0}</td>
                         <td>{s.mods.hki || 0}</td><td>{s.mods.pol || 0}</td><td>{s.mods.agr || 0}</td><td>{s.mods.tax || 0}</td>
-                        <td>{s.mods.kalk || 0}</td><td>{s.mods.vault || 0}</td><td>{s.att}</td><td>{s.vq}</td>
+                        <td>{s.mods.kalk || 0}</td><td>{s.mods.vault || 0}</td><td>{s.att}</td><td>{s.vq}</td><td>{s.chat}</td><td>{s.draf}</td>
                       </tr>
                     ))}
-                    {!modStats.length && !modLoading && <tr><td colSpan={13} style={{ color: "var(--muted)" }}>Belum ada rekam modul di database.</td></tr>}
+                    {!modStats.length && !modLoading && <tr><td colSpan={15} style={{ color: "var(--muted)" }}>Belum ada rekam modul di database.</td></tr>}
                   </tbody>
                 </table>
               </div>
-              <p className="note mt16">Angka = jumlah baris nyata di <b>employees</b>, <b>module_records</b> (per modul), <b>attendance</b>, dan <b>verification_queue</b>. Nol seed/dummy.</p>
-            </div>
-          </div>
-        ) : menu === "metrik" ? (
-          <div>
-            <h1 style={{ fontFamily: "var(--serif)", color: "#fff", fontSize: 24, marginBottom: 4 }}>Metrik</h1>
-            <p style={{ color: "var(--txt2)", fontSize: 12.5, marginBottom: 16 }}>Dihitung dari database operasional sendiri — bukan pelacak pihak ketiga (PDP-aman, zero-budget). <button className="btn btn-line btn-sm" style={{ marginLeft: 8 }} onClick={() => void loadMetrik()}>Muat Ulang</button></p>
-            {!mx ? <p className="note">Memuat…</p> : (
-              <>
-                <div className="grid g4 mb16">
-                  <div className="kpi"><b>{mx.tenantAktif}</b><span>Perusahaan aktif</span></div>
-                  <div className="kpi"><b>{mx.aktif30h}</b><span>Aktif 30 hari (isi data)</span></div>
-                  <div className="kpi"><b>{mx.karyawan}</b><span>Total karyawan</span></div>
-                  <div className="kpi"><b>{mx.dokumen}</b><span>Dokumen tersimpan</span></div>
-                </div>
-                <div className="grid g2">
-                  <div className="panel"><h4>Adopsi per Modul</h4>
-                    <div className="rows">
-                      {Object.entries(mx.perModul).sort((a, b) => b[1] - a[1]).map(([m, n]) => <Row key={m} b={m.toUpperCase()} right={<Chip c="c-mon">{n}</Chip>} />)}
-                      {!Object.keys(mx.perModul).length && <span className="sub" style={{ fontSize: 12 }}>Belum ada rekam modul.</span>}
-                    </div>
-                  </div>
-                  <div className="panel"><h4>Verifikasi &amp; Pipeline</h4>
-                    <div className="rows">
-                      <Row b="Antre verifikasi advokat" right={<Chip c="c-draft">{mx.vqMasuk}</Chip>} />
-                      <Row b="Terverifikasi advokat" right={<Chip c="c-ver">{mx.vqVerified}</Chip>} />
-                      <Row b="Pendaftaran menunggu approval" right={<Chip c="c-draft">{mx.tenantPending}</Chip>} />
-                    </div>
-                  </div>
-                </div>
-                <p className="note mt16">Bintang Utara = perusahaan aktif yang benar-benar mengisi rekam. Aktivitas menurun = sinyal awal churn (tindak lanjut MRWP).</p>
-              </>
-            )}
-          </div>
-        ) : menu === "pusat" ? (
-          <div>
-            <h1 style={{ fontFamily: "var(--serif)", color: "#fff", fontSize: 24, marginBottom: 4 }}>Pusat Data</h1>
-            <p style={{ color: "var(--txt2)", fontSize: 12.5, marginBottom: 16 }}>Akses &amp; unduh seluruh dokumen klien — dasar perjanjian &amp; NDA (MRWP firma hukum klien). Setiap akses tercatat pada jejak audit.</p>
-            <div className="grid" style={{ gridTemplateColumns: "240px 1fr", gap: 16, alignItems: "start" }}>
-              <div className="panel">
-                <h4>Perusahaan</h4>
-                <div className="rows">
-                  {tens.map((t) => <button key={t.id} className={`btn ${pdTenant === t.id ? "btn-gold" : "btn-line"} btn-sm`} style={{ justifyContent: "flex-start" }} onClick={() => void loadPusat(t.id)}>{t.nama}</button>)}
-                  {!tens.length && <span className="sub" style={{ fontSize: 12 }}>Belum ada perusahaan aktif.</span>}
-                </div>
-              </div>
-              <div className="panel">
-                {!pdTenant ? <p className="note">Pilih perusahaan untuk membuka seluruh dokumennya.</p> : pdLoading ? <p className="note">Memuat…</p> : (
-                  <>
-                    <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
-                      <div className="kpi"><b>{pdDocs.length}</b><span>Dokumen</span></div>
-                      <div className="kpi"><b>{pdKaryawan}</b><span>Karyawan</span></div>
-                    </div>
-                    <div className="tblwrap">
-                      <table>
-                        <thead><tr><th>Kelompok</th><th>Dokumen</th><th>Jenis</th><th>Aksi</th></tr></thead>
-                        <tbody>
-                          {pdDocs.map((d, i) => (
-                            <tr key={i}>
-                              <td><span className="mono" style={{ fontSize: 10 }}>{d.kel}</span></td>
-                              <td>{d.nama}</td><td>{d.jenis}</td>
-                              <td><div style={{ display: "inline-flex", gap: 6 }}>
-                                <button className="btn btn-line btn-sm" onClick={() => setDocPrev({ url: d.url, nama: d.nama })}>Preview</button>
-                                <a className="btn btn-navy btn-sm" href={d.url} target="_blank" rel="noreferrer"><Download size={11} /> Unduh</a>
-                              </div></td>
-                            </tr>
-                          ))}
-                          {!pdDocs.length && <tr><td colSpan={4} style={{ color: "var(--muted)" }}>Tak ada dokumen tersimpan untuk perusahaan ini.</td></tr>}
-                        </tbody>
-                      </table>
-                    </div>
-                    <p className="note mt16">Unduhan penuh sesuai perjanjian — tanpa watermark. Akses tercatat diam-diam (buku tamu) untuk pertanggungjawaban.</p>
-                  </>
-                )}
+              <p className="note mt16">Angka = jumlah baris nyata di <b>employees</b>, <b>module_records</b> (per modul), <b>attendance</b>, dan <b>verification_queue</b>. <b>Chat AI</b> &amp; <b>Draf AI</b> hanya hitungan sesi (sinyal aktivitas) — isi percakapan &amp; draf klien TIDAK diakses (kerahasiaan PDP). Nol seed/dummy.</p>
               </div>
             </div>
           </div>
         ) : menu === "advokat" ? (
-          <div>
-            <h1 style={{ fontFamily: "var(--serif)", color: "#fff", fontSize: 24, marginBottom: 4 }}>Konsol Advokat</h1>
-            <p style={{ color: "var(--txt2)", fontSize: 12.5, marginBottom: 16 }}>Antrean verifikasi dari seluruh tenant — setiap keputusan bertanda tangan digital dan tercatat pada jejak audit.</p>
-            <div className="panel">
-              <div className="tblwrap">
-                <table>
-                  <thead><tr><th>Tenant</th><th>Pengajuan</th><th>Label</th><th>Aksi</th></tr></thead>
-                  <tbody>
-                    {vq.filter((x) => x.status === "masuk").map((x) => (
-                      <tr key={x.id}>
-                        <td><b style={{ fontSize: 12 }}>{tenNama(x.tenant_id)}</b></td>
-                        <td><b>{x.title}</b><span className="sub">{x.meta}</span></td>
-                        <td><Chip c={x.chip}>{x.label}</Chip></td>
-                        <td>
-                          <div className="flex items-center gap-2">
-                            <button className="btn btn-ok btn-sm" onClick={() => void putuskanVq(x, "verified")}>Setujui</button>
-                            <button className="btn btn-navy btn-sm" onClick={() => void putuskanVq(x, "verified", true)}>Koreksi</button>
-                            <button className="btn btn-red btn-sm" onClick={() => void putuskanVq(x, "rejected")}>Tolak</button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                    {!vq.filter((x) => x.status === "masuk").length && <tr><td colSpan={4} style={{ color: "var(--muted)" }}>{vqLoading ? "Memuat dari Supabase…" : "Antrean kosong — seluruh pengajuan telah diputuskan."}</td></tr>}
-                  </tbody>
-                </table>
+          vqSel ? (
+            /* ——— DETAIL PENGAJUAN (halaman penuh) — aksi hanya di sini ——— */
+            <div>
+              <button className="btn btn-line btn-sm" style={{ marginBottom: 14 }} onClick={() => setVqSel(null)}>← Kembali ke antrean</button>
+              {/* Urutan baca legal officer: 1 judul+status · 2 MASALAHNYA APA · 3 siapa & metadata · 4 catatan · 5 bukti · 6 putusan */}
+              <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                <h1 style={{ fontFamily: "var(--serif)", color: "#fff", fontSize: 22, margin: 0, flex: 1, minWidth: 260 }}>{vqSel.title}</h1>
+                <Chip c={vqSel.status === "verified" ? "c-ver" : vqSel.status === "rejected" ? "c-red" : vqSel.status === "meninjau" ? "c-gold" : "c-draft"}>{vqSel.status === "verified" ? "TERVERIFIKASI ✓" : vqSel.status === "rejected" ? "DITOLAK" : vqSel.status === "meninjau" ? "SEDANG DITINJAU" : "MASUK"}</Chip>
               </div>
-              <p className="note mt16"><b>Prinsip tata kelola:</b> nasihat hukum final hanya lahir dari status TERVERIFIKASI ADVOKAT — tanda tangan digital atas hash versi final, dalam tanggung jawab profesional advokat MRWP.</p>
-            </div>
-            {vq.some((x) => x.status !== "masuk") && (
-              <div className="panel" style={{ marginTop: 16 }}><h4>Keputusan Terakhir</h4>
-                <div className="rows">
-                  {vq.filter((x) => x.status !== "masuk").slice(0, 6).map((x) => (
-                    <div key={x.id} className="row"><div><b>{x.title}</b><span className="d">{x.note}</span></div>
-                      <div className="right"><Chip c={x.status === "verified" ? "c-ver" : "c-red"}>{x.status === "verified" ? "TERVERIFIKASI ✓" : "DITOLAK"}</Chip></div>
+              <p style={{ color: "var(--txt2)", fontSize: 12.5, margin: "4px 0 16px" }}>{vqSel.meta}</p>
+
+              {/* 2 · URAIAN MASALAH — hal pertama yang dibaca advokat, lebar penuh */}
+              <div className="panel boxed" style={{ borderLeft: "3px solid var(--gold)" }}>
+                <h4>Uraian Masalah dari Klien</h4>
+                {vqSel.detail
+                  ? <p style={{ fontSize: 13.5, color: "var(--ink)", lineHeight: 1.8, whiteSpace: "pre-wrap", margin: 0, maxWidth: 860 }}>{vqSel.detail}</p>
+                  : <p style={{ fontSize: 12.5, color: "var(--muted)", margin: 0 }}>— tidak ada uraian tersimpan (pengajuan dibuat sebelum pembaruan). Gunakan <b>Minta Info</b> untuk meminta konteks dari klien.</p>}
+              </div>
+
+              {/* 3 · dua kolom SEJAJAR: baris label-nilai identik (tinggi & gaya sama) */}
+              <div className="grid g2" style={{ gap: 16, alignItems: "stretch", marginTop: 16 }}>
+                {(() => {
+                  const t = tens.find((x) => x.id === vqSel.tenant_id);
+                  const baris = (rows: readonly (readonly [string, React.ReactNode])[]) => rows.map(([l, v]) => (
+                    <div key={l} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, padding: "10px 0", borderTop: "1px solid rgba(255,255,255,.06)", fontSize: 12.5, minHeight: 41 }}>
+                      <span style={{ color: "var(--muted)", flexShrink: 0 }}>{l}</span>
+                      <span style={{ color: "var(--ink)", textAlign: "right", overflowWrap: "anywhere" }}>{v}</span>
                     </div>
-                  ))}
-                </div>
+                  ));
+                  return (<>
+                    <div className="panel boxed" style={{ height: "100%" }}>
+                      <h4>Informasi Pengajuan</h4>
+                      {baris([
+                        ["Label", <Chip key="l" c={vqSel.chip}>{vqSel.label}</Chip>],
+                        ["Masuk antrean", vqSel.created_at ? new Date(vqSel.created_at).toLocaleString("id-ID", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—"],
+                        ["SLA", vqSel.sla || "SLA 24 JAM"],
+                        ["Rekam sumber", vqSel.ref_mod ? `${SPECS[vqSel.ref_mod]?.title || vqSel.ref_mod} (tersaji di bawah)` : "— tidak tertaut (pengajuan lama)"],
+                      ] as const)}
+                    </div>
+                    <div className="panel boxed" style={{ height: "100%" }}>
+                      <h4>Profil Pelapor</h4>
+                      {baris([
+                        ["Perusahaan", tenNama(vqSel.tenant_id)],
+                        ["Paket", t?.tier || "Demo"],
+                        ["Pengaju", vqSel.created_by || "— tak tercatat (pengajuan lama)"],
+                        ["Kursi aktif", t ? t.seats.filter((s) => s.status !== "nonaktif").map((s) => s.email).join(", ") || "—" : "—"],
+                      ] as const)}
+                    </div>
+                  </>);
+                })()}
               </div>
-            )}
-          </div>
+
+              {/* 4 · catatan/pertanyaan advokat — kotak sendiri lebar penuh (tak lagi nyempil di kolom) */}
+              {vqSel.note && (
+                <div className="panel boxed" style={{ marginTop: 16, borderLeft: "3px solid var(--gold-bright)" }}>
+                  <h4>Catatan / Pertanyaan Advokat</h4>
+                  <p style={{ fontSize: 13, color: "var(--ink)", lineHeight: 1.7, whiteSpace: "pre-wrap", margin: 0 }}>{vqSel.note}</p>
+                </div>
+              )}
+
+              {/* SMART ATTACHMENT — chip lampiran; klik = data + dokumen berganti instan (nol reload).
+                  Viewer kanan sticky: narasi kiri discroll, bukti terkunci di pandangan. */}
+              {lampiran(vqSel).length > 0 && (
+                <div className="panel boxed" style={{ marginTop: 16 }}>
+                  <h4>Lampiran &amp; Bukti — {lampiran(vqSel).length} rekam tertaut</h4>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "4px 0 14px" }}>
+                    {lampiran(vqSel).map((rf) => (
+                      <button key={rf.id} className={`fchip${refAktif?.id === rf.id ? " on" : ""}`} onClick={() => setRefAktif(rf)}>
+                        📎 {rf.label}
+                      </button>
+                    ))}
+                  </div>
+                  {!srcRec ? <p style={{ fontSize: 12.5, color: "var(--muted)" }}>Memuat rekam…</p> : (
+                    <div className="grid g2" style={{ gap: 16, alignItems: "start" }}>
+                      <div>
+                        {(() => {
+                          const spec = refAktif ? SPECS[refAktif.mod] : undefined;
+                          if (spec && refAktif) {
+                            const vals = spec.fromData(stripId(refAktif.mod, srcRec.data as RecRow));
+                            return spec.fields.map((f2) => (
+                              <div key={f2.k} style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "7px 0", borderTop: "1px solid rgba(255,255,255,.06)", fontSize: 12.5 }}>
+                                <span style={{ color: "var(--muted)" }}>{f2.l.replace(" *", "")}</span>
+                                <span style={{ color: "var(--ink)", textAlign: "right" }}>{vals?.[f2.k] || "—"}</span>
+                              </div>
+                            ));
+                          }
+                          /* mod objek (sp/case/corp/tax): tampilkan pasangan kunci-nilai primitif */
+                          if (srcRec.data && typeof srcRec.data === "object" && !Array.isArray(srcRec.data)) {
+                            return Object.entries(srcRec.data as Record<string, unknown>).filter(([, v]) => typeof v !== "object").slice(0, 10).map(([k, v]) => (
+                              <div key={k} style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "7px 0", borderTop: "1px solid rgba(255,255,255,.06)", fontSize: 12.5 }}>
+                                <span style={{ color: "var(--muted)" }}>{k}</span>
+                                <span style={{ color: "var(--ink)", textAlign: "right", overflowWrap: "anywhere" }}>{String(v ?? "—")}</span>
+                              </div>
+                            ));
+                          }
+                          return <pre style={{ fontSize: 11.5, color: "var(--ink)", whiteSpace: "pre-wrap", margin: 0 }}>{JSON.stringify(srcRec.data, null, 1).slice(0, 1200)}</pre>;
+                        })()}
+                      </div>
+                      <div style={{ position: "sticky", top: 16, background: "var(--sur-3)", border: "1px solid var(--line)", borderRadius: 10, overflow: "hidden", height: 420, display: "flex", flexDirection: "column" }}>
+                        <div style={{ padding: "8px 12px", borderBottom: "1px solid var(--line)", fontFamily: "var(--mono)", fontSize: 9.5, letterSpacing: ".1em", color: "var(--muted)" }}>DOKUMEN ASLI — {srcRec.dok_nama || "TIDAK ADA"}</div>
+                        {srcRec.dok_url
+                          ? (/\.(jpe?g|png|webp|gif)(\?|$)/i.test(srcRec.dok_url)
+                            ? <div style={{ flex: 1, overflow: "auto", display: "grid", placeItems: "center", background: "#0A1830" }}><img src={srcRec.dok_url} alt="Dokumen" style={{ maxWidth: "100%" }} /></div>
+                            : <iframe src={srcRec.dok_url} style={{ flex: 1, border: "none", background: "#fff" }} title="Dokumen sumber" />)
+                          : <div style={{ flex: 1, display: "grid", placeItems: "center", color: "var(--muted)", fontSize: 12 }}>Belum ada dokumen terunggah pada rekam ini.</div>}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {(vqSel.status === "masuk" || vqSel.status === "meninjau") && (
+                <div className="panel boxed" style={{ marginTop: 16, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 12.5, color: "var(--txt2)", flex: 1, minWidth: 220 }}>Keputusan bertanda tangan digital & tercatat pada jejak audit:</span>
+                  <button className="btn btn-line" onClick={() => mintaInfo(vqSel)}>Minta Info</button>
+                  <button className="btn btn-ok" onClick={() => void putuskanVq(vqSel, "verified")}>Setujui</button>
+                  <button className="btn btn-navy" onClick={() => void putuskanVq(vqSel, "verified", true)}>Koreksi</button>
+                  <button className="btn btn-red" onClick={() => void putuskanVq(vqSel, "rejected")}>Tolak</button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div>
+              <h1 style={{ fontFamily: "var(--serif)", color: "#fff", fontSize: 24, marginBottom: 4 }}>Konsol Advokat</h1>
+              <p style={{ color: "var(--txt2)", fontSize: 12.5, marginBottom: 16 }}>Antrean verifikasi dari seluruh tenant — buka pengajuan untuk melihat detail pelapor dan mengambil keputusan.</p>
+              <div className="panel">
+                <div className="tblwrap">
+                  <table>
+                    <thead><tr><th>Tenant</th><th>Pengajuan</th><th>Label</th><th>Status</th><th>Aksi</th></tr></thead>
+                    <tbody>
+                      {vq.filter((x) => x.status === "masuk" || x.status === "meninjau").map((x) => (
+                        <tr key={x.id}>
+                          <td><b style={{ fontSize: 12 }}>{tenNama(x.tenant_id)}</b></td>
+                          <td><b>{x.title}</b><span className="sub">{x.meta}</span></td>
+                          <td><Chip c={x.chip}>{x.label}</Chip></td>
+                          <td><Chip c={x.status === "meninjau" ? "c-gold" : "c-draft"}>{x.status === "meninjau" ? "DITINJAU" : "MASUK"}</Chip></td>
+                          <td><button className="btn-act" onClick={() => bukaVq(x)}><Lock size={10} style={{ display: "inline", marginRight: 4 }} />Buka</button></td>
+                        </tr>
+                      ))}
+                      {!vq.filter((x) => x.status === "masuk" || x.status === "meninjau").length && <tr><td colSpan={5} style={{ color: "var(--muted)" }}>{vqLoading ? "Memuat dari Supabase…" : "Antrean kosong — seluruh pengajuan telah diputuskan."}</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="note mt16"><b>Prinsip tata kelola:</b> nasihat hukum final hanya lahir dari status TERVERIFIKASI ADVOKAT — tanda tangan digital atas hash versi final, dalam tanggung jawab profesional advokat MRWP. Membuka pengajuan otomatis menandai <b>SEDANG DITINJAU</b> pada portal klien.</p>
+              </div>
+              {vq.some((x) => x.status === "verified" || x.status === "rejected") && (
+                <div className="panel" style={{ marginTop: 16 }}><h4>Keputusan Terakhir</h4>
+                  <div className="rows">
+                    {vq.filter((x) => x.status === "verified" || x.status === "rejected").slice(0, 6).map((x) => (
+                      <div key={x.id} className="row"><div><b>{x.title}</b><span className="d">{x.note}</span></div>
+                        <div className="right"><Chip c={x.status === "verified" ? "c-ver" : "c-red"}>{x.status === "verified" ? "TERVERIFIKASI ✓" : "DITOLAK"}</Chip><button className="btn btn-line btn-sm" onClick={() => bukaVq(x)}>Buka</button></div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )
         ) : (
           <div>
-            <h1 style={{ fontFamily: "var(--serif)", color: "#fff", fontSize: 24, marginBottom: 4 }}>
-              {menu === "kode" ? "Kode Undangan" : menu === "seat" ? "Akun & Seat" : "Approval Onboarding"}
-            </h1>
-            <p style={{ color: "var(--txt2)", fontSize: 12.5, marginBottom: 16 }}>
-              {menu === "kode" ? "Terbitkan & kelola kode undangan — masa berlaku ditegakkan server." : menu === "seat" ? "Kelola 2 kursi per perusahaan — email unik global." : "Setujui atau tolak pendaftaran perusahaan baru."}
-            </p>
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+              <div>
+                <h1 style={{ fontFamily: "var(--serif)", color: "#fff", fontSize: 24, marginBottom: 4 }}>
+                  {menu === "kode" ? "Kode Undangan" : menu === "seat" ? "Akun & Seat" : "Approval Onboarding"}
+                </h1>
+                <p style={{ color: "var(--txt2)", fontSize: 12.5, marginBottom: 16 }}>
+                  {menu === "kode" ? "Terbitkan & kelola kode undangan — masa berlaku ditegakkan server." : menu === "seat" ? "Kelola 2 kursi per perusahaan — email unik global." : "Setujui atau tolak pendaftaran perusahaan baru."}
+                </p>
+              </div>
+              {menu === "kode" && <button className="btn btn-gold" onClick={() => setNOpen(true)}><Plus size={14} /> Buat Kode</button>}
+            </div>
 
             {menu === "kode" && (
               <div className="panel">
                 <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 14, flexWrap: "wrap" }}>
-                  <input className="finput" placeholder="Cari kode / email…" value={q} onChange={(e) => setQ(e.target.value)} />
+                  <input className="finput" style={{ flex: 1, minWidth: 200 }} placeholder="Cari kode / email…" value={q} onChange={(e) => setQ(e.target.value)} />
                   {["semua", "AKTIF", "TERPAKAI", "KEDALUWARSA", "DICABUT"].map((x) => (
                     <button key={x} className={`fchip${f === x ? " on" : ""}`} onClick={() => setF(x)}>{x === "semua" ? "Semua" : x[0] + x.slice(1).toLowerCase()}</button>
                   ))}
-                  <button className="btn btn-gold" style={{ marginLeft: "auto" }} onClick={() => setNOpen(true)}><Plus size={14} /> Buat Kode</button>
                 </div>
                 <div className="tblwrap">
                   <table>
                     <thead><tr><th>Kode</th><th>Untuk</th><th>Tier</th><th>Masa berlaku</th><th>Status</th><th>Aksi</th></tr></thead>
                     <tbody>
                       {invRows.map((x) => {
-                        const [cls, lbl] = chipOf(x);
+                        const [, lbl] = chipOf(x);
                         return (
                           <tr key={x.code}>
                             <td><span className="mono" style={{ fontSize: 12, letterSpacing: ".08em" }}>{x.code}</span></td>
                             <td>{x.email || <span style={{ color: "var(--muted)" }}>generik</span>}</td>
                             <td>{x.tier}</td>
-                            <td>{sisaLabel(x)}</td>
-                            <td><Chip c={cls}>{lbl}</Chip></td>
+                            <td>{durLabel(x)}</td>
+                            <td><Chip c={x.status === "used" ? "c-mon" : "c-ver"}>{x.status === "used" ? "Terpakai" : "Belum Terpakai"}</Chip></td>
                             <td>
                               <div className="flex items-center gap-2">
                                 <button className="btn btn-line btn-sm" title="Salin link" onClick={() => { void navigator.clipboard?.writeText(`${location.origin}/login?kode=${x.code}`); toast("Link disalin", x.code, "ok"); }}><Copy size={11} /></button>
@@ -558,37 +795,39 @@ function AdminInner() {
 
             {/* akun & seat */}
             {menu === "seat" && (
-              <div className="grid g2">
-                <div className="panel"><h4>Perusahaan</h4>
-                  <div className="rows">
-                    {tens.map((t) => (
-                      <div key={t.id} className="row clickable" onClick={() => setSel(t.id)} style={sel === t.id ? { borderColor: "var(--gold)" } : undefined}>
-                        <div><b>{t.nama}</b><span className="d">{t.tier}</span></div>
-                        <div className="right"><Chip c={t.seats.length >= 2 ? "c-mon" : "c-ver"}>{`KURSI ${t.seats.length} / 2`}</Chip></div>
-                      </div>
-                    ))}
-                  </div>
+              /* satu TABEL datar (bukan panel dalam grid): satu baris per kursi + baris undang bila kursi <2 */
+              <div className="panel">
+                <div className="tblwrap">
+                  <table>
+                    <thead><tr><th>Perusahaan</th><th>Paket</th><th>Nama</th><th>Email</th><th>Peran</th><th>Status</th><th>Aksi</th></tr></thead>
+                    <tbody>
+                      {tens.flatMap((t) => [
+                        ...t.seats.map((s) => (
+                          <tr key={t.id + s.email}>
+                            <td>{t.nama}</td>
+                            <td><Chip c="c-mon">{t.tier.toUpperCase()}</Chip></td>
+                            <td>{s.nama}</td><td>{s.email}</td><td>{s.peran}</td>
+                            <td><Chip c={s.status === "aktif" ? "c-ver" : s.status === "undangan" ? "c-draft" : "c-red"}>{s.status.toUpperCase()}</Chip></td>
+                            <td><div style={{ display: "inline-flex", gap: 6 }}>
+                              <button className="btn btn-line btn-sm" title="Reset sandi" onClick={async () => { const r = await admin.resetSeat(s.email); if (!r.ok) return toast("Gagal", r.error.message, "warn"); if (r.data.link) void navigator.clipboard?.writeText(r.data.link); log(`Reset sandi ${s.email}`); toast("Tautan reset disalin", `Kirim ke ${s.email}.`, "ok"); }}><KeyRound size={11} /></button>
+                              <button className="btn btn-red btn-sm" title="Hapus kursi" onClick={async () => { if (!(await askConfirm(`Hapus kursi ${s.email}?`))) return; const r = await admin.removeSeat(s.email); if (!r.ok) return toast("Gagal", r.error.message, "warn"); setTens((xs) => xs.map((z) => ({ ...z, seats: z.seats.filter((y) => y.email !== s.email) }))); log(`Kursi dihapus ${s.email}`); toast("Kursi dihapus", s.email, "warn"); }}><Trash2 size={11} /></button>
+                            </div></td>
+                          </tr>
+                        )),
+                        ...(t.seats.length < 2 ? [(
+                          <tr key={t.id + "-undang"}>
+                            <td>{t.nama}</td>
+                            <td><Chip c="c-mon">{t.tier.toUpperCase()}</Chip></td>
+                            <td colSpan={4} style={{ color: "var(--muted)" }}>Kursi ke-2 masih kosong</td>
+                            <td><button className="btn btn-navy btn-sm" onClick={() => { setSel(t.id); setSeatOpen(true); }}><UserPlus size={12} /> Undang kursi ke-2</button></td>
+                          </tr>
+                        )] : []),
+                      ])}
+                      {!tens.length && <tr><td colSpan={7} style={{ color: "var(--muted)" }}>Belum ada perusahaan aktif.</td></tr>}
+                    </tbody>
+                  </table>
                 </div>
-                <div className="panel"><h4>{selTen ? `Kursi — ${selTen.nama}` : "Pilih perusahaan"}</h4>
-                  {selTen ? (
-                    <div className="rows">
-                      {selTen.seats.map((s) => (
-                        <div key={s.email} className="row">
-                          <div><b>{s.nama}</b><span className="d">{s.email} · {s.peran}</span></div>
-                          <div className="right">
-                            <Chip c={s.status === "aktif" ? "c-ver" : s.status === "undangan" ? "c-draft" : "c-red"}>{s.status.toUpperCase()}</Chip>
-                            <button className="btn btn-line btn-sm" title="Reset sandi" onClick={async () => { const r = await admin.resetSeat(s.email); if (!r.ok) return toast("Gagal", r.error.message, "warn"); if (r.data.link) void navigator.clipboard?.writeText(r.data.link); log(`Reset sandi ${s.email}`); toast("Tautan reset disalin", `Kirim ke ${s.email}.`, "ok"); }}><KeyRound size={11} /></button>
-                            <button className="btn btn-red btn-sm" title="Hapus kursi" onClick={async () => { if (!(await askConfirm(`Hapus kursi ${s.email}?`))) return; const r = await admin.removeSeat(s.email); if (!r.ok) return toast("Gagal", r.error.message, "warn"); setTens((xs) => xs.map((t) => ({ ...t, seats: t.seats.filter((z) => z.email !== s.email) }))); log(`Kursi dihapus ${s.email}`); toast("Kursi dihapus", s.email, "warn"); }}><Trash2 size={11} /></button>
-                          </div>
-                        </div>
-                      ))}
-                      {selTen.seats.length < 2 && (
-                        <button className="btn btn-navy" onClick={() => setSeatOpen(true)}><UserPlus size={14} /> Undang kursi ke-2</button>
-                      )}
-                      <p className="note">Batas 2 kursi per paket — semua tier. Email unik global: satu email satu akun.</p>
-                    </div>
-                  ) : <p className="note">Klik perusahaan di kiri untuk kelola kursinya.</p>}
-                </div>
+                <p className="note mt16">Batas 2 kursi per paket — semua tier. Email unik global: satu email satu akun.</p>
               </div>
             )}
 
@@ -660,19 +899,32 @@ function AdminInner() {
         )}
       </main>
 
+      {/* drawer edit perusahaan (Pusat Data) */}
+      <Modal open={!!tEdit} right title={`Edit Perusahaan — ${tEdit?.nama || ""}`} onClose={() => setTEdit(null)}
+        footer={<>
+          <button className="btn btn-line" onClick={() => setTEdit(null)}>Batal</button>
+          <button className="btn btn-gold" onClick={() => void simpanTenant()}>Simpan</button>
+        </>}>
+        <Field label="Nama perusahaan *"><input value={teNama} onChange={(e) => setTeNama(e.target.value)} /></Field>
+        <Field label="Bidang usaha / industri"><input value={teSector} placeholder="mis. Manufaktur Makanan" onChange={(e) => setTeSector(e.target.value)} /></Field>
+        <Field label="Paket"><select value={teTier} onChange={(e) => setTeTier(e.target.value)}>{TIERS.map((t) => <option key={t}>{t}</option>)}</select></Field>
+        <div className="note">Perubahan tersimpan ke tabel tenants dan tercatat pada jejak audit.</div>
+      </Modal>
+
       {/* modal buat kode */}
-      <Modal open={nOpen} title="Buat Kode Undangan" onClose={() => setNOpen(false)}
+      <Modal right open={nOpen} title="Buat Kode Undangan" onClose={() => setNOpen(false)}
         footer={<>
           <button className="btn btn-line" onClick={() => setNOpen(false)}>Batal</button>
-          <button className="btn btn-gold" disabled={making} aria-busy={making} onClick={() => void buatKode()}>{making ? "Membuat…" : "Buat & Salin Link"}</button>
+          <button className="btn btn-gold" disabled={making} aria-busy={making} onClick={() => void buatKode()}>{making ? "Membuat…" : "Buat & Salin Kode"}</button>
         </>}>
         <Field label="Email tujuan (kosongkan untuk kode generik)"><input type="email" value={nEmail} onChange={(e) => setNEmail(e.target.value)} placeholder="calon@klien.co.id" /></Field>
         <Field label="Tier">
-          <select value={nTier} onChange={(e) => setNTier(e.target.value)}>{TIERS.map((t) => <option key={t}>{t}</option>)}</select>
+          {/* Demo tak boleh permanen — bila pindah ke Demo saat "Tanpa batas" terpilih, reset ke 7 hari */}
+          <select value={nTier} onChange={(e) => { const v = e.target.value; setNTier(v); if (v === "Demo" && nExp === 0) setNExp(7 * DAY); }}>{TIERS.map((t) => <option key={t}>{t}</option>)}</select>
         </Field>
         <Field label="Masa berlaku">
           <select value={nExp} disabled={nTier === "Tier 3 Lifetime"} onChange={(e) => setNExp(+e.target.value)}>
-            {EXP.map(([l, ms]) => <option key={l} value={ms}>{l}</option>)}
+            {EXP.filter(([, ms]) => !(nTier === "Demo" && ms === 0)).map(([l, ms]) => <option key={l} value={ms}>{l}</option>)}
           </select>
         </Field>
         <div className="note">Kursi: <b>2</b> (terkunci — semua tier). {nTier === "Tier 3 Lifetime" ? "Lifetime: tanpa masa berlaku." : "Kode hangus otomatis saat lewat masa berlaku — ditegakkan server."}</div>

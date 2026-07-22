@@ -43,7 +43,12 @@ export default function SuratPeringatan() {
     const punyaSP1 = list.some((s) => s.nama === nama && s.tingkat === "SP1");
     if (tingkat === "SP2" && !punyaSP1) { toast("Ditolak oleh guard", "SP2 hanya sah bila ada SP1 aktif — karyawan ini tanpa SP1.", "warn"); return; }
     if (tingkat === "SP3") {
-      pushQueue(`SP3 — ${nama}`, "Eskalasi wajib: SP3 berujung risiko PHK (berakibat_hukum=true)", "c-gold", "ESKALASI");
+      const spKar = list.filter((s) => s.nama === nama);
+      const riwayat = spKar.map((s) => `${s.tingkat} · ${s.tgl || "tanpa tanggal"} · ${s.alasan || "-"}`).join("\n") || "— belum ada SP sebelumnya pada rekam";
+      /* smart attachment: lampirkan rekam SP1/SP2 karyawan ini — advokat buka buktinya instan */
+      const refs = spKar.filter((s) => s.id).map((s) => ({ mod: "sp", id: s.id!, label: `${s.tingkat} — ${nama}` }));
+      pushQueue(`SP3 — ${nama}`, "Eskalasi wajib: SP3 berujung risiko PHK (berakibat_hukum=true)", "c-gold", "ESKALASI", refs.length ? refs : undefined,
+        `Karyawan: ${nama}${dept ? ` · Departemen ${dept}` : ""}${pos ? ` · ${pos}` : ""}\n\nAlasan SP3 (diisi HR):\n${alasan.trim()}\n\nRiwayat SP karyawan ini:\n${riwayat}`);
       toast("SP3 dieskalasikan", "Guard: penerbitan SP3 selalu melalui verifikasi advokat MRWP.", "warn");
       return;
     }

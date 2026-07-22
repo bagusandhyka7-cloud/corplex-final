@@ -2,6 +2,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { emptyTenant, QItem, Tenant, TENANTS } from "./data";
 import { api, empFromRow, subscribeRealtime } from "./api";
+import { sb } from "./supabase";
 import { RecRow, withId } from "./records";
 import { useRouter } from "next/navigation";
 import { ROUTE } from "./routes";
@@ -21,7 +22,7 @@ interface Store {
   toast: (t: string, d: string, k?: string) => void;
   queue: QItem[];
   setQueue: React.Dispatch<React.SetStateAction<QItem[]>>;
-  pushQueue: (t: string, m: string, chip: string, lbl: string) => void;
+  pushQueue: (t: string, m: string, chip: string, lbl: string, refs?: { mod: string; id: string; label: string }[], detail?: string) => void;
   quota: number; quotaMax: number; verified: number;
   setQuota: React.Dispatch<React.SetStateAction<number>>;
   setVerified: React.Dispatch<React.SetStateAction<number>>;
@@ -53,6 +54,7 @@ export const fmt = (n: number) => "Rp " + Math.round(n).toLocaleString("id-ID");
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [ten, setTen] = useState<Tenant | null>(null);
+  useEffect(() => { tenUserRef.current = ten?.user || ""; }, [ten]);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [queue, setQueue] = useState<QItem[]>([]);
   const [quota, setQuota] = useState(0);
@@ -65,6 +67,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const setLang = useCallback((l: "id" | "en") => { setLangState(l); localStorage.setItem("corplex_lang", l); }, []);
   const router = useRouter();
   const tid = useRef(0);
+  const tenUserRef = useRef(""); // pengaju utk antrean advokat (hindari stale closure pushQueue)
   const timers = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
 
   const toast = useCallback((t: string, d: string, k?: string) => {
@@ -107,6 +110,19 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         setQuota(rows.length);
         setVerified(rows.filter((x) => x.status === "verified").length);
       });
+      /* PINTU KEDUA (sesi berjalan): tiap rehidrasi cek whoami — demo kedaluwarsa langsung ditendang.
+       * RLS (jwt_tenant → NULL) sudah membutakan data detik itu juga; ini merapikan UX-nya. */
+      if (!TENANTS[storedTid] && !localStorage.getItem("corplex_impersonate")) {
+        void sb.rpc("whoami").then(({ data }) => {
+          if (data?.ok && data.tenant?.status === "expired") {
+            setTen(null); setQueue([]);
+            localStorage.removeItem("corplex_tid"); localStorage.removeItem("corplex_ten");
+            void sb.auth.signOut();
+            toast("Masa demo berakhir", "Akses demo Anda telah usai — hubungi tim MRWP untuk perpanjangan.", "warn");
+            router.replace("/login");
+          }
+        });
+      }
     }
     setIsHydrated(true);
   }, []);
@@ -141,13 +157,17 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
   }, [router]);
 
-  const pushQueue = useCallback((t: string, m: string, chip: string, lbl: string) => {
+  const pushQueue = useCallback((t: string, m: string, chip: string, lbl: string, refs?: { mod: string; id: string; label: string }[], detail?: string) => {
     setQueue((q) => [{ t, m, chip, lbl, sla: "SLA 24 JAM", status: "masuk" as const }, ...q]);
     setQuota((n) => n + 1); // kuota terpakai = jumlah pengajuan nyata
     toast("Masuk antrean verifikasi", `“${t}” — prioritas dihitung dari SLA paket + risiko + eskalasi.`);
     // tulis juga ke antrean nyata (DB) — dibaca Konsol Advokat di /adminmrwp
     const tid = localStorage.getItem("corplex_tid");
-    if (tid) void api.verifq.push(tid, t, m, chip, lbl);
+    /* pelapor utk detail Konsol Advokat — sesi nyata (corplex_ten) atau string user tenant (demo) */
+    let by = "";
+    try { const r = JSON.parse(localStorage.getItem("corplex_ten") || "null"); by = r?.user?.email || r?.user?.nama || ""; } catch { /* seed */ }
+    if (!by) by = tenUserRef.current;
+    if (tid) void api.verifq.push(tid, t, m, chip, lbl, { by: by || undefined, refs, detail });
   }, [toast, router]);
 
   const login = useCallback((id: string, real?: RealSession) => {
@@ -165,6 +185,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     setTen(null); setQueue([]);
     localStorage.removeItem("corplex_tid");
     localStorage.removeItem("corplex_ten");
+    localStorage.removeItem("corplex_impersonate"); // mode pengawasan MRWP ikut ditutup
     void api.authSignOut(); // cabut JWT Supabase Auth — sesi RLS mati total
     toast("Sesi diakhiri", "Seluruh data tenant dibersihkan dari memori dan dari tampilan. Silakan pilih perusahaan untuk masuk kembali.");
   }, [toast]);
@@ -180,7 +201,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     return () => { clearTimeout(h); evs.forEach((e) => window.removeEventListener(e, reset)); };
   }, [ten, logout]);
 
-  const queueCount = queue.filter((q) => q.status === "masuk").length;
+  const queueCount = queue.filter((q) => q.status === "masuk" || q.status === "meninjau").length; // belum diputus advokat
 
   const patchTen = useCallback((p: Partial<Tenant>) => setTen((t) => (t ? { ...t, ...p } : t)), []);
 

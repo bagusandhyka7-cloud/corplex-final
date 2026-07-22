@@ -84,7 +84,8 @@ export default function Ldd({ embed }: { embed?: boolean } = {}) {
   const acts = <>
     <button className="btn btn-line btn-sm" onClick={() => void preview()}><FileSearch size={13} /> Preview</button>
     <button className="btn btn-line btn-sm" onClick={() => void unduh()}><Download size={13} /> Unduh</button>
-    <button className="btn btn-gold btn-sm" onClick={() => { pushQueue("Laporan Legal Due Diligence — " + t.name, "Laporan LDD lengkap 6 aspek · wajib ditandatangani advokat sebelum disajikan", "c-gold", "ESKALASI"); }}><Gavel size={13} /> Verifikasi ke Advokat</button>
+    <button className="btn btn-gold btn-sm" onClick={() => { pushQueue("Laporan Legal Due Diligence — " + t.name, "Laporan LDD lengkap 6 aspek · wajib ditandatangani advokat sebelum disajikan", "c-gold", "ESKALASI", undefined,
+      `Status keseluruhan: ${keseluruhan}\n\nRingkasan: ${ringkas}\n\nStatus per aspek:\n${aspek.map((a) => `${a.nama}: ${a.status} — ${a.temuan}`).join("\n")}`); }}><Gavel size={13} /> Verifikasi ke Advokat</button>
   </>;
 
   return (

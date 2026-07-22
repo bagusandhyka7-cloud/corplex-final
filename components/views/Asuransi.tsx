@@ -60,7 +60,12 @@ export default function Asuransi() {
       tl: [["HARI INI", "Klaim diajukan", "Berkas dirakit AI dari rekam — terkirim ke antrean advokat", "next"]],
     }, ...ks]);
     setNkDesc("");
-    pushQueue("Klaim asuransi — " + objek, ringkas.slice(0, 240), "c-draft", "DRAF AI");
+    /* smart attachment: lampirkan rekam polis terpilih agar advokat membukanya instan */
+    const polRow = pol.find((p) => `${p[3]} — ${p[0]}` === nkObj);
+    const polId = polRow ? idOf("pol", polRow as RecRow) : null;
+    pushQueue("Klaim asuransi — " + objek, ringkas.slice(0, 240), "c-draft", "DRAF AI",
+      polId ? [{ mod: "pol", id: polId, label: `Polis — ${String(polRow![0])}` }] : undefined,
+      `Objek & polis: ${nkObj}\n\nKronologi kejadian (dari klien):\n${nkDesc.trim()}\n\nRingkasan berkas (AI):\n${ringkas}`);
     setKirimKlaim(false);
   };
 
