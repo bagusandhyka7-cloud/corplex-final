@@ -14,7 +14,8 @@ export type ViewId = "ringkasan" | "assistant" | "drafter" | "employment" | "lic
 
 interface ToastItem { id: number; t: string; d: string; k?: string }
 /* Sesi tenant nyata (dari login_user) — bukan fixtur seed. */
-export type RealSession = { tenant: { id: string; name: string; tier: string; status: string }; user: { nama: string; email: string; jabatan: string | null } };
+/* name & tier nullable — whoami() mengembalikannya null untuk tenant tanpa baris di tabel tenants. */
+export type RealSession = { tenant: { id: string; name: string | null; tier: string | null; status: string }; user: { nama: string; email: string; jabatan: string | null } };
 
 interface Store {
   isHydrated: boolean;

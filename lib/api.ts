@@ -79,7 +79,10 @@ export const api = {
 
     /* KONSOLIDASI: Supabase Auth (signIn) + RPC whoami (profil app_users + status tenant).
      * Tabel users lama sudah dipensiunkan. */
-    async loginDb(email: string, password: string): Promise<ApiResult<{ user: { nama: string; email: string; jabatan: string | null }; tenant: { id: string; name: string; tier: string; status: string } }>> {
+    /* name & tier SENGAJA nullable: whoami() mengembalikan null bila app_users.tenant_id tak punya
+     * baris di `tenants` (mis. tenant seed t1). Tipe lama mengaku `string` dan menyembunyikan
+     * kasus itu dari TypeScript sampai meledak saat runtime di emptyTenant(). */
+    async loginDb(email: string, password: string): Promise<ApiResult<{ user: { nama: string; email: string; jabatan: string | null }; tenant: { id: string; name: string | null; tier: string | null; status: string } }>> {
       const a = await sb.auth.signInWithPassword({ email, password });
       if (a.error) return err("auth", "Email atau kata sandi salah.");
       const { data, error } = await sb.rpc("whoami");

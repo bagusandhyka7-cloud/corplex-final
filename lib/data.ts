@@ -466,10 +466,17 @@ export const ACCOUNTS = [
 
 /* Tenant nyata yang baru login (belum punya rekam modul apa pun) — semua koleksi kosong
  * agar setiap view merender empty-state, bukan crash. Diisi mesin data saat backend modul terisi. */
-export function emptyTenant(t: { id: string; name: string; tier?: string; sector?: string }, u?: { nama?: string | null; email?: string; jabatan?: string | null }): Tenant {
+export function emptyTenant(
+  /* name/tier/sector SENGAJA boleh null: RPC whoami() mengembalikan name=null bila app_users.tenant_id
+   * tidak punya baris di tabel `tenants` (mis. tenant seed t1). Dulu `t.name.replace(...)` langsung
+   * melempar TypeError dan MEMBLOKIR LOGIN akun tersebut. Satu guard di sini melindungi semua pemanggil. */
+  t: { id: string; name?: string | null; tier?: string | null; sector?: string | null },
+  u?: { nama?: string | null; email?: string; jabatan?: string | null },
+): Tenant {
+  const nama = (t.name || "").trim() || "Perusahaan Anda";
   return {
-    id: t.id, name: t.name, plan: (t.tier || "STARTER").toUpperCase(),
-    ava: t.name.replace(/^(PT|CV)\.?\s+/i, "").slice(0, 2).toUpperCase(), user: u ? `${u.nama || u.email || "—"} · ${u.jabatan || "Legal"}` : "—",
+    id: t.id, name: nama, plan: (t.tier || "STARTER").toUpperCase(),
+    ava: nama.replace(/^(PT|CV)\.?\s+/i, "").slice(0, 2).toUpperCase() || "??", user: u ? `${u.nama || u.email || "—"} · ${u.jabatan || "Legal"}` : "—",
     sector: t.sector || "—", score: 0, delta: "—",
     kpiDocs: 0, kpiDocsTr: "—", kpiIzin: 0, kpiIzinTr: "—",
     quota: { used: 0, max: 10 }, verified: 0,
@@ -479,7 +486,7 @@ export function emptyTenant(t: { id: string; name: string; tier?: string; sector
     asr: { nilai: "Rp 0", polTr: "—", pol: [], klaim: [], gap: [] },
     tax: { score: 0, trend: "—", done: 0, next: "—", nextTr: "—", prof: [], kal: [], join: [], integ: [] },
     mass: [], queue: [], lic: [], assets: [], hki: [],
-    corp: { entity: t.name, rupsTitle: "—", rups: [], circNo: "—", dirs: [], meetings: [], cap: [], stat: [], docs: [] },
+    corp: { entity: nama, rupsTitle: "—", rups: [], circNo: "—", dirs: [], meetings: [], cap: [], stat: [], docs: [] },
   };
 }
 
