@@ -161,6 +161,7 @@ export default function DatabaseKaryawan() {
   /* modal ekstraksi karyawan */
   const [exOpen, setExOpen] = useState(false);
   const [ex, setEx] = useState({ dok: "", nama: "", jk: "L", wn: "TKI", lok: "1", status: "PKWT", jab: "", masa: "" });
+  const [exFile, setExFile] = useState<File | null>(null); // berkas sumber → diunggah saat Simpan
 
   /* Impor Excel karyawan LEWAT DROPZONE (template diunduh di Alat Legal). Deteksi .xlsx otomatis. */
   const xlsx = useExcelImport("emp");
@@ -195,6 +196,7 @@ export default function DatabaseKaryawan() {
     // Gambar/PDF → ekstraksi AI NYATA (Gemini multimodal, free tier). Hasil masuk modal untuk dikonfirmasi.
     toast("AI membaca dokumen…", "Ekstraksi field ketenagakerjaan dari dokumen — Anda konfirmasi sebelum tersimpan.");
     registerVault(file);
+    setExFile(file);
     const vals = (await aiExtract(file, EX_FIELDS)) || {};
     setEx({
       dok: file.name, nama: vals.nama || "", jab: vals.jab || "",
@@ -206,16 +208,23 @@ export default function DatabaseKaryawan() {
 
   const { run: empSave, pending: empSaving } = useAsyncAction(async () => {
     if (!ex.nama.trim()) { toast("Nama wajib diisi", "Lengkapi hasil ekstraksi sebelum menyimpan.", "warn"); return; }
+    // Berkas asli DIUNGGAH (dulu hanya namanya dicatat — hilang saat refresh).
+    let dokUrl: string | null = null;
+    if (exFile) {
+      const up = await api.employees.uploadDoc(tidNow(), exFile);
+      if (!up.ok) { toast("Gagal mengunggah dokumen", up.error.message, "warn"); return; }
+      dokUrl = up.data.url;
+    }
     const rec = empToRow({
       n: ex.nama, j: ex.jab.trim(), jk: ex.jk as "L" | "P", wn: ex.wn as "TKI" | "TKA",
       lok: ex.lok === "1", s: ex.status as "PKWT" | "PKWTT",
       m: ex.masa.trim() || (ex.status === "PKWTT" ? "Sejak 2026" : "2026 – 2027"),
-      sisa: ex.status === "PKWT" ? 60 : null, komp: ex.status === "PKWT" ? "Terjadwal" : "—", dok: ex.dok,
+      sisa: ex.status === "PKWT" ? 60 : null, komp: ex.status === "PKWT" ? "Terjadwal" : "—", dok: ex.dok, dokUrl,
     }, "ai");
     const res = await withRetry(() => api.employees.create(tidNow(), rec));
     if (!res.ok) { toast("Gagal menyimpan", res.error.message, "warn"); return; }
     patchTen({ emp: [empFromRow(res.data), ...emp] });
-    setExOpen(false);
+    setExOpen(false); setExFile(null);
     toast("Tenaga kerja tercatat — DRAF AI", `Dokumen tersimpan di vault (hash tercatat) · rekap LKPM diperbarui otomatis${ex.wn === "TKA" ? " · validasi keterkaitan RPTKA dijalankan" : ""}.`, "ok");
   });
 

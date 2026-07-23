@@ -47,6 +47,7 @@ export default function Agreement() {
     setAxOpen(true);
   });
   const [extracting, setExtracting] = useState(false);
+  const [axFile, setAxFile] = useState<File | null>(null); // berkas sumber → diunggah saat Simpan
   const xlsx = useExcelImport("agr");
   const upload = async (file: File) => {
     if (uploading || extracting) return; // double-submit guard
@@ -61,6 +62,7 @@ export default function Agreement() {
       return;
     }
     registerVault(file);
+    setAxFile(file);
     setAx({
       dok: file.name, nama: vals.nama || file.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim(),
       p1: vals.p1 || t.name, p2: vals.p2 || "", mulai: vals.mulai || "", akhir: vals.akhir || "", nilai: vals.nilai || "",
@@ -75,11 +77,19 @@ export default function Agreement() {
       mulai: ax.mulai.trim() || "—", akhir: ax.akhir.trim() || "—", nilai: ax.nilai.trim() || "—",
       st: "DRAF", cls: "c-draft", lbl: "DRAF AI", dok: ax.dok,
     };
+    // Berkas asli DIUNGGAH ke Storage (dulu hanya namanya dicatat — janji "tersimpan di vault" tak ditepati).
+    const tid = localStorage.getItem("corplex_tid") || "";
+    let dok: { url: string; nama: string } | undefined;
+    if (axFile) {
+      const up = await api.records.uploadDoc(tid, axFile);
+      if (!up.ok) { toast("Gagal mengunggah berkas", up.error.message, "warn"); return; }
+      dok = up.data;
+    }
     // NYATA: tersimpan ke module_records (source 'ai') — bertahan lintas refresh.
-    const res = await withRetry(() => api.records.create(localStorage.getItem("corplex_tid") || "", "agr", rec, "ai"));
+    const res = await withRetry(() => api.records.create(tid, "agr", rec, "ai", dok));
     if (!res.ok) { toast("Gagal menyimpan", res.error.message, "warn"); return; }
     patchTen({ agr: [{ ...rec, id: res.data.id } as unknown as Agr, ...t.agr] });
-    setAxOpen(false);
+    setAxOpen(false); setAxFile(null);
     pushQueue("Registrasi perjanjian — " + ax.nama, "Dari Agreement Management · hasil ekstraksi AI atas dokumen terunggah", "c-draft", "DRAF AI");
     toast("Perjanjian tercatat — DRAF AI", `Dokumen tersimpan di vault (hash tercatat)${ax.akhir ? " · aturan JAGA dibuat dari tanggal berakhir " + ax.akhir : ""} · diajukan ke antrean verifikasi advokat.`, "ok");
   });

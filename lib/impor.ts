@@ -115,7 +115,8 @@ export function toPayload(item: ParsedItem, tenantName: string): RecRow | Record
   if (item.mod === "emp") {
     return {
       n: v.n, j: v.j || "—", jk: v.jk === "P" ? "P" : "L", wn: v.wn === "TKA" ? "TKA" : "TKI",
-      lok: norm(v.lok) !== "tidak", s: v.s === "PKWTT" ? "PKWTT" : "PKWT",
+      // "Tidak" bisa ditulis macam-macam (no/n/0/false). Salah baca = TKA terhitung lokal di rekap LKPM.
+      lok: !["tidak", "no", "n", "0", "false", "-"].includes(norm(v.lok)), s: v.s === "PKWTT" ? "PKWTT" : "PKWT",
       m: v.m || (v.s === "PKWTT" ? "Sejak 2026" : "2026 – 2027"), sisa: v.s === "PKWTT" ? null : 60,
       mulaiKerja: v.mulaiKerja, gajiPokok: angka(v.gajiPokok), tunjTetap: angka(v.tunjTetap),
       dept: v.dept, prov: v.prov, kota: v.kota, desa: v.desa, alamatKtp: v.alamatKtp, lahir: v.lahir,
