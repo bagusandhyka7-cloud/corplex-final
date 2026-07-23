@@ -140,7 +140,7 @@ function StubTool({ nama }: { nama: string }) {
       ) : fase === "selesai" ? (
         <div className="note" style={{ borderColor: "var(--gold)", display: "flex", alignItems: "center", gap: 10 }}>
           <Chip c="c-gold">DALAM PENGEMBANGAN</Chip>
-          <span><b>Layanan dalam tahap integrasi engine</b> — permintaan Anda tercatat; alat ini aktif begitu mesin pemroses tersambung.</span>
+          <span><b>Layanan dalam tahap integrasi engine</b> — alat ini belum memproses berkas Anda dan tidak menyimpan apa pun; aktif begitu mesin pemroses tersambung.</span>
         </div>
       ) : null}
       <button className="btn btn-gold" style={{ marginTop: 4 }} disabled={fase === "proses" || files.length < butuh}

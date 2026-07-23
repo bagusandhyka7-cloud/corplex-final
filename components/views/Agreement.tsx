@@ -3,7 +3,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { FileText, Lock, Plus } from "lucide-react";
 import { Agr } from "@/lib/data";
 import { clone, useStore } from "@/lib/store";
-import { dokRingkas, downloadDoc, registerVault, vaultHash } from "@/lib/vault";
+import { dokRingkas, downloadDoc, registerVault } from "@/lib/vault";
 import { api, withRetry } from "@/lib/api";
 import { useAsyncAction, useUpload } from "@/lib/hooks";
 import { Chip, Field, Kpi, Modal } from "@/components/ui";
@@ -91,7 +91,7 @@ export default function Agreement() {
     patchTen({ agr: [{ ...rec, id: res.data.id } as unknown as Agr, ...t.agr] });
     setAxOpen(false); setAxFile(null);
     pushQueue("Registrasi perjanjian — " + ax.nama, "Dari Agreement Management · hasil ekstraksi AI atas dokumen terunggah", "c-draft", "DRAF AI");
-    toast("Perjanjian tercatat — DRAF AI", `Dokumen tersimpan di vault (hash tercatat)${ax.akhir ? " · aturan JAGA dibuat dari tanggal berakhir " + ax.akhir : ""} · diajukan ke antrean verifikasi advokat.`, "ok");
+    toast("Perjanjian tercatat — DRAF AI", `Dokumen tersimpan di vault${/^\d{4}-\d{2}-\d{2}$/.test(ax.akhir) ? ` · pengingat tenggat dibuat dari tanggal berakhir ${ax.akhir}` : ""} · diajukan ke antrean verifikasi advokat.`, "ok");
   });
 
   const rows = agr.filter((a) => {

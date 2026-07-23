@@ -85,7 +85,7 @@ export default function Corpsec() {
 
   return (
     <ModuleShell h1="Sekretaris Perusahaan"
-      sub="RUPS, keputusan pemegang saham, dan dokumen perseroan — tenggat dijaga otomatis."
+      sub="RUPS, keputusan pemegang saham, dan dokumen perseroan — tercatat rapi dan siap diaudit."
       dropNote="Akta, risalah RUPS, atau keputusan sirkuler — dokumen asli tersimpan di vault dan tercatat pada rekam tata kelola."
       onDrop={(f) => void dropDok(f)}
       acts={<>

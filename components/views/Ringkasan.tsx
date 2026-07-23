@@ -6,6 +6,7 @@ import { Chip, Kpi, Panel, Row } from "@/components/ui";
 import Ldd from "@/components/views/Ldd";
 import HRDashboard from "@/components/views/HRDashboard";
 import { buildLdd } from "@/lib/ldd";
+import { chipJaga, lblJaga, sisaHari, tenggatJaga } from "@/lib/jaga";
 import { api } from "@/lib/api";
 
 function useCountUp(target: number, dur = 1000) {
@@ -111,43 +112,13 @@ export default function Ringkasan({ onOpenWizard }: { onOpenWizard: () => void }
     q.status === "verified" ? "TERVERIFIKASI ✓" : q.status === "rejected" ? "DITOLAK" : q.status === "meninjau" ? "DITINJAU" : q.lbl || "MASUK",
   ]);
 
-  /* FUNGSI JAGA — tenggat dikumpulkan dari rekam nyata lintas modul, diurut yang paling dekat.
-   * Hanya tanggal ISO (YYYY-MM-DD) yang bisa dihitung; teks bebas lama dilewati, bukan ditebak. */
-  const sisaHari = (iso?: string | null) => {
-    if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return null;
-    // `|| 0` menormalkan -0 (muncul saat tenggat = hari ini) agar perbandingan & tampilan bersih.
-    return Math.ceil((new Date(iso + "T00:00:00").getTime() - Date.now()) / 86_400_000) || 0;
-  };
-  const chipSisa = (d: number | null) => (d === null ? "c-red" : d < 0 ? "c-red" : d <= 30 ? "c-red" : d <= 90 ? "c-draft" : "c-mon");
-  const lblSisa = (d: number | null) => (d === null ? "SEGERA" : d < 0 ? `TELAT ${Math.abs(d)} HARI` : d === 0 ? "HARI INI" : `${d} HARI`);
-  const remData: [string, string, string, string, ViewId][] = (() => {
-    // hari = null → tenggat tak berupa tanggal terbaca; ditandai SEGERA, JANGAN dikarang jadi angka.
-    const out: { b: string; d: string; hari: number | null; v: ViewId }[] = [];
-    // Izin bertanda SEGERA (status disetel pada rekam izin)
-    t.lic.forEach((r) => {
-      const a = r as unknown[];
-      if (a[7] === "SEGERA") out.push({ b: String(a[0]), d: `Masa berlaku segera berakhir — ${String(a[6] || "periksa rekam izin")}`, hari: null, v: "licensing" });
-    });
-    // Perjanjian dengan tanggal berakhir terbaca
-    t.agr.forEach((a) => {
-      const h = sisaHari((a as { akhir?: string }).akhir);
-      if (h !== null && h <= 120) out.push({ b: (a as { n?: string }).n || "Perjanjian", d: `Berakhir ${(a as { akhir?: string }).akhir} — siapkan perpanjangan atau pengakhiran`, hari: h, v: "agreement" });
-    });
-    // Kewajiban pajak terbuka
-    pajak.terbuka.forEach((x) => {
-      const h = sisaHari(x.tenggat);
-      if (h !== null && h <= 120) out.push({ b: x.nama, d: `Tenggat lapor/setor ${x.tenggat}`, hari: h, v: "pajak" });
-    });
-    // Kontrak PKWT yang mendekati habis
-    t.emp.forEach((e) => {
-      if (e.s !== "PKWT") return;
-      const h = sisaHari(e.akhirKontrak);
-      if (h !== null && h <= 90) out.push({ b: `Kontrak ${e.n} berakhir`, d: `PKWT habis ${e.akhirKontrak} — putuskan perpanjang atau kompensasi`, hari: h, v: "hr-database" });
-    });
-    // null (SEGERA tanpa tanggal) diperlakukan paling mendesak → urut paling atas
-    return out.sort((x, y) => (x.hari ?? -9999) - (y.hari ?? -9999)).slice(0, 8)
-      .map((x) => [x.b, x.d, chipSisa(x.hari), lblSisa(x.hari), x.v] as [string, string, string, string, ViewId]);
-  })();
+  /* FUNGSI JAGA — satu sumber `lib/jaga.ts`, dipakai bersama lonceng notifikasi topbar.
+   * Kewajiban pajak ditambahkan di sini karena datanya di luar `ten` (fetch module_records). */
+  const remData: [string, string, string, string, ViewId][] = tenggatJaga(
+    t,
+    pajak.terbuka.map((x) => ({ b: x.nama, d: `Tenggat lapor/setor ${x.tenggat}`, hari: sisaHari(x.tenggat), v: "pajak" }))
+      .filter((x) => x.hari !== null && x.hari <= 120),
+  ).slice(0, 8).map((x) => [x.b, x.d, chipJaga(x.hari), lblJaga(x.hari), x.v as ViewId]);
 
   /* Rekam per Bab dihitung dari koleksi nyata (bar relatif terhadap bab terbanyak). */
   const babRows: [string, number, number][] = (() => {

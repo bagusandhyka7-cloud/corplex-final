@@ -37,8 +37,10 @@ export function AuthScreen() {
   const router = useRouter();
 
   /* ---- login ---- */
-  const [email, setEmail] = useState(ACCOUNTS[0].email);
-  const [pw, setPw] = useState(ACCOUNTS[0].pw);
+  /* Form masuk WAJIB kosong: dulu terisi otomatis kredensial akun seed (ACCOUNTS[0]) — kata sandi
+   * demo terpampang di layar login produksi, dan klien nyata bingung melihat email orang lain. */
+  const [email, setEmail] = useState("");
+  const [pw, setPw] = useState("");
   const [showPw, setShowPw] = useState(false);
 
   /* ---- daftar wizard ---- */
@@ -131,6 +133,11 @@ export function AuthScreen() {
   });
 
   const { run: kirimDemo, pending: sendingDemo } = useAsyncAction(async () => {
+    /* Dulu NOL validasi: form kosong bisa dikirim → baris demo_requests kosong masuk panel admin,
+     * padahal labelnya bertanda wajib (*). */
+    if (!demo.nama.trim()) { toast("Nama wajib diisi", "Lengkapi nama lengkap Anda.", "warn"); return; }
+    if (!demo.perusahaan.trim()) { toast("Nama perusahaan wajib diisi", "Tim MRWP perlu tahu perusahaan Anda.", "warn"); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(demo.email)) { toast("Email tidak valid", "Kode undangan dikirim ke email ini — periksa formatnya.", "warn"); return; }
     const res = await withRetry(() => api.demo.request(demo));
     if (!res.ok) { toast("Gagal mengirim", res.error.message, "warn"); return; }
     setDemoSent(true);
@@ -320,7 +327,9 @@ export function AuthScreen() {
                       {loggingIn ? "Memverifikasi…" : "Masuk"}
                     </button>
                     <p style={{ textAlign: "center", margin: "2px 0 0" }}>
-                      <button type="button" className="cx-link" onClick={() => toast("Laporan diteruskan", "Permintaan reset sandi dikirim ke advokat MRWP — Anda akan dihubungi via kanal resmi.", "ok")}>Lupa sandi</button>
+                      {/* ponytail: JANGAN klaim "permintaan diteruskan" — tak ada apa pun yang terkirim.
+                          Reset sungguhan = sb.auth.resetPasswordForEmail + halaman /reset, menunggu SMTP diatur. */}
+                      <button type="button" className="cx-link" onClick={() => toast("Hubungi tim MRWP", "Reset kata sandi belum otomatis. Hubungi admin MRWP lewat kanal resmi perusahaan Anda untuk penyetelan ulang.", "warn")}>Lupa sandi</button>
                     </p>
                   </div>
                 )}

@@ -350,13 +350,20 @@ export default function Assistant() {
           {mode === "monitor" ? (
             <div className="ai-chat" style={{ gap: 0 }}>
               <div className="ai-lbl" style={{ marginBottom: 10 }}>MONITOR REGULASI</div>
-              <div className="rows">
-                <Row b="Perubahan aturan pelaksana perizinan sektor pangan olahan" d="Cocok dengan profil usaha Anda · ringkasan dampak tersedia"
-                  right={<><Chip c="c-mon">BARU</Chip><button className="btn btn-line btn-sm" onClick={() => toast("Ringkasan dampak dibuka", "Analisis DRAF AI — rujukan tertaut sumber resmi.", "ok")}>Baca</button></>} />
-                <Row b="Penyesuaian formula UMK 2027 (rancangan)" d="Berdampak pada perhitungan pesangon & upah" right={<Chip c="c-gray">PANTAU</Chip>} />
-                <Row b="Pembaruan tata cara pelaporan LKPM" d="Kalender kewajiban diperbarui otomatis" right={<Chip c="c-ver">DITERAPKAN</Chip>} />
+              {/* NOL DUMMY (bahaya tertinggi): tiga "pembaruan regulasi" di sini dulu DIKARANG
+                  (aturan pangan olahan, formula UMK 2027, tata cara LKPM "DITERAPKAN") dan disajikan
+                  sebagai intelijen hukum nyata — klien bisa mengambil keputusan dari informasi palsu.
+                  ponytail: pemantauan regulasi otomatis butuh sumber JDIH + penjadwal; sampai itu ada,
+                  arahkan ke AI Assistant yang menjawab dengan rujukan, jangan mengarang daftar. */}
+              <div className="ai-hero" style={{ padding: "28px 8px" }}>
+                <h3 style={{ fontFamily: "var(--serif)", color: "#fff", fontSize: 18, margin: "0 0 8px" }}>Pemantauan regulasi otomatis belum aktif</h3>
+                <p style={{ fontSize: 12.5, color: "var(--txt2)", lineHeight: 1.7, maxWidth: 520, margin: "0 auto 16px" }}>
+                  Kami tidak menampilkan daftar perubahan peraturan sebelum sumbernya tersambung resmi (JDIH · peraturan.go.id) —
+                  informasi hukum yang keliru lebih berbahaya daripada tidak ada informasi.
+                  Sementara itu, tanyakan langsung perubahan aturan yang relevan dengan bidang usaha Anda; jawaban disertai rujukan.
+                </p>
+                <button className="btn btn-gold btn-sm" onClick={() => setMode("chat")}>Tanya AI Assistant</button>
               </div>
-              <p className="note mt16">Peraturan baru dari sumber resmi dicocokkan dengan profil perusahaan Anda — tiap kecocokan membuat pengingat otomatis.</p>
             </div>
           ) : kosong && !typing ? (
             <div className="ai-hero">
@@ -391,7 +398,7 @@ export default function Assistant() {
                               ))}
                             </div>
                             <div className="acts">
-                              <button title="Suka" onClick={() => toast("Terima kasih", "Masukan Anda tercatat.", "ok")}><ThumbsUp size={14} /></button>
+                              <button title="Suka" onClick={() => toast("Terima kasih", "Masukan Anda kami terima.", "ok")}><ThumbsUp size={14} /></button>
                               <button title="Tidak suka" onClick={() => toast("Terima kasih", "Masukan Anda membantu perbaikan jawaban.", "ok")}><ThumbsDown size={14} /></button>
                               <button title="Ulangi jawaban" onClick={retry}><RefreshCw size={14} /></button>
                               <button title="Salin" onClick={() => salin(m.content)}><Copy size={14} /></button>

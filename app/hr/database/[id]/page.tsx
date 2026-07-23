@@ -2,7 +2,7 @@
 import React, { useEffect, useState, use } from "react";
 import { ArrowLeft, Download, Briefcase, GraduationCap, HeartPulse, ShieldAlert, FileText, CreditCard, Eye } from "lucide-react";
 import { useStore } from "@/lib/store";
-import { downloadDoc, vaultHash, vaultUrl } from "@/lib/vault";
+import { downloadDoc, vaultUrl } from "@/lib/vault";
 import { api, AttRow } from "@/lib/api";
 import { Chip, Field, Panel, Row, ViewHead } from "@/components/ui";
 import { useRouter } from "next/navigation";
@@ -228,11 +228,22 @@ export default function EmployeeProfile({ params }: { params: Promise<{ id: stri
           {/* SECTION 3: Administrasi & Dokumen */}
           <Panel title={<><FileText size={14} style={{ display: "inline", marginBottom: "-2px", marginRight: "6px" }}/> Administrasi & Dokumen Tertaut</>}>
             <div className="rows">
-              <Row b={`Perjanjian Kerja (${det.s})`} d={`${det.dok} · hash ${vaultHash(det.dok)} · tersimpan di vault`}
+              <Row b={`Perjanjian Kerja (${det.s})`} d={det.dokUrl ? `${det.dok} · tersimpan di vault` : `${det.dok || "Belum ada dokumen terunggah"}`}
                 right={
                   <div style={{ display: "flex", gap: 8 }}>
                     <button className={`btn btn-sm ${dokOpen ? "btn-gold" : "btn-line"}`} onClick={() => setDokOpen(!dokOpen)}><Eye size={11} /> Preview</button>
-                    <button className="btn btn-navy btn-sm" onClick={() => { downloadDoc(det.dok, t.name); toast("Unduhan dimulai", `${det.dok} · hash ${vaultHash(det.dok)} · akses unduh tercatat pada jejak audit.`, "ok"); }}><Download size={11} /> Unduh</button>
+                    {/* Dulu: toast mengklaim "hash …" (hash NAMA BERKAS, bukan isi) dan "akses unduh
+                        tercatat pada jejak audit" padahal nol pencatatan. Kini akses benar-benar
+                        ditulis sebagai rekam vault — pola sama dengan modul Aset & Merek. */}
+                    <button className="btn btn-navy btn-sm" onClick={() => {
+                      downloadDoc(det.dok, t.name);
+                      void api.records.create(localStorage.getItem("corplex_tid") || "", "vault", {
+                        dok: det.dok, alasan: `Unduh dokumen kerja — ${det.n}`, oleh: t.user,
+                        waktu: new Date().toLocaleString("id-ID", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }),
+                        kategori: "Karyawan",
+                      });
+                      toast("Unduhan dimulai", `${det.dok} — akses tercatat pada log Digital Vault.`, "ok");
+                    }}><Download size={11} /> Unduh</button>
                   </div>
                 } />
               {det.wn === "TKA" ? <Row b="Pengesahan RPTKA" d="Wajib bagi TKA · masa berlaku dipantau fungsi JAGA" right={<Chip c="c-ver">TERTAUT</Chip>} /> : null}

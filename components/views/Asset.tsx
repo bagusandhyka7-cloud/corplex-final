@@ -148,12 +148,36 @@ export default function Asset() {
             </Panel>
           ) : ddName ? (
             <Panel className="mt16" title={<>Hasil Due Diligence — {ddName} <Chip c="c-draft">DRAF AI</Chip></>}>
-              <div className="rows">
-                <Row b="Kelengkapan dokumen kepemilikan" d="Seluruh dokumen inti ditemukan di vault, hash cocok" right={<Chip c="c-ver">LENGKAP</Chip>} />
-                <Row b="Konsistensi data pembebanan" d="Nilai pembebanan sesuai dokumen kreditur" right={<Chip c="c-ver">KONSISTEN</Chip>} />
-                <Row b="Kesenjangan ditemukan" d="Polis asuransi aset belum tertaut ke rekam — risiko dokumentasi"
-                  right={<><Chip c="c-draft">1 TEMUAN</Chip><button className="btn btn-gold btn-sm" onClick={() => pushQueue("Laporan DD Aset", "Temuan kesenjangan dokumentasi", "c-draft", "DRAF AI")}>Eskalasi</button></>} />
-              </div>
+              {/* NOL DUMMY — sebelumnya tiga temuan ini TETAP & DIKARANG, termasuk klaim "hash cocok"
+                  (mengaku verifikasi kriptografis yang tak pernah dijalankan). Uji tuntas adalah
+                  produk yang ditunjukkan ke investor; mengarang hasilnya tak bisa dibenarkan.
+                  Kini tiap butir diperiksa dari rekam nyata aset yang dipilih. */}
+              {(() => {
+                const row = (t.assets.find((r) => String((r as unknown[])[0]) === ddName) || []) as unknown[];
+                const bukti = String(row[2] || "").trim();
+                const kwj = String(row[4] || "").trim();
+                const polis = t.asr.pol.some((p) => {
+                  const x = p as unknown[];
+                  return (String(x[0]) + " " + String(x[3] || "")).toLowerCase().includes((ddName || "").toLowerCase());
+                });
+                const butir: [string, string, boolean][] = [
+                  ["Bukti kepemilikan tercatat", bukti ? `Tercatat: ${bukti}` : "Belum ada bukti kepemilikan pada rekam aset ini", !!bukti],
+                  ["Kewajiban terpantau", kwj && kwj !== "—" ? `Terpantau: ${kwj}` : "Belum ada kewajiban (PBB/perpanjangan) dicatat", !!kwj && kwj !== "—"],
+                  ["Polis asuransi tertaut", polis ? "Ditemukan polis yang menyebut aset ini" : "Tidak ditemukan polis yang menaungi aset ini — risiko dokumentasi", polis],
+                ];
+                const temuan = butir.filter((b) => !b[2]).length;
+                return (
+                  <div className="rows">
+                    {butir.map(([b, d, ok]) => (
+                      <Row key={b} b={b} d={d} right={<Chip c={ok ? "c-ver" : "c-draft"}>{ok ? "LENGKAP" : "TEMUAN"}</Chip>} />
+                    ))}
+                    <Row b="Ringkasan pemeriksaan" d={temuan ? `${temuan} dari ${butir.length} butir belum terpenuhi — perlu ditinjau advokat` : "Seluruh butir terpenuhi berdasarkan rekam yang tercatat"}
+                      right={<><Chip c={temuan ? "c-draft" : "c-ver"}>{temuan ? `${temuan} TEMUAN` : "NIHIL TEMUAN"}</Chip>
+                        <button className="btn btn-gold btn-sm" onClick={() => pushQueue(`Laporan DD Aset — ${ddName}`, `${temuan} temuan dari ${butir.length} butir pemeriksaan`, "c-draft", "DRAF AI", undefined,
+                          butir.map(([b, d, ok]) => `${ok ? "[LENGKAP]" : "[TEMUAN]"} ${b}: ${d}`).join("\n"))}>Eskalasi</button></>} />
+                  </div>
+                );
+              })()}
             </Panel>
           ) : null}
         </div>
@@ -198,11 +222,18 @@ export default function Asset() {
                 <button className="btn btn-line btn-sm" onClick={() => void catatWatcher("bukan")}>Bukan Pelanggaran</button>
               </div>
             </Panel>
+            {/* NOL DUMMY: dua baris di sini dulu DIKARANG (Merek "CONTOH" 120 HARI, NDA Formula A)
+                lengkap dengan tombol "Mulai" yang cuma toast "tracking DJKI aktif" — tak ada apa pun
+                yang berjalan. Kini murni rekam HKI nyata milik tenant. */}
             <Panel title="Pengingat Portofolio">
               <div className="rows">
-                <Row b="Perpanjangan Merek “CONTOH”" d="Jendela dihitung mundur dari perlindungan_sampai"
-                  right={<><Chip c="c-mon">120 HARI</Chip><button className="btn btn-navy btn-sm" onClick={() => toast("Pengurusan dimulai", "Permohonan perpanjangan disiapkan — tracking DJKI aktif.", "ok")}>Mulai</button></>} />
-                <Row b="NDA karyawan kunci — 1 berakhir Des 2026" d="Rahasia dagang Formula A" right={<Chip c="c-draft">PANTAU</Chip>} />
+                {t.hki.map((r, i) => {
+                  const a = r as unknown[];
+                  const masa = String(a[5] || "");
+                  return <Row key={i} b={String(a[0])} d={masa ? `Masa perlindungan: ${masa}` : "Masa perlindungan belum dicatat — lengkapi rekam HKI"}
+                    right={<Chip c={masa ? "c-mon" : "c-draft"}>{masa ? "TERPANTAU" : "LENGKAPI"}</Chip>} />;
+                })}
+                {!t.hki.length && <p className="note">Belum ada rekam HKI. Daftarkan merek/paten agar masa perlindungannya ikut dipantau.</p>}
               </div>
             </Panel>
           </div>

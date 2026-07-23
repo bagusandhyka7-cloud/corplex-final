@@ -3,7 +3,7 @@ import React, { useRef, useState } from "react";
 import { FileText, Lock, Scale, UserPlus } from "lucide-react";
 import { Emp } from "@/lib/data";
 import { fmt, useStore } from "@/lib/store";
-import { dokRingkas, downloadDoc, registerVault, vaultHash } from "@/lib/vault";
+import { dokRingkas, downloadDoc, registerVault } from "@/lib/vault";
 import { api, empToRow, empFromRow, withRetry } from "@/lib/api";
 import { useAsyncAction, useUpload } from "@/lib/hooks";
 import { askConfirm, Chip, Field, Jargon, Kpi, Modal, Panel, Row, RpInput, ViewHead } from "@/components/ui";
@@ -229,6 +229,12 @@ export default function DatabaseKaryawan() {
   });
 
   const c = (wn: string, jk: string) => emp.filter((e) => e.wn === wn && e.jk === jk).length;
+  /* Dulu memakai empOut yang TIDAK PERNAH diisi (selalu 0) — padahal angka ini dilaporkan ke
+   * LKPM OSS-RBA. Kini dihitung nyata: PKWT yang tanggal habis kontraknya sudah terlewat. */
+  const empOut = emp.filter((e) => {
+    if (e.s !== "PKWT" || !/^d{4}-d{2}-d{2}$/.test(e.akhirKontrak || "")) return false;
+    return new Date(e.akhirKontrak + "T00:00:00").getTime() < Date.now();
+  }).length;
 
   return (
     <div>
@@ -317,14 +323,27 @@ export default function DatabaseKaryawan() {
                 ["Tenaga Kerja Asing — Laki-laki", c("TKA", "L")],
                 ["Tenaga Kerja Asing — Perempuan", c("TKA", "P")],
                 ["Tenaga kerja lokal setempat", emp.filter((e) => e.lok).length],
-                ["Pengurangan tenaga kerja periode pelaporan", t.empOut],
+                ["Pengurangan tenaga kerja periode pelaporan", empOut],
               ].map((r, i) => (
                 <tr key={i}><td>{r[0]}</td><td style={{ textAlign: "right", fontWeight: 700, color: "var(--ink)" }}>{r[1]}</td></tr>
               ))}
               <tr><td style={{ fontWeight: 700, color: "var(--ink)" }}>TOTAL (di luar Komisaris &amp; Direksi)</td><td style={{ textAlign: "right", fontWeight: 700, color: "var(--gold-deep)" }}>{emp.length}</td></tr>
             </tbody></table></div>
             <div style={{ display: "flex", gap: 9, marginTop: 14, flexWrap: "wrap" }}>
-              <button className="btn btn-navy btn-sm" onClick={() => toast("Rekap LKPM disalin", "Angka penggunaan tenaga kerja siap diinput ke formulir LKPM OSS-RBA — bukti dokumen sumber tertaut per baris.", "ok")}>Salin ke LKPM Triwulan Berjalan</button>
+              {/* Dulu hanya toast "Rekap LKPM disalin" tanpa menyentuh clipboard sama sekali. */}
+              <button className="btn btn-navy btn-sm" onClick={() => {
+                const baris = [
+                  ["Tenaga Kerja Indonesia — Laki-laki", c("TKI", "L")], ["Tenaga Kerja Indonesia — Perempuan", c("TKI", "P")],
+                  ["Tenaga Kerja Asing — Laki-laki", c("TKA", "L")], ["Tenaga Kerja Asing — Perempuan", c("TKA", "P")],
+                  ["Tenaga kerja lokal setempat", emp.filter((e) => e.lok).length],
+                  ["Pengurangan tenaga kerja periode pelaporan", empOut],
+                  ["TOTAL (di luar Komisaris & Direksi)", emp.length],
+                ];
+                const teks = `Rekap LKPM — ${t.name}\n` + baris.map(([k, v]) => `${k}\t${v}`).join("\n");
+                void navigator.clipboard?.writeText(teks)
+                  .then(() => toast("Rekap LKPM disalin", `${baris.length} baris tersalin — tempel langsung ke formulir LKPM OSS-RBA.`, "ok"))
+                  .catch(() => toast("Gagal menyalin", "Peramban menolak akses clipboard — salin manual dari tabel di atas.", "warn"));
+              }}>Salin ke LKPM Triwulan Berjalan</button>
               <button className="btn btn-gold btn-sm" onClick={() => pushQueue("Rekap tenaga kerja LKPM", "Agregasi dari dokumen terunggah · periode pelaporan berjalan", "c-draft", "DRAF AI")}><Scale size={12} /> Ajukan Verifikasi</button>
             </div>
           </Panel>

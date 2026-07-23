@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   BadgeCheck, Bell, Bot, Building2, Coins, FileBadge, FileSignature, FileText, Gavel, Gem,
   HardHat, Landmark, LayoutDashboard, Lock, LogOut, PenLine, RadioTower, ReceiptText, Scale,
@@ -8,6 +8,7 @@ import {
   BarChart3, IdCard, FileWarning, Calculator, Copyright, Vault, Umbrella, ClipboardList, Link2, CalendarDays, FileUp,
 } from "lucide-react";
 import { useStore, useToasts, ViewId } from "@/lib/store";
+import { lblJaga, tenggatJaga } from "@/lib/jaga";
 import { ROUTE } from "@/lib/routes";
 import { useRouter, usePathname } from "next/navigation";
 
@@ -193,12 +194,7 @@ export function Sidebar({ open, onClose, isCollapsed }: { open: boolean; onClose
 }
 
 /* ===== TOPBAR ===== */
-const BELL_ICONS: Record<string, React.ReactNode> = {
-  shield: <Shield size={16} />, users: <Users size={16} />, scroll: <FileSignature size={16} />,
-  file: <FileText size={16} />, landmark: <Landmark size={16} />, radar: <RadioTower size={16} />,
-  receipt: <ReceiptText size={16} />, lifebuoy: <ShieldCheck size={16} />, hardhat: <HardHat size={16} />,
-  coins: <Coins size={16} />, lock: <Lock size={16} />, badge: <BadgeCheck size={16} />,
-};
+/* BELL_ICONS dihapus: hanya melayani `ten.bell` (seed) yang tak pernah terisi untuk tenant nyata. */
 
 export function Topbar({ onBurger, collapsed }: { onBurger: () => void; collapsed?: boolean }) {
   const { ten, go, lang, setLang } = useStore();
@@ -216,7 +212,24 @@ export function Topbar({ onBurger, collapsed }: { onBurger: () => void; collapse
     return () => document.removeEventListener("mousedown", h);
   }, [bellOpen]);
   if (!ten) return null;
-  const hits = q.trim() ? ten.idx.filter((x) => (x.t + " " + x.s).toLowerCase().includes(q.toLowerCase())).slice(0, 5) : [];
+  /* PENCARIAN GLOBAL — dulu membaca `ten.idx` yang TIDAK PERNAH diisi untuk tenant nyata
+   * (emptyTenant → []), jadi bar pencarian paling menonjol di layar selalu "Tidak ditemukan".
+   * Kini indeks dibangun dari koleksi hidup; ikut ter-update sendiri lewat realtime store. */
+  const idx = useMemo(() => {
+    const out: { t: string; s: string; v: string }[] = [];
+    ten.emp.forEach((e) => out.push({ t: e.n, s: `Karyawan · ${e.j || "—"} · ${e.s}`, v: "hr-database" }));
+    ten.lic.forEach((r) => { const a = r as unknown[]; out.push({ t: String(a[0]), s: `Izin · ${String(a[1] || "")} · ${String(a[7] || "")}`, v: "licensing" }); });
+    ten.assets.forEach((r) => { const a = r as unknown[]; out.push({ t: String(a[0]), s: `Aset · ${String(a[2] || "")}`, v: "asset" }); });
+    ten.hki.forEach((r) => { const a = r as unknown[]; out.push({ t: String(a[0]), s: `HKI · ${String(a[1] || "")}`, v: "asset" }); });
+    ten.asr.pol.forEach((r) => { const a = r as unknown[]; out.push({ t: String(a[0]), s: `Polis · ${String(a[1] || "")}`, v: "asuransi" }); });
+    ten.agr.forEach((a) => { const x = a as { n?: string; p2?: string }; out.push({ t: x.n || "Perjanjian", s: `Perjanjian · dengan ${x.p2 || "—"}`, v: "agreement" }); });
+    ten.cases.forEach((c) => { const x = c as { judul?: string; n?: string }; out.push({ t: x.judul || x.n || "Perkara", s: "Perkara", v: "case" }); });
+    return out;
+  }, [ten]);
+  const hits = q.trim() ? idx.filter((x) => (x.t + " " + x.s).toLowerCase().includes(q.toLowerCase())).slice(0, 5) : [];
+  /* LONCENG — sumber sama dengan panel Pengingat (lib/jaga.ts). Dulu `ten.bell` selalu kosong
+   * padahal titik merah "ada notifikasi" menyala permanen. */
+  const jaga = useMemo(() => tenggatJaga(ten), [ten]);
 
   const activeNav = NAV.find((n) => n.v !== ("logout" as ViewId) && pathname.startsWith(ROUTE[n.v]));
   const modTitle = tr(activeNav?.label || "Ringkasan", lang);
@@ -260,17 +273,21 @@ export function Topbar({ onBurger, collapsed }: { onBurger: () => void; collapse
           ))}
         </div>
         <div ref={bellRef} style={{ position: "relative" }}>
-          <button className="bell" onClick={() => setBellOpen(!bellOpen)} aria-label="Notifikasi"><Bell size={15} /><span className="dot" /></button>
+          <button className="bell" onClick={() => setBellOpen(!bellOpen)} aria-label="Notifikasi">
+            <Bell size={15} />{/* titik merah HANYA bila benar-benar ada tenggat mendesak */}
+            {jaga.some((x) => x.hari === null || x.hari <= 30) && <span className="dot" />}
+          </button>
           <div className={`bell-drop${bellOpen ? " open" : ""}`}>
-            <h6>PENGINGAT FUNGSI JAGA — {ten.bell.length} AKTIF</h6>
+            <h6>PENGINGAT FUNGSI JAGA — {jaga.length} AKTIF</h6>
             <div>
               {/* Maks 5 notifikasi tampil; klik = routing ke menu terkait */}
-              {ten.bell.slice(0, 5).map((b, i) => (
-                <button key={i} className="bell-item" onClick={() => { go(b[3] as ViewId); setBellOpen(false); }}>
-                  {BELL_ICONS[b[0]] || <Bell size={15} />}
-                  <div><b>{b[1]}</b><span>{b[2]}</span></div>
+              {jaga.slice(0, 5).map((b, i) => (
+                <button key={i} className="bell-item" onClick={() => { go(b.v as ViewId); setBellOpen(false); }}>
+                  <Bell size={15} />
+                  <div><b>{b.b}</b><span>{lblJaga(b.hari)} · {b.d}</span></div>
                 </button>
               ))}
+              {!jaga.length && <div style={{ padding: "12px 14px", fontSize: 11.5, color: "var(--muted)" }}>Belum ada tenggat mendesak. Pengingat muncul otomatis dari rekam izin, perjanjian, dan kontrak kerja.</div>}
             </div>
           </div>
         </div>

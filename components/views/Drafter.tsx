@@ -727,8 +727,8 @@ export default function Drafter() {
                   <button className="dr-apply" onClick={() => terapkan(i)}>Terapkan ke Draft</button>
                 )}
                 <div className="acts">
-                  <button title="Suka" onClick={() => toast("Terima kasih", "Masukan Anda tercatat.", "ok")}><ThumbsUp size={14} /></button>
-                  <button title="Tidak suka" onClick={() => toast("Terima kasih", "Masukan Anda membantu perbaikan.", "ok")}><ThumbsDown size={14} /></button>
+                  <button title="Suka" onClick={() => toast("Terima kasih", "Masukan Anda kami terima.", "ok")}><ThumbsUp size={14} /></button>
+                  <button title="Tidak suka" onClick={() => toast("Terima kasih", "Masukan Anda kami terima.", "ok")}><ThumbsDown size={14} /></button>
                   <button title="Ulangi jawaban" onClick={() => { if (lastPrompt.current) void generateDraft(lastPrompt.current, lastOpts.current); }}><RefreshCw size={14} /></button>
                   <button title="Salin" onClick={() => { void navigator.clipboard?.writeText(m.content); toast("Disalin", "", "ok"); }}><Copy size={14} /></button>
                 </div>

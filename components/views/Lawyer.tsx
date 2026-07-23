@@ -47,16 +47,18 @@ export default function Lawyer() {
 
   const ajukanUlang = (q: QItem) => {
     pushQueue(q.t + " (revisi)", "Diajukan ulang setelah perbaikan · " + (q.note || "catatan advokat ditindaklanjuti"), "c-draft", "DRAF AI");
-    toast("Diajukan ulang", "Pengajuan revisi masuk antrean prioritas.", "ok");
+    toast("Diajukan ulang", "Pengajuan revisi masuk antrean verifikasi advokat.", "ok");
   };
 
   const sendPremium = () => {
     setPremOpen(false);
     /* nyata: masuk verification_queue → tampil di panel ini, badge sidebar, dan Konsol Advokat admin */
     if (!prUraian.trim()) { toast("Uraian kebutuhan wajib diisi", "Advokat butuh konteks masalah untuk menyusun penawaran.", "warn"); setPremOpen(true); return; }
-    pushQueue(`Penugasan Premium — ${prBidang}`, `${prSkema} · cek konflik kepentingan berjalan → penawaran disusun`, "c-gold", "PENAWARAN", undefined, prUraian.trim());
+    /* JANGAN klaim "cek konflik kepentingan dijalankan" — sistem tidak menjalankan pemeriksaan apa pun.
+     * Cek konflik adalah kewajiban etik yang dilakukan MANUSIA di MRWP sebelum menerima penugasan. */
+    pushQueue(`Penugasan Premium — ${prBidang}`, `${prSkema} · menunggu peninjauan & penawaran dari MRWP`, "c-gold", "PENAWARAN", undefined, prUraian.trim());
     setPrUraian("");
-    toast("Permintaan terkirim", "Cek konflik kepentingan dijalankan sebelum penugasan tim — penawaran transparan menyusul.", "ok");
+    toast("Permintaan terkirim", "Tim MRWP meninjau permintaan Anda — termasuk pemeriksaan konflik kepentingan — sebelum penawaran disampaikan.", "ok");
   };
 
   return (
@@ -192,7 +194,8 @@ export default function Lawyer() {
             <option>Fixed fee</option><option>Capped fee</option><option>Hourly</option>
           </select>
         </Field>
-        <div className="note">Penawaran transparan di muka. Pagar etik: sistem menjalankan <b>cek konflik kepentingan</b> sebelum penugasan tim.</div>
+        {/* Dulu: "sistem menjalankan cek konflik kepentingan" — tidak ada pemeriksaan otomatis apa pun. */}
+        <div className="note">Penawaran transparan di muka. Pagar etik: advokat MRWP melakukan <b>pemeriksaan konflik kepentingan</b> sebelum menerima penugasan.</div>
       </Modal>
     </div>
   );

@@ -15,7 +15,7 @@ import { useRouter } from "next/navigation";
 const SUBJUDUL = ["Polis & Pertanggungan", "Klaim"];
 
 export default function Asuransi() {
-  const { ten, toast, activeTab: tab, setActiveTab: setTab, pushQueue, patchTen, go } = useStore();
+  const { ten, toast, activeTab: tab, setActiveTab: setTab, pushQueue, patchTen, go, queue } = useStore();
   const t = ten!;
   const router = useRouter();
   const [f, setF] = useState("semua");
@@ -30,7 +30,17 @@ export default function Asuransi() {
   const xlsx = useExcelImport("pol");
   const onDone = (row: RecRow, editId: string | null) =>
     patchTen({ asr: { ...t.asr, pol: (editId ? t.asr.pol.map((x) => idOf("pol", x) === editId ? row : x) : [row, ...t.asr.pol]) as typeof t.asr.pol } });
-  const [klaim, setKlaim] = useState<Klaim[]>(() => clone(t.asr.klaim));
+  /* Klaim dulu HANYA state lokal: kartu muncul lalu HILANG saat refresh, padahal pengajuannya
+   * sudah masuk antrean advokat — terlihat seperti data hilang. Kini diturunkan dari `queue`
+   * (verification_queue) memakai pola yang sama dengan Penugasan Premium di menu Pengacara:
+   * bertahan lintas sesi, ikut realtime, nol tabel baru. */
+  const klaim: Klaim[] = queue.filter((it) => it.t.startsWith("Klaim asuransi — ")).map((it) => ({
+    t: it.t.replace("Klaim asuransi — ", "Klaim — "),
+    obj: it.m, nilai: "Taksiran menyusul",
+    cls: it.status === "verified" ? "c-ver" : it.status === "rejected" ? "c-red" : "c-draft",
+    lbl: it.status === "verified" ? "SELESAI" : it.status === "rejected" ? "PERLU REVISI" : it.status === "meninjau" ? "DITINJAU" : "DRAF AI",
+    tl: it.status === "verified" ? undefined : [["BERJALAN", "Klaim diajukan", it.m, "next"]],
+  })) as Klaim[];
   const [nkObj, setNkObj] = useState(t.asr.pol[0] ? `${t.asr.pol[0][3]} — ${t.asr.pol[0][0]}` : "");
   const [nkDesc, setNkDesc] = useState("");
 
@@ -61,10 +71,6 @@ export default function Asuransi() {
       model: "Jago 1.5", company: { name: t.name, sector: t.sector }, onDelta: () => {},
     });
     if (ai.ok && ai.data.trim()) ringkas = ai.data.trim();
-    setKlaim((ks) => [{
-      t: "Klaim — " + objek, obj: nkObj, nilai: "Taksiran menyusul", cls: "c-draft", lbl: "DRAF AI",
-      tl: [["HARI INI", "Klaim diajukan", "Berkas dirakit AI dari rekam — terkirim ke antrean advokat", "next"]],
-    }, ...ks]);
     setNkDesc("");
     /* smart attachment: lampirkan rekam polis terpilih agar advokat membukanya instan */
     const polRow = pol.find((p) => `${p[3]} — ${p[0]}` === nkObj);
@@ -99,6 +105,11 @@ export default function Asuransi() {
   const bpjsTk = t.emp.filter((e) => e.bpjsTk).length;
   const bpjsKes = t.emp.filter((e) => e.bpjsKes).length;
   const kurangBpjs = t.emp.filter((e) => !e.bpjsTk || !e.bpjsKes);
+  /* Aset yang namanya tak disebut di polis mana pun = objek tanpa proteksi tertaut. */
+  const asetTanpaPolis = t.assets.filter((a) => {
+    const nama = String((a as unknown[])[0] || "").toLowerCase();
+    return nama && !t.asr.pol.some((p) => (String(p[0]) + " " + String(p[3] || "")).toLowerCase().includes(nama));
+  }).length;
 
   const polRows = pol.filter((p) => (f === "semua" || p[7] === f) && (String(p[0]) + p[1] + p[3]).toLowerCase().includes(q.toLowerCase()));
 
@@ -111,10 +122,14 @@ export default function Asuransi() {
       filters={tab === 0 ? ["semua", "AKTIF", "SEGERA", "KLAIM", "PENGURUSAN"] : undefined} active={f} onFilter={setF}
       q={tab === 0 ? q : undefined} setQ={tab === 0 ? setQ : undefined} cariPh="Cari polis / penanggung / objek…"
       kpi={<div className="grid g4 mb16">
-        <Kpi v={pol.length} label="Polis aktif dipantau" tr={t.asr.polTr} />
-        <Kpi v={<span style={{ fontSize: 21 }}>{t.asr.nilai}</span>} label="Total nilai pertanggungan" tr="Tertaut rekam aset" trCls="up" />
+        <Kpi v={pol.filter((p) => p[7] === "AKTIF").length} label="Polis aktif dipantau" tr={pol.length ? `dari ${pol.length} polis dalam rekam` : "belum ada polis terdaftar"} />
+        {/* Dulu membaca t.asr.nilai (statis, "—" selamanya). Nilai pertanggungan tersimpan sebagai
+            teks bebas sehingga TIDAK bisa dijumlahkan — tampilkan kelengkapannya, jangan mengarang total. */}
+        <Kpi v={pol.filter((p) => String(p[5] || "").trim()).length} label="Polis bernilai tercatat" tr={`dari ${pol.length} polis`} trCls="up" />
         <Kpi v={klaim.filter((k) => k.tl).length} label="Klaim berjalan" tr="Alur klaim terpantau" />
-        <Kpi v={t.asr.gap.length} label="Kesenjangan proteksi" tr="Objek tanpa polis tertaut" trCls="dn" />
+        {/* Dulu membaca t.asr.gap yang TIDAK PERNAH diisi → selalu 0, seolah nol kesenjangan.
+            Kini dihitung nyata: aset yang tak disebut polis mana pun + karyawan tanpa BPJS lengkap. */}
+        <Kpi v={asetTanpaPolis + kurangBpjs.length} label="Kesenjangan proteksi" tr={`${asetTanpaPolis} aset tanpa polis · ${kurangBpjs.length} karyawan BPJS belum lengkap`} trCls="dn" />
       </div>}>
 
 

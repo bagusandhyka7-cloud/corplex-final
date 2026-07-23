@@ -2,10 +2,10 @@
 import React, { useEffect, useState } from "react";
 import { Lock, Plus } from "lucide-react";
 import { clone, useStore } from "@/lib/store";
-import { Chip, Jargon, Kpi, Panel, Row, Timeline } from "@/components/ui";
+import { Chip, Jargon, Kpi, Panel, Row } from "@/components/ui";
 import { ModuleShell } from "@/components/ModuleShell";
 import { RecActions, RecordModal } from "@/components/RecordModal";
-import { idOf, RecRow, SPECS } from "@/lib/records";
+import { idOf, RecRow, SPECS, withId } from "@/lib/records";
 import { aiExtract } from "@/lib/extract";
 import { useExcelImport } from "@/components/ExcelImport";
 import { api } from "@/lib/api";
@@ -35,10 +35,15 @@ export default function Licensing() {
     setPfill(vals || {}); setPfile(file); setMEdit(null); setMOpen(true);
   };
   type Kwj = { b: string; d: string; chip: string; lbl: string; next: string; can: boolean; done: boolean; id?: string };
+  /* NOL DUMMY: daftar ini dulu mengarang tenggat MILIK TENANT — "LKPM Triwulan III 2026 · 48 HARI",
+   * "UKL-UPL Semester II", dan otomatisasi "Dipicu event corpsec.pengurus_berubah" yang tidak ada.
+   * Klien bisa mengira 48 hari itu tenggat aslinya. Kewajibannya sendiri NYATA menurut peraturan,
+   * jadi disajikan sebagai DAFTAR ACUAN tanpa angka tenggat karangan; begitu klien menekan
+   * "Lapor + Bukti", barisnya jadi rekam DB miliknya sendiri. */
   const KWJ_DEFAULT: Kwj[] = [
-    { b: "LKPM Triwulan III 2026", d: "OSS · tenggat maju otomatis setelah dilaporkan", chip: "c-draft", lbl: "48 HARI", next: "LKPM Triwulan IV — 138 hari", can: true, done: false },
-    { b: "Laporan berkala UKL-UPL Semester II", d: "Persetujuan Lingkungan", chip: "c-mon", lbl: "TERJADWAL", next: "Semester I 2027 — terjadwal", can: true, done: false },
-    { b: "Pembaruan data OSS pasca perubahan pengurus", d: "Dipicu event corpsec.pengurus_berubah", chip: "c-mon", lbl: "TERJADWAL", next: "", can: false, done: false },
+    { b: "LKPM (Laporan Kegiatan Penanaman Modal)", d: "Wajib berkala bagi pemegang NIB — tenggat mengikuti kalender OSS perusahaan Anda", chip: "c-mon", lbl: "ACUAN", next: "", can: true, done: false },
+    { b: "Laporan berkala UKL-UPL / Persetujuan Lingkungan", d: "Wajib bila kegiatan usaha memiliki dokumen lingkungan", chip: "c-mon", lbl: "ACUAN", next: "", can: true, done: false },
+    { b: "Pembaruan data OSS setelah perubahan pengurus", d: "Dilakukan setiap ada perubahan direksi/komisaris pada akta", chip: "c-mon", lbl: "ACUAN", next: "", can: true, done: false },
   ];
   const [kwj, setKwj] = useState<Kwj[]>(KWJ_DEFAULT);
   /* S6: kalender kewajiban tersambung DB — status pelaporan bertahan lintas sesi (module_records mod 'kwj') */
@@ -50,38 +55,27 @@ export default function Licensing() {
       if (rows.length) setKwj(KWJ_DEFAULT.map((d) => rows.find((x) => x.b === d.b) || d)); // merge by judul: yang dilaporkan menimpa default
     });
   }, [rekamVer]); // realtime: rekam berubah di menu lain → segarkan
-  const [track, setTrack] = useState([
-    ["1 JUL 2026", "Permohonan diajukan", "Berkas lengkap diunggah melalui OSS", "done"],
-    ["6 JUL 2026", "Verifikasi administratif lolos", "Tidak ada kekurangan berkas", "done"],
-    ["MENUNGGU", "Evaluasi teknis BPOM", "Estimasi 15 hari kerja", "next"],
-    ["—", "Penerbitan izin edar", "Otomatis tercatat ke rekam perizinan", ""],
-  ]);
 
-  const advanceTrack = () => {
-    const i = track.findIndex((x) => x[3] === "next");
-    if (i < 0) { toast("Tracking", "Seluruh tahap selesai — izin terbit tercatat ke rekam.", "ok"); return; }
-    setTrack((tr) => {
-      const n = clone(tr);
-      n[i] = ["13 JUL 2026", n[i][1], n[i][2], "done"];
-      if (n[i + 1]) n[i + 1][3] = "next";
-      return n;
-    });
-    toast("Tahap maju", "Evaluasi teknis BPOM selesai → menunggu penerbitan izin edar. Notifikasi terkirim.", "ok");
-  };
 
-  const startRenewal = (i: number) => {
-    setLic((ls) => {
-      const n = clone(ls);
-      n[i][7] = "PENGURUSAN"; n[i][8] = "c-mon"; n[i][9] = "PENGURUSAN"; n[i][10] = "track";
-      return n;
-    });
-    toast("Pengurusan perpanjangan dimulai", "Record pengurusan dibuat — tahapan + stempel waktu; entri rekam ditulis otomatis.", "ok");
+  /* Dulu hanya mengubah state LOKAL sambil menoast "entri rekam ditulis otomatis" — refresh
+   * mengembalikan status semula. Kini benar-benar menulis ke module_records. */
+  const startRenewal = async (row: RecRow) => {
+    const id = idOf("lic", row);
+    if (!id) return toast("Rekam belum tersimpan", "Baris ini belum punya id database.", "warn");
+    const data = (row as unknown[]).slice(0, 11);
+    data[7] = "PENGURUSAN"; data[8] = "c-mon"; data[9] = "PENGURUSAN"; data[10] = "detail";
+    const r = await api.records.update(id, data as RecRow);
+    if (!r.ok) return toast("Gagal menyimpan", r.error.message, "warn");
+    patchTen({ lic: t.lic.map((x) => (idOf("lic", x) === id ? withId("lic", data as RecRow, id) : x)) as typeof t.lic });
+    toast("Status diubah — PENGURUSAN", "Tersimpan ke rekam; bertahan lintas sesi dan terlihat di seluruh layar.", "ok");
   };
 
   const laporKwj = async (i: number) => {
     const tid = localStorage.getItem("corplex_tid") || "";
     const cur = kwj[i];
-    const next = { ...cur, done: true, chip: "c-ver", lbl: "DILAPORKAN", d: "Bukti tersimpan ke vault · tenggat berikutnya: " + cur.next, can: false };
+    /* Jangan klaim "bukti tersimpan ke vault" — laporKwj tidak mengunggah berkas apa pun.
+     * `cur.next` kini kosong (tenggat karangan sudah dibuang), jadi tak lagi ditempel. */
+    const next = { ...cur, done: true, chip: "c-ver", lbl: "DILAPORKAN", d: `Ditandai dilaporkan pada ${new Date().toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}`, can: false };
     /* persist: baris DB per kewajiban (buat saat pertama dilaporkan; simpan SEMUA item agar hidrasi utuh) */
     const { id: _x, ...data } = next;
     const r = cur.id ? await api.records.update(cur.id, data as never) : await api.records.create(tid, "kwj", data as never);
@@ -102,7 +96,7 @@ export default function Licensing() {
       kpi={<div className="grid g4 mb16">
         <Kpi v={lic.length} label="Izin dalam rekam" tr="NIB & izin sektoral tercatat" />
         <Kpi v={lic.filter((r) => r[7] === "SEGERA").length} label="Mendekati tenggat" tr="Reminder bertahap aktif" trCls="dn" />
-        <Kpi v={lic.filter((r) => r[7] === "PENGURUSAN").length} label="Dalam pengurusan" tr="Tracking OSS" />
+        <Kpi v={lic.filter((r) => r[7] === "PENGURUSAN").length} label="Dalam pengurusan" tr="Ditandai manual" />
         <Kpi v={kwj.length} label="Kewajiban pasca-izin" tr={<><Jargon k="LKPM" /> & laporan berkala</>} />
       </div>}>
 
@@ -120,9 +114,7 @@ export default function Licensing() {
                 <td>
                   <div className="flex items-center gap-2">
                     {/* S6: urutan Perpanjang dulu, baru Buka */}
-                    {r[10] === "renew" ? <button className="btn-act" onClick={() => startRenewal(lic.indexOf(r))}>Perpanjang</button>
-                      : r[10] === "track" ? <button className="btn-act" onClick={advanceTrack}>Lacak</button>
-                        : null}
+                    {r[10] === "renew" ? <button className="btn-act" onClick={() => void startRenewal(r as RecRow)}>Perpanjang</button> : null}
                     {idOf("lic", r as RecRow) && <button className="btn-act" onClick={() => router.push(`/rekam/lic/${idOf("lic", r as RecRow)}`)}><Lock size={10} style={{ display: "inline", marginRight: 4 }} />Buka</button>}
                     <RecActions mod="lic" row={r as RecRow} toast={toast} onEdit={(row) => { setMEdit(row); setMOpen(true); }}
                       onDeleted={(id) => patchTen({ lic: t.lic.filter((x) => idOf("lic", x) !== id) as typeof t.lic })} />
@@ -140,13 +132,21 @@ export default function Licensing() {
             {kwj.map((k, i) => (
               <Row key={i} b={k.b} d={k.d} right={<>
                 <Chip c={k.chip}>{k.lbl}</Chip>
-                {k.can ? <button className="btn btn-line btn-sm" onClick={() => laporKwj(i)}>Lapor + Bukti</button> : null}
+                {k.can ? <button className="btn btn-line btn-sm" onClick={() => laporKwj(i)}>Tandai Dilaporkan</button> : null}
               </>} />
             ))}
           </div>
         </Panel>
-        <Panel title="Tracking Pengurusan — Izin Edar BPOM MD">
-          <Timeline items={track} />
+        {/* NOL DUMMY: dulu timeline BPOM dikarang lengkap dengan tanggal ("1 JUL 2026 Permohonan
+            diajukan", "Evaluasi teknis BPOM") padahal nol integrasi OSS/BPOM. Kini daftar nyata. */}
+        <Panel title="Izin Dalam Pengurusan">
+          <div className="rows">
+            {lic.filter((r) => r[7] === "PENGURUSAN").map((r, i) => (
+              <Row key={i} b={String(r[0])} d={String(r[6] || "Masa berlaku belum dicatat")} right={<Chip c="c-mon">PENGURUSAN</Chip>} />
+            ))}
+            {!lic.some((r) => r[7] === "PENGURUSAN") && <p className="note">Tidak ada izin yang sedang diurus. Tandai lewat tombol Perpanjang pada tabel di atas.</p>}
+          </div>
+          <p className="note mt16">Status diperbarui manual — sinkronisasi otomatis dengan OSS/BPOM belum tersambung, jadi kami tidak menampilkan tahapan yang tidak kami ketahui.</p>
         </Panel>
       </div>
 
