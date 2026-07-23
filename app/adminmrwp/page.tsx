@@ -76,28 +76,59 @@ function AdminLogin({ onOk }: { onOk: () => void }) {
     if (!res.ok) { sessionStorage.removeItem(SESSION_KEY); toast("Akses ditolak", res.error.message, "warn"); return; }
     onOk();
   });
-  const inp = { width: "100%", borderRadius: 10, padding: "11px 14px 11px 40px", outline: "none" } as const;
-  const ico = { position: "absolute" as const, left: 13, top: "50%", transform: "translateY(-50%)", color: "var(--muted)" };
+  const ico = { position: "absolute" as const, left: 14, top: "50%", transform: "translateY(-50%)", color: "rgba(206,218,238,.5)" };
   return (
-    <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: "linear-gradient(155deg,#081020,#0B1526 60%,#0e1c33)" }}>
-      <div className="panel" style={{ width: "min(380px,92vw)", textAlign: "center", padding: "34px 30px" }}>
-        <img src="/logo-mrwp.svg" alt="MRWP" style={{ width: 52, height: 52, objectFit: "contain", margin: "0 auto 12px" }} />
-        <h2 style={{ fontFamily: "var(--serif)", color: "#fff", fontSize: 22, margin: 0 }}>Panel MRWP</h2>
-        <span style={{ fontFamily: "var(--mono)", fontSize: 9, letterSpacing: ".22em", color: "var(--gold-deep)", display: "block", margin: "6px 0 20px" }}>KHUSUS STAF · SUPER ADMIN</span>
-        <div style={{ display: "grid", gap: 12, textAlign: "left" }}>
+    /* Latar FIXED sepenuh layar — dulu hanya minHeight:100vh dengan gradasi sendiri, sehingga
+     * batas antara pembungkus dan warna body tampak sebagai GARIS mendatar & dua warna berbeda.
+     * Bahasa desainnya kini seragam dengan halaman auth klien. Kelas am-* khusus layar ini. */
+    <div className="am-wrap">
+      <style>{`
+        .am-wrap{position:fixed;inset:0;z-index:3000;display:grid;place-items:center;overflow:auto;
+          padding:clamp(20px,4vmin,56px);background:#0A0E15}
+        /* satu aksen cahaya bergerak — cukup untuk "hidup" tanpa membebani */
+        .am-wrap::before{content:'';position:fixed;inset:-30%;pointer-events:none;filter:blur(90px);
+          background:radial-gradient(closest-side,rgba(34,96,150,.42),transparent 68%);
+          animation:amGlow 34s ease-in-out infinite alternate;will-change:transform}
+        .am-wrap::after{content:'';position:fixed;inset:-25%;pointer-events:none;filter:blur(100px);
+          background:radial-gradient(closest-side,rgba(176,138,62,.2),transparent 66%);
+          animation:amGlow2 44s ease-in-out infinite alternate;will-change:transform}
+        .am-card{position:relative;z-index:1;width:min(392px,100%);text-align:center;padding:36px 32px 30px;
+          border-radius:22px;background:#0B0E14;border:1px solid rgba(255,255,255,.085);
+          box-shadow:0 50px 110px -45px rgba(0,0,0,.85);
+          animation:amIn .55s cubic-bezier(.2,.8,.25,1) both}
+        .am-in{width:100%;border:1px solid rgba(255,255,255,.11);border-radius:11px;padding:11px 14px 11px 42px;
+          background:rgba(255,255,255,.045);color:#EAF0FA;font-size:13px;font-family:inherit;font-weight:500;outline:none;
+          transition:border-color .22s,background .22s,box-shadow .22s}
+        .am-in::placeholder{color:rgba(206,218,238,.34);font-weight:400}
+        .am-in:focus{border-color:rgba(217,188,128,.55);background:rgba(255,255,255,.075);box-shadow:0 0 0 3px rgba(176,138,62,.14)}
+        .am-btn{width:100%;border:none;cursor:pointer;border-radius:11px;padding:12px;font-weight:700;font-size:13.5px;
+          color:#0B1526;background:linear-gradient(135deg,#EAD09A 0%,#C9A45C 56%,#AC8535 100%);
+          box-shadow:inset 0 1px 0 rgba(255,255,255,.35);transition:transform .18s,filter .18s}
+        .am-btn:hover:not(:disabled){filter:brightness(1.05);transform:translateY(-1px)}
+        .am-btn:disabled{opacity:.45;cursor:not-allowed}
+        @keyframes amIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+        @keyframes amGlow{0%{transform:translate3d(-10%,-6%,0) scale(1)}100%{transform:translate3d(10%,8%,0) scale(1.2)}}
+        @keyframes amGlow2{0%{transform:translate3d(12%,8%,0) scale(1.15)}100%{transform:translate3d(-9%,-7%,0) scale(1)}}
+        @media(prefers-reduced-motion:reduce){.am-wrap::before,.am-wrap::after,.am-card{animation:none!important}}
+      `}</style>
+      <div className="am-card">
+        <img src="/logo-mrwp.svg" alt="MRWP" style={{ width: 52, height: 52, objectFit: "contain", margin: "0 auto 14px", display: "block" }} />
+        <h2 style={{ fontFamily: "var(--serif)", color: "#fff", fontSize: 23, margin: 0, letterSpacing: "-.01em" }}>Panel MRWP</h2>
+        <span style={{ fontFamily: "var(--mono)", fontSize: 8.5, letterSpacing: ".28em", color: "#D9BC80", display: "block", margin: "8px 0 24px" }}>KHUSUS STAF · SUPER ADMIN</span>
+        <div style={{ display: "grid", gap: 11, textAlign: "left" }}>
           <div style={{ position: "relative" }}>
-            <input style={inp} type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email admin" />
+            <input className="am-in" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email admin" />
             <Mail size={15} style={ico} />
           </div>
           <div style={{ position: "relative" }}>
-            <input style={inp} type="password" value={pw} onChange={(e) => setPw(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void masuk(); }} placeholder="Kata sandi" />
+            <input className="am-in" type="password" value={pw} onChange={(e) => setPw(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void masuk(); }} placeholder="Kata sandi" />
             <Lock size={15} style={ico} />
           </div>
-          <button className="btn btn-gold" style={{ justifyContent: "center", padding: 12 }} disabled={pending} aria-busy={pending} onClick={() => void masuk()}>
+          <button className="am-btn" style={{ marginTop: 3 }} disabled={pending} aria-busy={pending} onClick={() => void masuk()}>
             {pending ? "Memverifikasi…" : "Masuk ke Panel"}
           </button>
         </div>
-        <p style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 16 }}>Akses tercatat pada jejak audit. Bukan staf MRWP? Tutup halaman ini.</p>
+        <p style={{ fontSize: 10.5, lineHeight: 1.6, color: "rgba(206,218,238,.45)", marginTop: 18 }}>Akses tercatat pada jejak audit. Bukan staf MRWP? Tutup halaman ini.</p>
       </div>
     </div>
   );
