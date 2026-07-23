@@ -56,7 +56,7 @@ function OnboardChecklist() {
 }
 
 export default function Ringkasan({ onOpenWizard }: { onOpenWizard: () => void }) {
-  const { ten, go, queueCount, quota, quotaMax, rekamVer } = useStore();
+  const { ten, go, queue, queueCount, quota, quotaMax, rekamVer } = useStore();
   const t = ten!;
 
   /* ===== KPI dihitung dari rekam HIDUP (bukan field statis tenant) — "Data A masuk, semua layar ikut".
@@ -73,7 +73,7 @@ export default function Ringkasan({ onOpenWizard }: { onOpenWizard: () => void }
   const asetPerhatian = t.assets.filter((r) => (r as unknown[])[6] !== "AMAN").length;
 
   /* Kewajiban pajak ada di module_records mod 'tax' (di luar `ten`) — satu fetch, sama seperti modul Pajak. */
-  const [pajak, setPajak] = useState({ skor: 0, next: "—", nextTr: "belum ada kewajiban tercatat", total: 0 });
+  const [pajak, setPajak] = useState<{ skor: number; next: string; nextTr: string; total: number; terbuka: { nama: string; tenggat: string }[] }>({ skor: 0, next: "—", nextTr: "belum ada kewajiban tercatat", total: 0, terbuka: [] });
   useEffect(() => {
     const tid = localStorage.getItem("corplex_tid") || "";
     if (!tid) return;
@@ -88,6 +88,7 @@ export default function Ringkasan({ onOpenWizard }: { onOpenWizard: () => void }
         next: terbuka[0]?.nama || "—",
         nextTr: terbuka[0]?.tenggat ? `tenggat ${terbuka[0].tenggat}` : "seluruh kewajiban dipenuhi",
         total: rows.length,
+        terbuka: terbuka.map((x) => ({ nama: x.nama || "Kewajiban pajak", tenggat: x.tenggat || "" })),
       });
     });
   }, [rekamVer]); // realtime: rekam berubah di menu lain → segarkan
@@ -100,10 +101,53 @@ export default function Ringkasan({ onOpenWizard }: { onOpenWizard: () => void }
     setToday(new Date().toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" }));
   }, []);
 
-  /* NOL DUMMY: dulu daftar ini dipadatkan baris karangan (HGB, LKPM, somasi) saat rekam klien sedikit —
-   * berbahaya di platform hukum. Kini murni rekam nyata + empty state jujur. */
-  const verifData = t.verif;
-  const remData = t.rem;
+  /* NOL DUMMY: dulu daftar ini dipadatkan baris karangan (HGB, LKPM, somasi) saat rekam klien sedikit.
+   * Lebih buruk lagi: `t.verif`/`t.rem` TIDAK PERNAH diisi untuk tenant nyata (emptyTenant → []),
+   * jadi panel Verifikasi selalu kosong meski KPI di atasnya menghitung pengajuan, dan
+   * "Fungsi Jaga" — janji inti produk — tak pernah menyala. Kini keduanya dari rekam hidup. */
+  const verifData: [string, string, string, string][] = queue.slice(0, 6).map((q) => [
+    q.t, q.m,
+    q.status === "verified" ? "c-ver" : q.status === "rejected" ? "c-red" : q.status === "meninjau" ? "c-gold" : "c-draft",
+    q.status === "verified" ? "TERVERIFIKASI ✓" : q.status === "rejected" ? "DITOLAK" : q.status === "meninjau" ? "DITINJAU" : q.lbl || "MASUK",
+  ]);
+
+  /* FUNGSI JAGA — tenggat dikumpulkan dari rekam nyata lintas modul, diurut yang paling dekat.
+   * Hanya tanggal ISO (YYYY-MM-DD) yang bisa dihitung; teks bebas lama dilewati, bukan ditebak. */
+  const sisaHari = (iso?: string | null) => {
+    if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return null;
+    // `|| 0` menormalkan -0 (muncul saat tenggat = hari ini) agar perbandingan & tampilan bersih.
+    return Math.ceil((new Date(iso + "T00:00:00").getTime() - Date.now()) / 86_400_000) || 0;
+  };
+  const chipSisa = (d: number | null) => (d === null ? "c-red" : d < 0 ? "c-red" : d <= 30 ? "c-red" : d <= 90 ? "c-draft" : "c-mon");
+  const lblSisa = (d: number | null) => (d === null ? "SEGERA" : d < 0 ? `TELAT ${Math.abs(d)} HARI` : d === 0 ? "HARI INI" : `${d} HARI`);
+  const remData: [string, string, string, string, ViewId][] = (() => {
+    // hari = null → tenggat tak berupa tanggal terbaca; ditandai SEGERA, JANGAN dikarang jadi angka.
+    const out: { b: string; d: string; hari: number | null; v: ViewId }[] = [];
+    // Izin bertanda SEGERA (status disetel pada rekam izin)
+    t.lic.forEach((r) => {
+      const a = r as unknown[];
+      if (a[7] === "SEGERA") out.push({ b: String(a[0]), d: `Masa berlaku segera berakhir — ${String(a[6] || "periksa rekam izin")}`, hari: null, v: "licensing" });
+    });
+    // Perjanjian dengan tanggal berakhir terbaca
+    t.agr.forEach((a) => {
+      const h = sisaHari((a as { akhir?: string }).akhir);
+      if (h !== null && h <= 120) out.push({ b: (a as { n?: string }).n || "Perjanjian", d: `Berakhir ${(a as { akhir?: string }).akhir} — siapkan perpanjangan atau pengakhiran`, hari: h, v: "agreement" });
+    });
+    // Kewajiban pajak terbuka
+    pajak.terbuka.forEach((x) => {
+      const h = sisaHari(x.tenggat);
+      if (h !== null && h <= 120) out.push({ b: x.nama, d: `Tenggat lapor/setor ${x.tenggat}`, hari: h, v: "pajak" });
+    });
+    // Kontrak PKWT yang mendekati habis
+    t.emp.forEach((e) => {
+      if (e.s !== "PKWT") return;
+      const h = sisaHari(e.akhirKontrak);
+      if (h !== null && h <= 90) out.push({ b: `Kontrak ${e.n} berakhir`, d: `PKWT habis ${e.akhirKontrak} — putuskan perpanjang atau kompensasi`, hari: h, v: "hr-database" });
+    });
+    // null (SEGERA tanpa tanggal) diperlakukan paling mendesak → urut paling atas
+    return out.sort((x, y) => (x.hari ?? -9999) - (y.hari ?? -9999)).slice(0, 8)
+      .map((x) => [x.b, x.d, chipSisa(x.hari), lblSisa(x.hari), x.v] as [string, string, string, string, ViewId]);
+  })();
 
   /* Rekam per Bab dihitung dari koleksi nyata (bar relatif terhadap bab terbanyak). */
   const babRows: [string, number, number][] = (() => {
