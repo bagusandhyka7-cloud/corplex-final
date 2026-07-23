@@ -7,6 +7,9 @@ import { RecRow, withId } from "./records";
 import { useRouter } from "next/navigation";
 import { ROUTE } from "./routes";
 
+/* Topik channel wajib unik — sb.channel(nama) mengembalikan channel LAMA bila topik sama. */
+let rekamSeq = 0;
+
 export type ViewId = "ringkasan" | "assistant" | "drafter" | "employment" | "licensing" | "corpsec" | "asset" | "case" | "tools" | "agreement" | "asuransi" | "pajak" | "lawyer" | "hr-database" | "hr-sp" | "hr-kalkulator";
 
 interface ToastItem { id: number; t: string; d: string; k?: string }
@@ -33,6 +36,8 @@ interface Store {
   setActiveTab: React.Dispatch<React.SetStateAction<number>>;
   lang: "id" | "en";
   setLang: (l: "id" | "en") => void;
+  /* Naik tiap rekam berubah (realtime). Menu yang fetch sendiri memasukkannya ke deps useEffect. */
+  rekamVer: number;
 }
 
 const Ctx = createContext<Store | null>(null);
@@ -63,6 +68,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [activeTab, setActiveTab] = useState(0);
   const [lang, setLangState] = useState<"id" | "en">("id");
   const [isHydrated, setIsHydrated] = useState(false);
+  const [rekamVer, setRekamVer] = useState(0); // naik tiap rekam berubah (realtime) → pemicu segar lintas menu
   useEffect(() => { const l = localStorage.getItem("corplex_lang"); if (l === "en" || l === "id") setLangState(l); }, []);
   const setLang = useCallback((l: "id" | "en") => { setLangState(l); localStorage.setItem("corplex_lang", l); }, []);
   const router = useRouter();
@@ -205,6 +211,25 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   const patchTen = useCallback((p: Partial<Tenant>) => setTen((t) => (t ? { ...t, ...p } : t)), []);
 
+  /* REALTIME REKAM — satu langganan untuk seluruh aplikasi.
+   * `module_records` & `employees` sudah aktif di publication supabase_realtime, tetapi sebelumnya
+   * tak pernah didengarkan klien: tulis di satu menu tidak sampai ke menu lain (atau ke kursi ke-2)
+   * sampai halaman dimuat ulang. Setiap perubahan menaikkan `rekamVer` → hidrasi `ten` diulang dan
+   * menu yang punya fetch sendiri ikut menyegarkan (rekamVer masuk deps-nya).
+   * Debounce 400ms: impor Excel 100 baris = 100 event, cukup satu penyegaran. */
+  useEffect(() => {
+    if (!ten?.id) return;
+    const tid = localStorage.getItem("corplex_tid");
+    if (!tid) return;
+    let t: ReturnType<typeof setTimeout> | null = null;
+    const tandai = () => { if (t) clearTimeout(t); t = setTimeout(() => setRekamVer((v) => v + 1), 400); };
+    const ch = sb.channel(`rekam:${tid}:${++rekamSeq}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "module_records", filter: `tenant_id=eq.${tid}` }, tandai)
+      .on("postgres_changes", { event: "*", schema: "public", table: "employees", filter: `tenant_id=eq.${tid}` }, tandai)
+      .subscribe();
+    return () => { if (t) clearTimeout(t); void sb.removeChannel(ch); };
+  }, [ten?.id]);
+
   // Karyawan dari DB digabung di depan seed — dashboard/profil/database membaca satu sumber (ten.emp).
   useEffect(() => {
     if (!ten?.id) return;
@@ -237,10 +262,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         corp: corpRow ? { ...(corpRow.data as typeof t.corp), id: corpRow.id } : t.corp,
       } : t);
     });
-  }, [ten?.id]);
+  }, [ten?.id, rekamVer]); // rekamVer: realtime memicu hidrasi ulang
 
-  const value = useMemo(() => ({ isHydrated, ten, go, login, logout, toast, queue, setQueue, pushQueue, quota, quotaMax, verified, setQuota, setVerified, queueCount, patchTen, activeTab, setActiveTab, lang, setLang }),
-    [isHydrated, ten, go, router, login, logout, toast, queue, pushQueue, quota, quotaMax, verified, queueCount, patchTen, activeTab, setActiveTab, lang, setLang]);
+  const value = useMemo(() => ({ isHydrated, ten, go, login, logout, toast, queue, setQueue, pushQueue, quota, quotaMax, verified, setQuota, setVerified, queueCount, patchTen, activeTab, setActiveTab, lang, setLang, rekamVer }),
+    [isHydrated, ten, go, router, login, logout, toast, queue, pushQueue, quota, quotaMax, verified, queueCount, patchTen, activeTab, setActiveTab, lang, setLang, rekamVer]);
 
   return <Ctx.Provider value={value}><ToastCtx.Provider value={toasts}>{children}</ToastCtx.Provider></Ctx.Provider>;
 }

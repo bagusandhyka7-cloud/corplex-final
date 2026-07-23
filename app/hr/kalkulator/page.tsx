@@ -170,7 +170,7 @@ const KALK: Kalk[] = [
 const CATS = [...new Set(KALK.map((k) => k.cat))];
 
 export default function KalkulatorHukum() {
-  const { ten, toast } = useStore();
+  const { ten, toast, rekamVer } = useStore();
   const emp = ten?.emp ?? [];
   const [cur, setCur] = useState(KALK[0]);
   const [v, setV] = useState<Record<string, string>>({});
@@ -192,7 +192,7 @@ export default function KalkulatorHukum() {
         return { id: x.id, t: d.t, utama: d.utama ?? d.hasil ?? "—", rows: d.rows ?? [], dasar: d.dasar ?? "" };
       }));
     });
-  }, []);
+  }, [rekamVer]); // realtime: rekam berubah di menu lain → segarkan
 
   useEffect(() => {
     if (!riwMenu) return;

@@ -11,7 +11,7 @@ import { idOf, RecRow, withId } from "@/lib/records";
 type SPRec = { nama: string; tingkat: string; alasan: string; tgl: string; chip: string; lbl: string; dept?: string; pos?: string };
 
 export default function SuratPeringatan() {
-  const { ten, toast, pushQueue } = useStore();
+  const { ten, toast, pushQueue, rekamVer } = useStore();
   const emp = ten?.emp ?? [];
   const [nama, setNama] = useState("");
   const [tingkat, setTingkat] = useState("SP1");
@@ -29,7 +29,7 @@ export default function SuratPeringatan() {
       if (!r.ok) return;
       setList(r.data.filter((x) => x.module === "sp").map((x) => ({ ...(x.data as SPRec), id: x.id })));
     });
-  }, []);
+  }, [rekamVer]); // realtime: rekam berubah di menu lain → segarkan
   useEffect(() => { if (!nama && emp[0]) setNama(emp[0].n); }, [emp, nama]);
   /* Departemen & posisi terisi otomatis dari rekam karyawan, tetap bisa dikoreksi. */
   useEffect(() => {

@@ -12,7 +12,7 @@ import { api } from "@/lib/api";
 import { useRouter } from "next/navigation";
 
 export default function Licensing() {
-  const { ten, toast, patchTen } = useStore();
+  const { ten, toast, patchTen, rekamVer } = useStore();
   const t = ten!;
   const router = useRouter();
   const [f, setF] = useState("semua");
@@ -49,7 +49,7 @@ export default function Licensing() {
       const rows = r.data.filter((x) => x.module === "kwj").map((x) => ({ ...(x.data as unknown as Kwj), id: x.id }));
       if (rows.length) setKwj(KWJ_DEFAULT.map((d) => rows.find((x) => x.b === d.b) || d)); // merge by judul: yang dilaporkan menimpa default
     });
-  }, []);
+  }, [rekamVer]); // realtime: rekam berubah di menu lain → segarkan
   const [track, setTrack] = useState([
     ["1 JUL 2026", "Permohonan diajukan", "Berkas lengkap diunggah melalui OSS", "done"],
     ["6 JUL 2026", "Verifikasi administratif lolos", "Tidak ada kekurangan berkas", "done"],

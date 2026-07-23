@@ -56,7 +56,7 @@ function OnboardChecklist() {
 }
 
 export default function Ringkasan({ onOpenWizard }: { onOpenWizard: () => void }) {
-  const { ten, go, queueCount, quota, quotaMax } = useStore();
+  const { ten, go, queueCount, quota, quotaMax, rekamVer } = useStore();
   const t = ten!;
 
   /* ===== KPI dihitung dari rekam HIDUP (bukan field statis tenant) — "Data A masuk, semua layar ikut".
@@ -90,7 +90,7 @@ export default function Ringkasan({ onOpenWizard }: { onOpenWizard: () => void }
         total: rows.length,
       });
     });
-  }, []);
+  }, [rekamVer]); // realtime: rekam berubah di menu lain → segarkan
 
   const docs = useCountUp(totalRekam);
   const score = useCountUp(skorSehat, 1150);

@@ -16,7 +16,7 @@ const JENIS = ["PPN Masa", "PPh 21", "PPh 25 Angsuran", "PPh Badan Tahunan", "PB
  * lebih tepat diinput massal via Excel atau manual. Dropzone hanya menerima .xlsx. */
 
 export default function Pajak() {
-  const { ten, go, toast, pushQueue, activeTab: tab, setActiveTab: setTab } = useStore();
+  const { ten, go, toast, pushQueue, activeTab: tab, setActiveTab: setTab, rekamVer } = useStore();
   const t = ten!;
   const [rows, setRows] = useState<Tax[]>([]);
   const [q, setQ] = useState("");
@@ -31,7 +31,7 @@ export default function Pajak() {
     void api.records.list(tid()).then((r) => {
       if (r.ok) setRows(r.data.filter((x) => x.module === "tax").map((x) => ({ ...(x.data as Tax), id: x.id })));
     });
-  }, []);
+  }, [rekamVer]); // realtime: rekam berubah di menu lain → segarkan
 
   const simpan = async () => {
     if (!form.nama.trim()) { toast("Nama kewajiban wajib diisi", "Lengkapi nama kewajiban pajak.", "warn"); return; }

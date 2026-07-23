@@ -41,8 +41,8 @@ export function useExcelImport(mod: string) {
       setProg(Math.round(((i + 1) / prev.length) * 100));
     }
     setSaving(false); setPrev(null);
-    toast("Impor selesai", `${ok} tersimpan${gagal ? ` · ${gagal} gagal` : ""}. Memuat ulang…`, gagal ? "warn" : "ok");
-    if (ok) setTimeout(() => location.reload(), 1200); // hidrasi DB ulang → seluruh layar ikut
+    // Nol muat-ulang: realtime module_records/employees di store menyegarkan seluruh layar sendiri.
+    toast("Impor selesai", `${ok} tersimpan${gagal ? ` · ${gagal} gagal` : ""} — tabel & dashboard menyusul otomatis.`, gagal ? "warn" : "ok");
   };
 
   /* Kolom pratinjau = 4 field pertama form modul ini (label sama persis dengan template/form),

@@ -247,8 +247,8 @@ function TemplateForm() {
       setProg(Math.round(((i + 1) / prev.items.length) * 100));
     }
     setSaving(false); setPrev(null);
-    toast("Impor selesai", `${ok} tersimpan${gagal ? ` · ${gagal} gagal` : ""}. Memuat ulang…`, gagal ? "warn" : "ok");
-    if (ok) setTimeout(() => location.reload(), 1200);
+    toast("Impor selesai", `${ok} tersimpan${gagal ? ` · ${gagal} gagal` : ""} — layar menyusul otomatis.`, gagal ? "warn" : "ok");
+    // Nol muat-ulang: realtime module_records/employees di store menyegarkan seluruh layar sendiri.
   };
 
   const perMod = prev ? prev.items.reduce<Record<string, number>>((a, x) => ((a[x.mod] = (a[x.mod] || 0) + 1), a), {}) : {};

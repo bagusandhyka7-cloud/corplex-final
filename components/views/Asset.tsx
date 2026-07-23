@@ -14,7 +14,7 @@ import { useRouter } from "next/navigation";
 const SUBJUDUL = ["Asset Management", "Intellectual Property", "Digital Vault"];
 
 export default function Asset() {
-  const { ten, toast, pushQueue, patchTen, activeTab: tab, setActiveTab: setTab } = useStore();
+  const { ten, toast, pushQueue, patchTen, activeTab: tab, setActiveTab: setTab, rekamVer } = useStore();
   const t = ten!;
   const router = useRouter();
   const [q, setQ] = useState("");
@@ -43,7 +43,7 @@ export default function Asset() {
     void api.records.list(localStorage.getItem("corplex_tid") || "").then((r) => {
       if (r.ok) setVaultLog(r.data.filter((x) => x.module === "vault").map((x) => ({ ...(x.data as Omit<VLog, "id">), id: x.id })));
     });
-  }, []);
+  }, [rekamVer]); // realtime: rekam berubah di menu lain → segarkan
 
   /* Buka = langsung routing ke split-panel. Log akses ditulis di latar (tanpa dialog browser) —
    * jejak audit tetap terekam, alur kerja tidak terputus. */

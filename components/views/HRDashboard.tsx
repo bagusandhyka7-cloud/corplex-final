@@ -67,7 +67,7 @@ function BarPanel({ title, icon, note, rows, total }: { title: string; icon: Rea
 }
 
 export default function HRDashboard() {
-  const { ten } = useStore();
+  const { ten, rekamVer } = useStore();
   const emp = ten?.emp ?? [];
   const [att, setAtt] = useState<AttRow[]>([]);
   const [spRows, setSpRows] = useState<{ nama: string; tingkat: string }[]>([]);
@@ -80,7 +80,7 @@ export default function HRDashboard() {
     void api.records.list(tid).then((r) => {
       if (r.ok) setSpRows(r.data.filter((x) => x.module === "sp").map((x) => x.data as { nama: string; tingkat: string }));
     });
-  }, []);
+  }, [rekamVer]); // realtime: rekam berubah di menu lain → segarkan
 
   /* Karyawan paling rajin: total hadir tertinggi, alpha jadi pengurang. */
   const rajin = Object.values(att.reduce<Record<string, { name: string; total: number; alpha: number }>>((a, r) => {
