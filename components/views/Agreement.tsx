@@ -3,7 +3,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { FileText, Lock, Plus } from "lucide-react";
 import { Agr } from "@/lib/data";
 import { clone, useStore } from "@/lib/store";
-import { downloadDoc, registerVault, vaultHash } from "@/lib/vault";
+import { dokRingkas, downloadDoc, registerVault, vaultHash } from "@/lib/vault";
 import { api, withRetry } from "@/lib/api";
 import { useAsyncAction, useUpload } from "@/lib/hooks";
 import { Chip, Field, Kpi, Modal } from "@/components/ui";
@@ -127,7 +127,7 @@ export default function Agreement() {
                 <td>{a.nilai}</td>
                 <td><Chip c={a.cls}>{a.lbl}</Chip></td>
                 <td>
-                  <span className="sub mono" style={{ fontSize: 10, display: "block", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}><FileText size={10} style={{ display: "inline" }} /> {a.dok || "—"}</span>
+                  <span className="sub mono" title={a.dok || undefined} style={{ fontSize: 10, display: "block", whiteSpace: "nowrap" }}><FileText size={10} style={{ display: "inline" }} /> {dokRingkas(a.dok) || "—"}</span>
                 </td>
                 <td>
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>

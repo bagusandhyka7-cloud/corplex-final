@@ -3,7 +3,7 @@ import React, { useRef, useState } from "react";
 import { FileText, Lock, Scale, UserPlus } from "lucide-react";
 import { Emp } from "@/lib/data";
 import { fmt, useStore } from "@/lib/store";
-import { downloadDoc, registerVault, vaultHash } from "@/lib/vault";
+import { dokRingkas, downloadDoc, registerVault, vaultHash } from "@/lib/vault";
 import { api, empToRow, empFromRow, withRetry } from "@/lib/api";
 import { useAsyncAction, useUpload } from "@/lib/hooks";
 import { askConfirm, Chip, Field, Jargon, Kpi, Modal, Panel, Row, RpInput, ViewHead } from "@/components/ui";
@@ -288,7 +288,7 @@ export default function DatabaseKaryawan() {
                   <td>
                     <span className="sub mono" style={{ fontSize: 10, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "flex", alignItems: "center", gap: 5, maxWidth: 180 }}>
                       {(e.dok || e.dokUrl) && <FileText size={11} style={{ flexShrink: 0, color: "var(--gold-deep)" }} />}
-                      {e.dok || (e.dokUrl ? "dokumen tersimpan" : "—")}
+                      {dokRingkas(e.dok) || (e.dokUrl ? "dokumen tersimpan" : "—")}
                     </span>
                   </td>
                   <td>

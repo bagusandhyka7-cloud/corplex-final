@@ -37,3 +37,14 @@ export function downloadDoc(name: string, tenantName: string) {
   }
   document.body.appendChild(a); a.click(); a.remove();
 }
+
+/* Nama dokumen di kolom tabel: maksimal `maks` karakter (ekstensi TIDAK dihitung),
+ * selebihnya dipotong dengan "…". Contoh: "dokumen-dengan-pt mitra.pdf" → "dokumen-de….pdf".
+ * Nama utuh tetap tersedia lewat atribut title saat di-hover. */
+export function dokRingkas(nama?: string | null, maks = 10): string {
+  if (!nama) return "";
+  const t = nama.lastIndexOf(".");
+  const ext = t > 0 ? nama.slice(t) : "";
+  const dasar = t > 0 ? nama.slice(0, t) : nama;
+  return dasar.length <= maks ? nama : dasar.slice(0, maks) + "…" + ext;
+}

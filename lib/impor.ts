@@ -77,12 +77,19 @@ export function buatTemplateSatu(sheetName: string) {
 }
 
 const norm = (s: unknown) => String(s ?? "").toLowerCase().replace(/[*]/g, "").trim();
+/* Excel menyimpan tanggal sebagai ANGKA SERI (mis. 46968). Tanpa penanganan, tenggat hukum
+ * tersimpan sebagai angka omong kosong. cellDates:true → objek Date, lalu dinormalkan ke
+ * YYYY-MM-DD (format yang dipakai form & <input type="date">). */
+const selVal = (v: unknown) =>
+  v instanceof Date
+    ? `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, "0")}-${String(v.getDate()).padStart(2, "0")}`
+    : String(v ?? "").trim();
 export type ParsedItem = { mod: string; label: string; vals: Record<string, string> };
 
 /* Parse workbook terisi → daftar item siap simpan (per baris). Baris kosong/contoh/tanpa field wajib dilewati.
  * Pemetaan kolom deterministik: header sheet → label field → key. */
 export function parseWorkbook(buf: ArrayBuffer): { items: ParsedItem[]; skipped: number; unknownSheets: string[] } {
-  const wb = XLSX.read(buf, { type: "array" });
+  const wb = XLSX.read(buf, { type: "array", cellDates: true });
   const items: ParsedItem[] = [];
   let skipped = 0;
   const unknownSheets: string[] = [];
@@ -94,7 +101,7 @@ export function parseWorkbook(buf: ArrayBuffer): { items: ParsedItem[]; skipped:
     const colKey = (rows[0] as unknown[]).map((h) => cfg.fields.find((f) => norm(f.l) === norm(h))?.k ?? null);
     for (const row of rows.slice(1)) {
       const vals: Record<string, string> = {};
-      colKey.forEach((k, i) => { if (k) vals[k] = String((row as unknown[])[i] ?? "").trim(); });
+      colKey.forEach((k, i) => { if (k) vals[k] = selVal((row as unknown[])[i]); });
       if (!Object.values(vals).some(Boolean)) continue; // baris kosong
       const wajib = cfg.fields.filter((f) => f.l.includes("*"));
       if (wajib.some((f) => !vals[f.k])) { skipped++; continue; }
