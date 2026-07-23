@@ -101,7 +101,7 @@ export default function Asset() {
     <ModuleShell h1={SUBJUDUL[tab] || "Aset & Merek"}
       sub={vault ? "Pemantauan akses dokumen — setiap pembukaan tercatat dengan alasan aksesnya." : "Aset dan merek perusahaan tersimpan aman — kewajiban tiap aset diingatkan otomatis."}
       acts={vault ? undefined : <button className="btn btn-gold" onClick={bukaManual}><Plus size={14} /> Daftarkan {tab === 1 ? "HKI" : "Aset"}</button>}
-      dropNote={vault ? undefined : "Sertifikat, BPKB, akta, atau bukti pendaftaran HKI — AI mengekstrak nomor, jenis, dan masa berlaku; dokumen asli tersimpan di vault."}
+      dropNote={vault ? undefined : "Sertifikat, BPKB, akta, atau bukti pendaftaran HKI — AI mengekstrak nomor, jenis, dan masa berlaku; dokumen asli tersimpan di vault. Atau letakkan file Excel (template di Alat Legal) untuk impor massal."}
       onDrop={vault ? undefined : (f) => { if (!xlsx.tryFile(f)) void dropDok(f); }}
       filters={vault ? ["semua", "Aset", "HKI"] : tab === 0 ? ["semua", "PERHATIAN", "AMAN"] : ["semua", "TERDAFTAR", "TERCATAT", "PROSES", "DITUTUP"]}
       active={vault ? vf : tab === 0 ? af : hf} onFilter={vault ? setVf : tab === 0 ? setAf : setHf}

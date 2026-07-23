@@ -106,7 +106,7 @@ export default function Asuransi() {
     <ModuleShell h1={SUBJUDUL[tab] || "Asuransi"}
       sub="Polis kedaluwarsa = aset & karyawan tanpa perlindungan — jatuh tempo dan klaim diingatkan otomatis."
       acts={<button className="btn btn-gold" onClick={bukaManual}><Plus size={14} /> Daftarkan Polis</button>}
-      dropNote="Dokumen polis (PDF/pindaian) — AI mengekstrak penanggung, objek, nilai pertanggungan, dan masa berlaku; berkas asli tersimpan di vault."
+      dropNote="Dokumen polis (PDF/pindaian) — AI mengekstrak penanggung, objek, nilai pertanggungan, dan masa berlaku; berkas asli tersimpan di vault. Atau letakkan file Excel (template di Alat Legal) untuk impor massal."
       onDrop={(f2) => { if (!xlsx.tryFile(f2)) void dropDok(f2); }}
       filters={tab === 0 ? ["semua", "AKTIF", "SEGERA", "KLAIM", "PENGURUSAN"] : undefined} active={f} onFilter={setF}
       q={tab === 0 ? q : undefined} setQ={tab === 0 ? setQ : undefined} cariPh="Cari polis / penanggung / objek…"

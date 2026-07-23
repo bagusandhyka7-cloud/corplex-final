@@ -11,6 +11,7 @@ import { Scale, ChevronDown, MoreHorizontal } from "lucide-react";
 import { ViewHead } from "@/components/ui";
 import { fmt, useStore } from "@/lib/store";
 import { api } from "@/lib/api";
+import { ALASAN_PHK, hitungPesangon } from "@/lib/phk";
 
 type KField = { k: string; l: string; tipe: "num" | "sel" | "emp"; opts?: string[]; ph?: string; sat?: string; ops?: boolean };
 type Hasil = { utama: string; rows: [string, string][] };
@@ -18,23 +19,7 @@ type Kalk = { id: string; cat: string; t: string; d: string; dasar: string; fiel
 
 const num = (s?: string) => Number((s || "0").replace(/[^\d]/g, "")) || 0;
 
-/* PP 35/2021 Pasal 40 */
-const pesangonBln = (th: number) => th < 1 ? 1 : th < 2 ? 2 : th < 3 ? 3 : th < 4 ? 4 : th < 5 ? 5 : th < 6 ? 6 : th < 7 ? 7 : th < 8 ? 8 : 9;
-const upmkBln = (th: number) => th < 3 ? 0 : th < 6 ? 2 : th < 9 ? 3 : th < 12 ? 4 : th < 15 ? 5 : th < 18 ? 6 : th < 21 ? 7 : th < 24 ? 8 : 10;
-const ALASAN_PHK: Record<string, { p: number; u: number }> = {
-  "Efisiensi (mencegah kerugian)": { p: 1, u: 1 },
-  "Efisiensi (perusahaan rugi)": { p: 0.5, u: 1 },
-  "Perusahaan tutup (rugi)": { p: 0.5, u: 1 },
-  "Keadaan memaksa (force majeure)": { p: 0.5, u: 1 },
-  "Perusahaan pailit / PKPU": { p: 0.5, u: 1 },
-  "Pensiun": { p: 1.75, u: 1 },
-  "Pekerja meninggal dunia": { p: 2, u: 1 },
-  "Sakit berkepanjangan / cacat kerja": { p: 2, u: 1 },
-  "Pelanggaran (setelah SP-3)": { p: 0.5, u: 1 },
-  "Akuisisi / merger / peleburan": { p: 1, u: 1 },
-  "PHK oleh pengusaha (umum)": { p: 1, u: 1 },
-  "Mengundurkan diri (resign)": { p: 0, u: 0 },
-};
+/* Rumus PP 35/2021 dipisah ke lib/phk.ts agar bisa diuji (npx tsx lib/phk.test.ts) — satu sumber. */
 const KUHP_DENDA: Record<string, number> = { "Kategori I": 1e6, "Kategori II": 10e6, "Kategori III": 50e6, "Kategori IV": 200e6, "Kategori V": 500e6, "Kategori VI": 2e9, "Kategori VII": 5e9, "Kategori VIII": 50e9 };
 
 const KALK: Kalk[] = [
@@ -52,14 +37,13 @@ const KALK: Kalk[] = [
       { k: "uph", l: "Penggantian hak (sisa cuti dll — opsional)", tipe: "num", ph: "0", sat: "Rp", ops: true },
     ],
     hitung: (v) => {
-      const th = num(v.masa), upah = num(v.upah), m = ALASAN_PHK[v.alasan] || ALASAN_PHK["PHK oleh pengusaha (umum)"];
-      const pes = pesangonBln(th) * m.p, upmk = upmkBln(th) * m.u, uph = num(v.uph);
-      const total = upah * (pes + upmk) + uph;
+      const uph = num(v.uph);
+      const h = hitungPesangon(num(v.masa), num(v.upah), v.alasan, uph);
       return {
-        utama: fmt(total),
+        utama: fmt(h.total),
         rows: [
-          [`Pesangon ${pesangonBln(th)} bln × ${m.p}`, fmt(upah * pes)],
-          [`Penghargaan masa kerja ${upmkBln(th)} bln × ${m.u}`, fmt(upah * upmk)],
+          [`Pesangon ${h.pesBln} bln × ${h.pengali.p}`, fmt(h.pesRp)],
+          [`Penghargaan masa kerja ${h.upmkBln} bln × ${h.pengali.u}`, fmt(h.upmkRp)],
           ["Penggantian hak", fmt(uph)],
           [v.alasan === "Mengundurkan diri (resign)" ? "Catatan" : "Alasan", v.alasan === "Mengundurkan diri (resign)" ? "resign hanya berhak uang pisah + penggantian hak" : v.alasan],
         ],

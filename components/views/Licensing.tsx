@@ -95,7 +95,7 @@ export default function Licensing() {
   return (
     <ModuleShell h1="Perizinan" sub="Izin lewat tenggat = risiko sanksi + status BERISIKO pada Laporan LDD — masa berlaku diingatkan otomatis."
       acts={<button className="btn btn-gold" onClick={bukaManual}><Plus size={14} /> Daftarkan Izin</button>}
-      dropNote="PDF · Word · pindaian (OCR) — AI mengekstrak nomor izin, jenis, KBLI, dan masa berlaku; dokumen asli tersimpan di vault."
+      dropNote="PDF · Word · pindaian (OCR) — AI mengekstrak nomor izin, jenis, KBLI, dan masa berlaku; dokumen asli tersimpan di vault. Atau letakkan file Excel (template di Alat Legal) untuk impor massal."
       onDrop={(f2) => { if (!xlsx.tryFile(f2)) void dropDok(f2); }}
       filters={["semua", "AKTIF", "SEGERA", "PENGURUSAN"]} active={f} onFilter={setF}
       q={q} setQ={setQ} cariPh="Cari izin / entitas / KBLI…"

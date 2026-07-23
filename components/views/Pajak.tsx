@@ -99,7 +99,7 @@ export default function Pajak() {
     <ModuleShell h1={SUBJUDUL[tab] || "Kepatuhan Pajak"}
       sub="Telat lapor/setor = denda + bunga sanksi — tenggat pajak perusahaan diingatkan otomatis."
       acts={<button className="btn btn-gold" onClick={bukaManual}><Plus size={14} /> Tambah Kewajiban</button>}
-      dropNote="SPT, bukti potong, atau tagihan pajak — AI mengekstrak jenis & tenggat; berkas asli tersimpan di vault."
+      dropNote="SPT, bukti potong, atau tagihan pajak — AI mengekstrak jenis & tenggat; berkas asli tersimpan di vault. Atau letakkan file Excel (template di Alat Legal) untuk impor massal."
       onDrop={(file) => { if (!xlsx.tryFile(file)) void dropDok(file); }}
       filters={tab === 0 ? ["semua", "TERBUKA", "DIPENUHI"] : undefined} active={f} onFilter={setF}
       q={tab === 0 ? q : undefined} setQ={tab === 0 ? setQ : undefined} cariPh="Cari kewajiban / jenis pajak…"

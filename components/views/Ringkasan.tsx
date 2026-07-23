@@ -63,7 +63,10 @@ export default function Ringkasan({ onOpenWizard }: { onOpenWizard: () => void }
    * Skor kesehatan menumpang mesin LDD yang sudah menilai 6 aspek dari rekam nyata (nol mesin baru). */
   const ldd = React.useMemo(() => buildLdd(t), [t]);
   const aspek = Object.values(ldd.counts);
-  const aspekAman = aspek.filter((a) => a.status === "AMAN").length;
+  /* Keputusan owner: aspek TANPA rekam = "BELUM DINILAI", bukan AMAN — nol rekam bukan berarti aman.
+   * Penyebut tetap seluruh aspek → skor = ukuran kelengkapan + kepatuhan; tenant baru mulai 0%. */
+  const aspekBelum = aspek.filter((a) => a.rekam === 0).length;
+  const aspekAman = aspek.filter((a) => a.rekam > 0 && a.status === "AMAN").length;
   const skorSehat = aspek.length ? Math.round((aspekAman / aspek.length) * 100) : 0;
   const totalRekam = t.corp.docs.length + t.lic.length + t.assets.length + t.hki.length + t.asr.pol.length + t.agr.length + t.emp.length;
   const izinAktif = t.lic.filter((r) => (r as unknown[])[7] === "AKTIF").length;
@@ -140,7 +143,7 @@ export default function Ringkasan({ onOpenWizard }: { onOpenWizard: () => void }
             <div className="ring" id="scoreRing"><i>{score}</i></div>
             <div>
               <span style={{ fontSize: 11.5, color: "var(--muted)" }}>Skor Kesehatan Hukum</span>
-              <span className="tr up" style={{ display: "block" }}>{aspekAman}/{aspek.length} aspek LDD aman</span>
+              <span className="tr up" style={{ display: "block" }}>{aspekAman}/{aspek.length} aspek terpenuhi{aspekBelum ? ` · ${aspekBelum} belum dinilai` : ""}</span>
             </div>
           </div>
         </div>
@@ -184,7 +187,9 @@ export default function Ringkasan({ onOpenWizard }: { onOpenWizard: () => void }
             {aspek.length ? Object.entries(ldd.counts).map(([nama, c]) => (
               <div key={nama} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
                 <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nama}</span>
-                <Chip c={c.status === "AMAN" ? "c-ver" : c.status === "BERMASALAH" ? "c-red" : "c-draft"}>{c.status}</Chip>
+                {c.rekam === 0
+                  ? <Chip c="c-mon">BELUM DINILAI</Chip>
+                  : <Chip c={c.status === "AMAN" ? "c-ver" : c.status === "BERMASALAH" ? "c-red" : "c-draft"}>{c.status}</Chip>}
               </div>
             )) : <p className="note">Belum ada rekam untuk dinilai.</p>}
           </div>

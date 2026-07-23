@@ -93,7 +93,7 @@ export default function Agreement() {
     <ModuleShell h1="Manajemen Kontrak"
       sub="Unggah perjanjian — sistem membaca isinya dan mengingatkan Anda sebelum jatuh tempo."
       acts={<button className="btn btn-gold" onClick={() => { setMEdit(null); setMOpen(true); }}><Plus size={14} /> Tambah Manual</button>}
-      dropNote="PDF · Word · pindaian (OCR) — AI mengekstrak para pihak, tanggal mulai/berakhir, dan nilai perikatan; dokumen asli tersimpan di vault."
+      dropNote="PDF · Word · pindaian (OCR) — AI mengekstrak para pihak, tanggal mulai/berakhir, dan nilai perikatan; dokumen asli tersimpan di vault. Atau letakkan file Excel (template di Alat Legal) untuk impor massal."
       onDrop={(file) => { if (!xlsx.tryFile(file)) void upload(file); }}
       filters={["semua", "AKTIF", "SEGERA", "DRAF"]} active={f} onFilter={setF}
       q={q} setQ={setQ} cariPh="Cari perjanjian / pihak…"

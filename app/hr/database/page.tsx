@@ -243,7 +243,7 @@ export default function DatabaseKaryawan() {
           onDragLeave={(e) => { e.currentTarget.style.borderColor = ""; }}
           onDrop={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = ""; const file = e.dataTransfer.files?.[0]; if (file && !xlsx.tryFile(file)) empUpload(file); }}>
           <b>Letakkan dokumen karyawan di sini, atau klik untuk memilih berkas.</b>
-          Perjanjian Kerja (PKWT/PKWTT), KTP, Pengesahan RPTKA. AI mengekstrak field sesuai format pelaporan tenaga kerja LKPM (jenis kelamin, TKI/TKA, lokal). Anda mengonfirmasi sebelum tersimpan.
+          Perjanjian Kerja (PKWT/PKWTT), KTP, Pengesahan RPTKA. AI mengekstrak field sesuai format pelaporan tenaga kerja LKPM (jenis kelamin, TKI/TKA, lokal). Anda mengonfirmasi sebelum tersimpan. Atau letakkan file Excel (template di Alat Legal) untuk impor massal.
         </div>
 
         <div className="filters" style={{ display: "flex", width: "100%", alignItems: "center", gap: "16px", marginBottom: "16px" }}>
