@@ -109,7 +109,7 @@ function AdminInner() {
   type Metrics = { tenantAktif: number; tenantPending: number; aktif30h: number; karyawan: number; dokumen: number; perModul: Record<string, number>; vqMasuk: number; vqVerified: number };
   const [mx, setMx] = useState<Metrics | null>(null);
   const loadMetrik = async () => { const r = await admin.metrics(); if (r.ok) setMx(r.data.metrics); else toast("Gagal memuat metrik", r.error.message, "warn"); };
-  useEffect(() => { void loadMetrik(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { void loadMetrik(); }, [menu]); // eslint-disable-line react-hooks/exhaustive-deps
   /* Detail Pusat Data DIHAPUS total (keputusan owner): akses data klien = Mode Pengawasan
    * (Masuk Dashboard) — lihat & unduh dari dashboard Corplex klien langsung. */
 
@@ -197,7 +197,7 @@ function AdminInner() {
       else toast("Gagal memuat", res.error.message, "warn");
       setLoadingInv(false);
     });
-  }, [toast]);
+  }, [toast, menu]); // + menu: daftar disegarkan tiap pindah menu (dulu hanya sekali seumur sesi)
   const [f, setF] = useState("semua");
   const [q, setQ] = useState("");
   const [nOpen, setNOpen] = useState(false);
@@ -217,7 +217,7 @@ function AdminInner() {
         seats: (t.users || []).map((u) => ({ nama: u.nama || u.email.split("@")[0], email: u.email, peran: u.jabatan || "—", status: (u.active ? "aktif" : "nonaktif") as Seat["status"] })),
       })));
     });
-  }, []);
+  }, [menu]); // + menu: daftar disegarkan tiap pindah menu (dulu hanya sekali seumur sesi)
   /* id tenant → nama PT (utk Konsol Advokat & Data Modul — jangan tampilkan uuid mentah).
    * t1 = tenant demo tanpa baris tenants (seed) — beri nama baku. */
   const tenNama = (id: string) => id === "t1" ? "PT Contoh Sejahtera (Demo)" : tens.find((t) => t.id === id)?.nama || id;
@@ -239,12 +239,12 @@ function AdminInner() {
       })));
       else toast("Gagal memuat approval", r.error.message, "warn");
     });
-  }, [toast]);
+  }, [toast, menu]); // + menu: daftar disegarkan tiap pindah menu (dulu hanya sekali seumur sesi)
 
   /* permintaan demo — nyata dari DB (bug lama: form menulis, panel tak pernah membaca) */
   type DemoReq = { id: string; nama: string | null; perusahaan: string | null; email: string | null; kebutuhan: string | null; status: string | null; created_at: string };
   const [demoReq, setDemoReq] = useState<DemoReq[]>([]);
-  useEffect(() => { void admin.listDemo().then((r) => { if (r.ok) setDemoReq(r.data); }); }, []);
+  useEffect(() => { void admin.listDemo().then((r) => { if (r.ok) setDemoReq(r.data); }); }, [menu]); // + menu: daftar disegarkan tiap pindah menu (dulu hanya sekali seumur sesi)
   const tandaiDemo = async (id: string, status: string) => {
     const r = await admin.decideDemo(id, status);
     if (!r.ok) return toast("Gagal", r.error.message, "warn");
@@ -266,6 +266,14 @@ function AdminInner() {
     });
   }, [toast]);
   useEffect(() => { muatVq(); }, [muatVq]);
+  /* REALTIME Konsol Advokat — pengajuan klien wajib muncul tanpa reload (SLA 24 jam).
+   * verification_queue sudah ada di publication supabase_realtime; super admin lolos RLS (is_super). */
+  useEffect(() => {
+    const ch = sb.channel(`admin-vq:${Date.now()}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "verification_queue" }, () => muatVq())
+      .subscribe();
+    return () => { void sb.removeChannel(ch); };
+  }, [muatVq]);
 
   /* Detail pengajuan (halaman penuh) — aksi HANYA di sini; membuka otomatis menandai MENINJAU
    * (tersinkron ke timeline klien via realtime verification_queue). */
@@ -776,7 +784,18 @@ function AdminInner() {
                             <td>{x.email || <span style={{ color: "var(--muted)" }}>generik</span>}</td>
                             <td>{x.tier}</td>
                             <td>{durLabel(x)}</td>
-                            <td><Chip c={x.status === "used" ? "c-mon" : "c-ver"}>{x.status === "used" ? "Terpakai" : "Belum Terpakai"}</Chip></td>
+                            {/* Label tetap biner (arahan owner). Warna + baris kecil menandai kode yang
+                                sudah MATI — dulu dicabut/kedaluwarsa tampil hijau, terlihat masih bisa dipakai. */}
+                            <td>
+                              <Chip c={lbl === "TERPAKAI" ? "c-mon" : lbl === "AKTIF" ? "c-ver" : "c-red"}>
+                                {lbl === "TERPAKAI" ? "Terpakai" : "Belum Terpakai"}
+                              </Chip>
+                              {lbl !== "TERPAKAI" && lbl !== "AKTIF" && (
+                                <span className="sub" style={{ display: "block", fontSize: 9.5 }}>
+                                  {lbl === "DICABUT" ? "dicabut — tak bisa dipakai" : "kedaluwarsa — tak bisa dipakai"}
+                                </span>
+                              )}
+                            </td>
                             <td>
                               <div className="flex items-center gap-2">
                                 <button className="btn btn-line btn-sm" title="Salin link" onClick={() => { void navigator.clipboard?.writeText(`${location.origin}/login?kode=${x.code}`); toast("Link disalin", x.code, "ok"); }}><Copy size={11} /></button>
