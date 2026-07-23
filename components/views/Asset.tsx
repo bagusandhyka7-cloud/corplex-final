@@ -5,7 +5,9 @@ import { useStore } from "@/lib/store";
 import { Chip, Panel, Row, Tabs } from "@/components/ui";
 import { ModuleShell } from "@/components/ModuleShell";
 import { RecActions, RecordModal } from "@/components/RecordModal";
-import { idOf, RecRow } from "@/lib/records";
+import { idOf, RecRow, SPECS } from "@/lib/records";
+import { aiExtract } from "@/lib/extract";
+import { useExcelImport } from "@/components/ExcelImport";
 import { api } from "@/lib/api";
 import { useRouter } from "next/navigation";
 
@@ -23,7 +25,11 @@ export default function Asset() {
   const mod = tab === 1 ? "hki" : "assets"; // modul CRUD ikut tab aktif
   const [mOpen, setMOpen] = useState(false);
   const [mEdit, setMEdit] = useState<RecRow | null>(null);
+  const [pfill, setPfill] = useState<Record<string, string> | undefined>();
+  const [pfile, setPfile] = useState<File | null>(null);
+  const bukaManual = () => { setPfill(undefined); setPfile(null); setMEdit(null); setMOpen(true); };
   const key = mod as "hki" | "assets";
+  const xlsx = useExcelImport(mod); // .xlsx via dropzone → pratinjau (field ikut tab aset/HKI)
   const onDone = (row: RecRow, editId: string | null) =>
     patchTen({ [key]: (editId ? t[key].map((x) => idOf(mod, x) === editId ? row : x) : [row, ...t[key]]) as never });
   const onDeleted = (id: string) => patchTen({ [key]: t[key].filter((x) => idOf(mod, x) !== id) as never });
@@ -78,18 +84,11 @@ export default function Asset() {
     setTimeout(() => setDdLoading(false), 5000);
   };
 
-  /* Dropzone: dokumen aset/HKI ke Storage + rekam baru pada modul tab aktif. */
+  /* Dropzone: gambar/PDF → ekstraksi AI NYATA (field ikut tab: aset/HKI) → modal terisi utk dikonfirmasi. */
   const dropDok = async (file: File) => {
-    const tid = localStorage.getItem("corplex_tid") || "";
-    const up = await api.records.uploadDoc(tid, file);
-    if (!up.ok) return toast("Gagal mengunggah", up.error.message, "warn");
-    const nama = file.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim();
-    const data = mod === "hki"
-      ? [nama, "Hasil ekstraksi dokumen", "", "", 0, "", null, ["c-ver", "TERDAFTAR"]]
-      : [nama, "Hasil ekstraksi dokumen", "", null, "—", "c-ver", "AMAN"];
-    const r = await api.records.create(tid, mod, data, "ai", up.data);
-    if (!r.ok) return toast("Gagal menyimpan", r.error.message, "warn");
-    patchTen({ [key]: [[...data, r.data.id], ...t[key]] as never });
+    toast("AI membaca dokumen…", `Ekstraksi field ${mod === "hki" ? "HKI" : "aset"} dari dokumen — Anda konfirmasi sebelum tersimpan.`);
+    const vals = await aiExtract(file, SPECS[mod].fields);
+    setPfill(vals || {}); setPfile(file); setMEdit(null); setMOpen(true);
   };
 
   /* Digital Vault = murni pemantauan: tanpa tombol daftar & tanpa dropzone; filter + search saja. */
@@ -101,9 +100,9 @@ export default function Asset() {
   return (
     <ModuleShell h1={SUBJUDUL[tab] || "Aset & Merek"}
       sub={vault ? "Pemantauan akses dokumen — setiap pembukaan tercatat dengan alasan aksesnya." : "Aset dan merek perusahaan tersimpan aman — kewajiban tiap aset diingatkan otomatis."}
-      acts={vault ? undefined : <button className="btn btn-gold" onClick={() => { setMEdit(null); setMOpen(true); }}><Plus size={14} /> Daftarkan {tab === 1 ? "HKI" : "Aset"}</button>}
+      acts={vault ? undefined : <button className="btn btn-gold" onClick={bukaManual}><Plus size={14} /> Daftarkan {tab === 1 ? "HKI" : "Aset"}</button>}
       dropNote={vault ? undefined : "Sertifikat, BPKB, akta, atau bukti pendaftaran HKI — AI mengekstrak nomor, jenis, dan masa berlaku; dokumen asli tersimpan di vault."}
-      onDrop={vault ? undefined : (f) => void dropDok(f)}
+      onDrop={vault ? undefined : (f) => { if (!xlsx.tryFile(f)) void dropDok(f); }}
       filters={vault ? ["semua", "Aset", "HKI"] : tab === 0 ? ["semua", "PERHATIAN", "AMAN"] : ["semua", "TERDAFTAR", "TERCATAT", "PROSES", "DITUTUP"]}
       active={vault ? vf : tab === 0 ? af : hf} onFilter={vault ? setVf : tab === 0 ? setAf : setHf}
       q={vault ? vq : q} setQ={vault ? setVq : setQ}
@@ -230,7 +229,8 @@ export default function Asset() {
         </Panel>
       )}
 
-      <RecordModal mod={mod} open={mOpen} editRow={mEdit} tenantName={t.name} toast={toast} onClose={() => setMOpen(false)} onDone={onDone} />
+      <RecordModal mod={mod} open={mOpen} editRow={mEdit} tenantName={t.name} toast={toast} onClose={() => setMOpen(false)} onDone={onDone} prefill={pfill} prefillFile={pfile} />
+      {xlsx.modal}
     </ModuleShell>
   );
 }

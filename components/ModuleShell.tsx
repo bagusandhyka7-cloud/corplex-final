@@ -32,7 +32,7 @@ export function ModuleShell({
 
       {onDrop && (
         <>
-          <input ref={fileRef} type="file" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" style={{ display: "none" }}
+          <input ref={fileRef} type="file" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.xlsx,.xls" style={{ display: "none" }}
             onChange={(e) => { const f = e.target.files?.[0]; if (f) onDrop(f); e.target.value = ""; }} />
           <div className="dropzone mb16" onClick={() => fileRef.current?.click()}
             onDragOver={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = "var(--gold)"; }}

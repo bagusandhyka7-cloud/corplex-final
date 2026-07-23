@@ -6,7 +6,9 @@ import { clone, useStore, ViewId } from "@/lib/store";
 import { Chip, Field, Kpi, Panel, Row, Timeline } from "@/components/ui";
 import { ModuleShell } from "@/components/ModuleShell";
 import { RecActions, RecordModal } from "@/components/RecordModal";
-import { idOf, RecRow, stripId } from "@/lib/records";
+import { idOf, RecRow, stripId, SPECS } from "@/lib/records";
+import { aiExtract } from "@/lib/extract";
+import { useExcelImport } from "@/components/ExcelImport";
 import { api } from "@/lib/api";
 import { useRouter } from "next/navigation";
 
@@ -22,6 +24,10 @@ export default function Asuransi() {
   useEffect(() => setPol(clone(t.asr.pol)), [t.asr.pol]); // hidrasi DB menyusul mount
   const [mOpen, setMOpen] = useState(false);
   const [mEdit, setMEdit] = useState<RecRow | null>(null);
+  const [pfill, setPfill] = useState<Record<string, string> | undefined>();
+  const [pfile, setPfile] = useState<File | null>(null);
+  const bukaManual = () => { setPfill(undefined); setPfile(null); setMEdit(null); setMOpen(true); };
+  const xlsx = useExcelImport("pol");
   const onDone = (row: RecRow, editId: string | null) =>
     patchTen({ asr: { ...t.asr, pol: (editId ? t.asr.pol.map((x) => idOf("pol", x) === editId ? row : x) : [row, ...t.asr.pol]) as typeof t.asr.pol } });
   const [klaim, setKlaim] = useState<Klaim[]>(() => clone(t.asr.klaim));
@@ -82,16 +88,11 @@ export default function Asuransi() {
     pushQueue(`Bundel dokumen klaim — ${objek}`, `${files.length} dokumen ditarik dari vault · siap dikirim ke penanggung`, "c-mon", "BUNDEL");
   };
 
-  /* Dropzone polis: dokumen ke Storage + rekam pol baru. */
+  /* Dropzone polis: gambar/PDF → ekstraksi AI NYATA → modal terisi utk dikonfirmasi (dokumen ikut disimpan). */
   const dropDok = async (file: File) => {
-    const tid = localStorage.getItem("corplex_tid") || "";
-    const up = await api.records.uploadDoc(tid, file);
-    if (!up.ok) return toast("Gagal mengunggah", up.error.message, "warn");
-    const nama = file.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim();
-    const data = [nama, "", "", "", "asset", "", "", "AKTIF", "c-ver", "AKTIF"];
-    const r = await api.records.create(tid, "pol", data, "ai", up.data);
-    if (!r.ok) return toast("Gagal menyimpan", r.error.message, "warn");
-    patchTen({ asr: { ...t.asr, pol: [[...data, r.data.id] as unknown as typeof t.asr.pol[number], ...t.asr.pol] as typeof t.asr.pol } });
+    toast("AI membaca dokumen…", "Ekstraksi field polis dari dokumen — Anda konfirmasi sebelum tersimpan.");
+    const vals = await aiExtract(file, SPECS.pol.fields);
+    setPfill(vals || {}); setPfile(file); setMEdit(null); setMOpen(true);
   };
 
   /* Relasi ke tabel employees (bukan angka hardcode) */
@@ -104,9 +105,9 @@ export default function Asuransi() {
   return (
     <ModuleShell h1={SUBJUDUL[tab] || "Asuransi"}
       sub="Polis kedaluwarsa = aset & karyawan tanpa perlindungan — jatuh tempo dan klaim diingatkan otomatis."
-      acts={<button className="btn btn-gold" onClick={() => { setMEdit(null); setMOpen(true); }}><Plus size={14} /> Daftarkan Polis</button>}
+      acts={<button className="btn btn-gold" onClick={bukaManual}><Plus size={14} /> Daftarkan Polis</button>}
       dropNote="Dokumen polis (PDF/pindaian) — AI mengekstrak penanggung, objek, nilai pertanggungan, dan masa berlaku; berkas asli tersimpan di vault."
-      onDrop={(f2) => void dropDok(f2)}
+      onDrop={(f2) => { if (!xlsx.tryFile(f2)) void dropDok(f2); }}
       filters={tab === 0 ? ["semua", "AKTIF", "SEGERA", "KLAIM", "PENGURUSAN"] : undefined} active={f} onFilter={setF}
       q={tab === 0 ? q : undefined} setQ={tab === 0 ? setQ : undefined} cariPh="Cari polis / penanggung / objek…"
       kpi={<div className="grid g4 mb16">
@@ -191,7 +192,8 @@ export default function Asuransi() {
 
       {/* Revisi owner (5y-#5): tab Integrasi Aset & Karyawan dihapus. */}
 
-      <RecordModal mod="pol" open={mOpen} editRow={mEdit} tenantName={t.name} toast={toast} onClose={() => setMOpen(false)} onDone={onDone} />
+      <RecordModal mod="pol" open={mOpen} editRow={mEdit} tenantName={t.name} toast={toast} onClose={() => setMOpen(false)} onDone={onDone} prefill={pfill} prefillFile={pfile} />
+      {xlsx.modal}
     </ModuleShell>
   );
 }

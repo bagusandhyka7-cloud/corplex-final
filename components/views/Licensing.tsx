@@ -5,7 +5,9 @@ import { clone, useStore } from "@/lib/store";
 import { Chip, Jargon, Kpi, Panel, Row, Timeline } from "@/components/ui";
 import { ModuleShell } from "@/components/ModuleShell";
 import { RecActions, RecordModal } from "@/components/RecordModal";
-import { idOf, RecRow } from "@/lib/records";
+import { idOf, RecRow, SPECS } from "@/lib/records";
+import { aiExtract } from "@/lib/extract";
+import { useExcelImport } from "@/components/ExcelImport";
 import { api } from "@/lib/api";
 import { useRouter } from "next/navigation";
 
@@ -19,19 +21,18 @@ export default function Licensing() {
   useEffect(() => setLic(clone(t.lic)), [t.lic]); // hidrasi DB menyusul mount
   const [mOpen, setMOpen] = useState(false);
   const [mEdit, setMEdit] = useState<RecRow | null>(null);
+  const [pfill, setPfill] = useState<Record<string, string> | undefined>();  // hasil ekstraksi AI (rekam baru)
+  const [pfile, setPfile] = useState<File | null>(null);                     // dokumen sumber ikut tersimpan
+  const bukaManual = () => { setPfill(undefined); setPfile(null); setMEdit(null); setMOpen(true); };
+  const xlsx = useExcelImport("lic"); // .xlsx via dropzone → pratinjau impor massal
   const onDone = (row: RecRow, editId: string | null) =>
     patchTen({ lic: (editId ? t.lic.map((x) => idOf("lic", x) === editId ? row : x) : [row, ...t.lic]) as typeof t.lic });
 
-  /* Dropzone: dokumen izin diunggah ke Storage, rekam dibuat dgn dok_url tertaut. */
+  /* Dropzone: gambar/PDF → ekstraksi AI NYATA → modal terisi utk dikonfirmasi (dokumen ikut disimpan). */
   const dropDok = async (file: File) => {
-    const tid = localStorage.getItem("corplex_tid") || "";
-    const up = await api.records.uploadDoc(tid, file);
-    if (!up.ok) return toast("Gagal mengunggah", up.error.message, "warn");
-    const nama = file.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim();
-    const data = [nama, "Hasil ekstraksi dokumen", t.name, "", "", 0, "", "AKTIF", "c-ver", "AKTIF", "detail"];
-    const r = await api.records.create(tid, "lic", data, "ai", up.data);
-    if (!r.ok) return toast("Gagal menyimpan", r.error.message, "warn");
-    patchTen({ lic: [[...data.slice(0, 11), r.data.id] as unknown as typeof t.lic[number], ...t.lic] as typeof t.lic });
+    toast("AI membaca dokumen…", "Ekstraksi field izin dari dokumen — Anda konfirmasi sebelum tersimpan.");
+    const vals = await aiExtract(file, SPECS.lic.fields);
+    setPfill(vals || {}); setPfile(file); setMEdit(null); setMOpen(true);
   };
   type Kwj = { b: string; d: string; chip: string; lbl: string; next: string; can: boolean; done: boolean; id?: string };
   const KWJ_DEFAULT: Kwj[] = [
@@ -93,9 +94,9 @@ export default function Licensing() {
 
   return (
     <ModuleShell h1="Perizinan" sub="Izin lewat tenggat = risiko sanksi + status BERISIKO pada Laporan LDD — masa berlaku diingatkan otomatis."
-      acts={<button className="btn btn-gold" onClick={() => { setMEdit(null); setMOpen(true); }}><Plus size={14} /> Daftarkan Izin</button>}
+      acts={<button className="btn btn-gold" onClick={bukaManual}><Plus size={14} /> Daftarkan Izin</button>}
       dropNote="PDF · Word · pindaian (OCR) — AI mengekstrak nomor izin, jenis, KBLI, dan masa berlaku; dokumen asli tersimpan di vault."
-      onDrop={(f2) => void dropDok(f2)}
+      onDrop={(f2) => { if (!xlsx.tryFile(f2)) void dropDok(f2); }}
       filters={["semua", "AKTIF", "SEGERA", "PENGURUSAN"]} active={f} onFilter={setF}
       q={q} setQ={setQ} cariPh="Cari izin / entitas / KBLI…"
       kpi={<div className="grid g4 mb16">
@@ -149,7 +150,8 @@ export default function Licensing() {
         </Panel>
       </div>
 
-      <RecordModal mod="lic" open={mOpen} editRow={mEdit} tenantName={t.name} toast={toast} onClose={() => setMOpen(false)} onDone={onDone} />
+      <RecordModal mod="lic" open={mOpen} editRow={mEdit} tenantName={t.name} toast={toast} onClose={() => setMOpen(false)} onDone={onDone} prefill={pfill} prefillFile={pfile} />
+      {xlsx.modal}
     </ModuleShell>
   );
 }

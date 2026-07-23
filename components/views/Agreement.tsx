@@ -11,6 +11,18 @@ import { ModuleShell } from "@/components/ModuleShell";
 import { useRouter } from "next/navigation";
 import { RecActions, RecordModal } from "@/components/RecordModal";
 import { idOf, RecRow } from "@/lib/records";
+import { aiExtract } from "@/lib/extract";
+import { useExcelImport } from "@/components/ExcelImport";
+
+/* Field yang diminta ke AI dari dokumen perjanjian — cocok isian modal ax. */
+const AGR_FIELDS = [
+  { k: "nama", l: "Nama atau judul perjanjian/kontrak" },
+  { k: "p1", l: "Pihak Pertama (nama badan hukum/orang)" },
+  { k: "p2", l: "Pihak Kedua (nama badan hukum/orang)" },
+  { k: "mulai", l: "Tanggal mulai berlaku" },
+  { k: "akhir", l: "Tanggal berakhir / jatuh tempo" },
+  { k: "nilai", l: "Nilai perikatan (mis. Rp 500.000.000)" },
+];
 
 export default function Agreement() {
   const { ten, toast, pushQueue, patchTen } = useStore();
@@ -28,17 +40,32 @@ export default function Agreement() {
   const [axOpen, setAxOpen] = useState(false);
   const [ax, setAx] = useState({ dok: "", nama: "", p1: "", p2: "", mulai: "", akhir: "", nilai: "" });
 
-  /* Upload → vault (progress/cancel/retry) → AI extraction modal. */
+  /* Word/doc (tak terbaca model) → jalur lama: tebak nama dari file. */
   const { start: startUpload, retry: retryUpload, uploading } = useUpload((file) => {
     registerVault(file);
     setAx({ dok: file.name, nama: file.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim(), p1: t.name, p2: "", mulai: "", akhir: "", nilai: "" });
     setAxOpen(true);
   });
+  const [extracting, setExtracting] = useState(false);
+  const xlsx = useExcelImport("agr");
   const upload = async (file: File) => {
-    if (uploading) return; // double-submit guard
-    toast("AI membaca perjanjian…", "Ekstraksi: para pihak · tanggal mulai/berakhir · nilai perikatan · jenis perjanjian · klausul kunci.");
-    const res = await startUpload(file);
-    if (!res.ok && res.error.code !== "aborted") { toast("Unggahan gagal", res.error.message + " — mencoba ulang…", "warn"); retryUpload(); }
+    if (uploading || extracting) return; // double-submit guard
+    setExtracting(true);
+    toast("AI membaca perjanjian…", "Ekstraksi: para pihak · tanggal mulai/berakhir · nilai perikatan.");
+    // Gambar/PDF → ekstraksi AI NYATA; Word/doc → null → jalur unggah lama (heuristik nama).
+    const vals = await aiExtract(file, AGR_FIELDS);
+    setExtracting(false);
+    if (vals === null) {
+      const res = await startUpload(file);
+      if (!res.ok && res.error.code !== "aborted") { toast("Unggahan gagal", res.error.message + " — mencoba ulang…", "warn"); retryUpload(); }
+      return;
+    }
+    registerVault(file);
+    setAx({
+      dok: file.name, nama: vals.nama || file.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim(),
+      p1: vals.p1 || t.name, p2: vals.p2 || "", mulai: vals.mulai || "", akhir: vals.akhir || "", nilai: vals.nilai || "",
+    });
+    setAxOpen(true);
   };
 
   const { run: save, pending: saving } = useAsyncAction(async () => {
@@ -67,7 +94,7 @@ export default function Agreement() {
       sub="Unggah perjanjian — sistem membaca isinya dan mengingatkan Anda sebelum jatuh tempo."
       acts={<button className="btn btn-gold" onClick={() => { setMEdit(null); setMOpen(true); }}><Plus size={14} /> Tambah Manual</button>}
       dropNote="PDF · Word · pindaian (OCR) — AI mengekstrak para pihak, tanggal mulai/berakhir, dan nilai perikatan; dokumen asli tersimpan di vault."
-      onDrop={(file) => upload(file)}
+      onDrop={(file) => { if (!xlsx.tryFile(file)) void upload(file); }}
       filters={["semua", "AKTIF", "SEGERA", "DRAF"]} active={f} onFilter={setF}
       q={q} setQ={setQ} cariPh="Cari perjanjian / pihak…"
       kpi={<div className="grid g4 mb16">
@@ -126,6 +153,7 @@ export default function Agreement() {
       </Modal>
 
       <RecordModal mod="agr" open={mOpen} editRow={mEdit} tenantName={t.name} toast={toast} onClose={() => setMOpen(false)} onDone={onDone} />
+      {xlsx.modal}
     </ModuleShell>
   );
 }

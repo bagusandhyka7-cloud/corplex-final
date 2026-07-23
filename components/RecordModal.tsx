@@ -9,11 +9,13 @@ import { askConfirm, Field, Modal } from "@/components/ui";
 
 const tidNow = () => localStorage.getItem("corplex_tid") || "";
 
-export function RecordModal({ mod, open, editRow, tenantName, onClose, onDone, toast }: {
+export function RecordModal({ mod, open, editRow, tenantName, onClose, onDone, toast, prefill, prefillFile }: {
   mod: string; open: boolean; editRow: RecRow | null; tenantName: string;
   onClose: () => void;
   onDone: (row: RecRow, editId: string | null) => void;
   toast: (t: string, d: string, k?: string) => void;
+  prefill?: Record<string, string>;      // rekam baru diisi hasil ekstraksi AI (dikonfirmasi user sebelum Simpan)
+  prefillFile?: File | null;             // dokumen sumber ikut tersimpan
 }) {
   const spec = SPECS[mod];
   const editId = editRow ? idOf(mod, editRow) || null : null;
@@ -27,8 +29,10 @@ export function RecordModal({ mod, open, editRow, tenantName, onClose, onDone, t
 
   useEffect(() => {
     if (!open) return;
-    setV(editRow ? spec.fromData(stripId(mod, editRow)) : Object.fromEntries(spec.fields.map((f) => [f.k, f.opts ? f.opts[0] : ""])));
-    setFile(null); setHapusDok(false); setDokLama(null);
+    const blank = Object.fromEntries(spec.fields.map((f) => [f.k, f.opts ? f.opts[0] : ""]));
+    // rekam baru + prefill AI: blank ditimpa nilai ekstraksi (hanya key yang berisi); mode edit tak terpengaruh.
+    setV(editRow ? spec.fromData(stripId(mod, editRow)) : { ...blank, ...Object.fromEntries(Object.entries(prefill || {}).filter(([, val]) => val)) });
+    setFile(editRow ? null : prefillFile || null); setHapusDok(false); setDokLama(null);
     // mode edit: ambil berkas tersimpan supaya bisa diganti/dihapus
     if (editId) void api.records.get(editId).then((r) => { if (r.ok && r.data.dok_url) setDokLama({ url: r.data.dok_url, nama: r.data.dok_nama || "dokumen" }); });
   }, [open, editRow, mod]); // eslint-disable-line react-hooks/exhaustive-deps

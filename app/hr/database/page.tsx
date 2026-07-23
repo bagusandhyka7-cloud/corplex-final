@@ -8,11 +8,24 @@ import { api, empToRow, empFromRow, withRetry } from "@/lib/api";
 import { useAsyncAction, useUpload } from "@/lib/hooks";
 import { askConfirm, Chip, Field, Jargon, Kpi, Modal, Panel, Row, RpInput, ViewHead } from "@/components/ui";
 import { RowActions } from "@/components/RecordModal";
+import { aiExtract } from "@/lib/extract";
+import { useExcelImport } from "@/components/ExcelImport";
 import { useRouter } from "next/navigation";
 
 const hasExpiredSP = (e: Emp) => (e.sp || []).some(s => !!(s.expISO && new Date(s.expISO + "T23:59:59") < new Date()));
 const fmtTgl = (s?: string) => s ? new Date(s).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" }) : "—";
 const tidNow = () => localStorage.getItem("corplex_tid") || "";
+
+/* Field yang diminta ke AI dari dokumen — cocok dengan isian modal Ekstraksi (ex). */
+const EX_FIELDS = [
+  { k: "nama", l: "Nama lengkap tenaga kerja" },
+  { k: "jab", l: "Jabatan sesuai perjanjian kerja" },
+  { k: "jk", l: "Jenis kelamin", opts: ["L", "P"] },
+  { k: "wn", l: "Klasifikasi: TKI (WNI) atau TKA (WNA)", opts: ["TKI", "TKA"] },
+  { k: "lok", l: "Domisili lokal setempat: 1 (ya) atau 0 (tidak)", opts: ["1", "0"] },
+  { k: "status", l: "Status hubungan kerja", opts: ["PKWT", "PKWTT"] },
+  { k: "masa", l: "Masa kerja / periode kontrak (mis. Sep 2026 – Agu 2028)" },
+];
 const BLANK = {
   n: "", j: "", jk: "L" as "L" | "P", wn: "TKI" as "TKI" | "TKA", lok: true, s: "PKWT" as "PKWT" | "PKWTT", m: "", prov: "", kota: "", desa: "", foto: null as string | null,
   nik: "", kk: "", npwp: "", bpjsKes: "", bpjsTk: "", sim: "", pend: "", lahir: "", dept: "", kdNama: "", kdTelp: "", pengalaman: "", dokUrl: null as string | null,
@@ -149,6 +162,9 @@ export default function DatabaseKaryawan() {
   const [exOpen, setExOpen] = useState(false);
   const [ex, setEx] = useState({ dok: "", nama: "", jk: "L", wn: "TKI", lok: "1", status: "PKWT", jab: "", masa: "" });
 
+  /* Impor Excel karyawan LEWAT DROPZONE (template diunduh di Alat Legal). Deteksi .xlsx otomatis. */
+  const xlsx = useExcelImport("emp");
+
   const rows = emp.map((e, i) => ({ e, i })).filter(({ e }) => {
     if (f === "PKWTT" && e.s !== "PKWTT") return false;
     if (f === "PKWT" && e.s !== "PKWT") return false;
@@ -169,9 +185,23 @@ export default function DatabaseKaryawan() {
 
   const empUpload = async (file: File) => {
     if (empUp.uploading) return;
-    toast("AI membaca dokumen…", "Ekstraksi field tenaga kerja sesuai format LKPM: nama · jenis kelamin · TKI/TKA · lokal setempat · status hubungan kerja.");
-    const res = await empUp.start(file);
-    if (!res.ok && res.error.code !== "aborted") { toast("Unggahan gagal", res.error.message + " — mencoba ulang…", "warn"); empUp.retry(); }
+    const isImg = /\.(jpe?g|png|webp)$/i.test(file.name), isPdf = /\.pdf$/i.test(file.name);
+    // Word/doc tak bisa dibaca model → pertahankan jalur lama (tebak dari nama file).
+    if (!isImg && !isPdf) {
+      const res = await empUp.start(file);
+      if (!res.ok && res.error.code !== "aborted") { toast("Unggahan gagal", res.error.message + " — mencoba ulang…", "warn"); empUp.retry(); }
+      return;
+    }
+    // Gambar/PDF → ekstraksi AI NYATA (Gemini multimodal, free tier). Hasil masuk modal untuk dikonfirmasi.
+    toast("AI membaca dokumen…", "Ekstraksi field ketenagakerjaan dari dokumen — Anda konfirmasi sebelum tersimpan.");
+    registerVault(file);
+    const vals = (await aiExtract(file, EX_FIELDS)) || {};
+    setEx({
+      dok: file.name, nama: vals.nama || "", jab: vals.jab || "",
+      jk: vals.jk === "P" ? "P" : "L", wn: vals.wn === "TKA" ? "TKA" : "TKI",
+      lok: vals.lok === "0" ? "0" : "1", status: vals.status === "PKWTT" ? "PKWTT" : "PKWT", masa: vals.masa || "",
+    });
+    setExOpen(true);
   };
 
   const { run: empSave, pending: empSaving } = useAsyncAction(async () => {
@@ -196,7 +226,7 @@ export default function DatabaseKaryawan() {
       <ViewHead h1="Database Karyawan"
         sub="Kontrak & BPJS tak lengkap = status BERISIKO pada aspek Ketenagakerjaan LDD — lengkapi rekam tiap karyawan di sini."
         acts={<>
-          <input ref={fileRef} type="file" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" style={{ display: "none" }} onChange={(e) => { const file = e.target.files?.[0]; if (file) empUpload(file); e.target.value = ""; }} />
+          <input ref={fileRef} type="file" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.xlsx,.xls" style={{ display: "none" }} onChange={(e) => { const file = e.target.files?.[0]; if (file && !xlsx.tryFile(file)) empUpload(file); e.target.value = ""; }} />
           <button className="btn btn-gold" onClick={bukaTambah}><UserPlus size={14} /> Tambah Karyawan</button>
         </>} />
 
@@ -211,7 +241,7 @@ export default function DatabaseKaryawan() {
         <div className="dropzone mb16" onClick={() => fileRef.current?.click()}
           onDragOver={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = "var(--gold)"; }}
           onDragLeave={(e) => { e.currentTarget.style.borderColor = ""; }}
-          onDrop={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = ""; const file = e.dataTransfer.files?.[0]; if (file) empUpload(file); }}>
+          onDrop={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = ""; const file = e.dataTransfer.files?.[0]; if (file && !xlsx.tryFile(file)) empUpload(file); }}>
           <b>Letakkan dokumen karyawan di sini, atau klik untuk memilih berkas.</b>
           Perjanjian Kerja (PKWT/PKWTT), KTP, Pengesahan RPTKA. AI mengekstrak field sesuai format pelaporan tenaga kerja LKPM (jenis kelamin, TKI/TKA, lokal). Anda mengonfirmasi sebelum tersimpan.
         </div>
@@ -299,6 +329,8 @@ export default function DatabaseKaryawan() {
           </Panel>
         </div>
       </div>
+
+      {xlsx.modal}
 
       <Modal open={exOpen} title="Ekstraksi AI — Data Tenaga Kerja (Format LKPM)" onClose={() => setExOpen(false)}
         footer={<><button className="btn btn-line" onClick={() => setExOpen(false)}>Batal</button><button className="btn btn-navy" disabled={empSaving} aria-busy={empSaving} onClick={() => void empSave()}>{empSaving ? "Menyimpan…" : "Simpan & Rekap"}</button></>}>

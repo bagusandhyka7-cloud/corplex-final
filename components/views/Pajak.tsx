@@ -5,12 +5,19 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Plus, Scale } from "lucide-react";
 import { fmt, useStore, ViewId } from "@/lib/store";
 import { api } from "@/lib/api";
+import { aiExtract } from "@/lib/extract";
+import { useExcelImport } from "@/components/ExcelImport";
 import { askConfirm, Chip, Field, Kpi, Modal, Panel, Row } from "@/components/ui";
 import { ModuleShell } from "@/components/ModuleShell";
 
 const SUBJUDUL = ["Kalender Kewajiban", "Profil Pajak"];
 type Tax = { id?: string; nama: string; jenis: string; tenggat: string; status: "TERBUKA" | "DIPENUHI" };
 const JENIS = ["PPN Masa", "PPh 21", "PPh 25 Angsuran", "PPh Badan Tahunan", "PBB", "PPh Final UMKM", "Lainnya"];
+const TAX_AI = [
+  { k: "nama", l: "Nama kewajiban pajak (mis. SPT Masa PPN Juli 2026)" },
+  { k: "jenis", l: "Jenis pajak", opts: JENIS },
+  { k: "tenggat", l: "Tanggal tenggat / jatuh tempo (format YYYY-MM-DD)" },
+];
 
 export default function Pajak() {
   const { ten, go, toast, pushQueue, activeTab: tab, setActiveTab: setTab } = useStore();
@@ -20,7 +27,10 @@ export default function Pajak() {
   const [f, setF] = useState("semua");
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<Tax>({ nama: "", jenis: JENIS[0], tenggat: "", status: "TERBUKA" });
+  const [pfile, setPfile] = useState<File | null>(null); // dokumen sumber (dropzone) → ikut tersimpan saat Simpan
   const tid = () => localStorage.getItem("corplex_tid") || "";
+  const bukaManual = () => { setPfile(null); setForm({ nama: "", jenis: JENIS[0], tenggat: "", status: "TERBUKA" }); setOpen(true); };
+  const xlsx = useExcelImport("tax");
 
   useEffect(() => {
     void api.records.list(tid()).then((r) => {
@@ -30,10 +40,26 @@ export default function Pajak() {
 
   const simpan = async () => {
     if (!form.nama.trim()) { toast("Nama kewajiban wajib diisi", "Lengkapi nama kewajiban pajak.", "warn"); return; }
-    const r = await api.records.create(tid(), "tax", form);
+    let dok: { url: string; nama: string } | undefined;
+    if (pfile) { const up = await api.records.uploadDoc(tid(), pfile); if (!up.ok) return toast("Gagal mengunggah", up.error.message, "warn"); dok = up.data; }
+    const r = await api.records.create(tid(), "tax", form, pfile ? "ai" : "manual", dok);
     if (!r.ok) return toast("Gagal menyimpan", r.error.message, "warn");
     setRows((xs) => [{ ...form, id: r.data.id }, ...xs]);
-    setOpen(false); setForm({ nama: "", jenis: JENIS[0], tenggat: "", status: "TERBUKA" });
+    setOpen(false); setPfile(null); setForm({ nama: "", jenis: JENIS[0], tenggat: "", status: "TERBUKA" });
+  };
+
+  /* Dropzone: gambar/PDF → ekstraksi AI NYATA → modal terisi utk dikonfirmasi (dokumen ikut disimpan). */
+  const dropDok = async (file: File) => {
+    toast("AI membaca dokumen…", "Ekstraksi jenis & tenggat pajak — Anda konfirmasi sebelum tersimpan.");
+    const vals = await aiExtract(file, TAX_AI);
+    const v = vals || {};
+    setForm({
+      nama: v.nama || file.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim(),
+      jenis: JENIS.includes(v.jenis) ? v.jenis : JENIS[0],
+      tenggat: /^\d{4}-\d{2}-\d{2}$/.test(v.tenggat || "") ? v.tenggat : "",
+      status: "TERBUKA",
+    });
+    setPfile(file); setOpen(true);
   };
 
   const penuhi = async (x: Tax) => {
@@ -49,16 +75,6 @@ export default function Pajak() {
     const r = await api.records.remove(x.id);
     if (!r.ok) return toast("Gagal", r.error.message, "warn");
     setRows((xs) => xs.filter((y) => y.id !== x.id));
-  };
-
-  const dropDok = async (file: File) => {
-    const up = await api.records.uploadDoc(tid(), file);
-    if (!up.ok) return toast("Gagal mengunggah", up.error.message, "warn");
-    const nama = file.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim();
-    const rec: Tax = { nama, jenis: JENIS[0], tenggat: "", status: "TERBUKA" };
-    const r = await api.records.create(tid(), "tax", rec, "ai", up.data);
-    if (!r.ok) return toast("Gagal menyimpan", r.error.message, "warn");
-    setRows((xs) => [{ ...rec, id: r.data.id }, ...xs]);
   };
 
   const terbuka = rows.filter((x) => x.status === "TERBUKA");
@@ -82,9 +98,9 @@ export default function Pajak() {
   return (
     <ModuleShell h1={SUBJUDUL[tab] || "Kepatuhan Pajak"}
       sub="Telat lapor/setor = denda + bunga sanksi — tenggat pajak perusahaan diingatkan otomatis."
-      acts={<button className="btn btn-gold" onClick={() => setOpen(true)}><Plus size={14} /> Tambah Kewajiban</button>}
+      acts={<button className="btn btn-gold" onClick={bukaManual}><Plus size={14} /> Tambah Kewajiban</button>}
       dropNote="SPT, bukti potong, atau tagihan pajak — AI mengekstrak jenis & tenggat; berkas asli tersimpan di vault."
-      onDrop={(file) => void dropDok(file)}
+      onDrop={(file) => { if (!xlsx.tryFile(file)) void dropDok(file); }}
       filters={tab === 0 ? ["semua", "TERBUKA", "DIPENUHI"] : undefined} active={f} onFilter={setF}
       q={tab === 0 ? q : undefined} setQ={tab === 0 ? setQ : undefined} cariPh="Cari kewajiban / jenis pajak…"
       kpi={<div className="grid g4 mb16">
@@ -140,6 +156,7 @@ export default function Pajak() {
         <Field label="Jenis pajak"><select value={form.jenis} onChange={(e) => setForm({ ...form, jenis: e.target.value })}>{JENIS.map((j) => <option key={j}>{j}</option>)}</select></Field>
         <Field label="Tenggat"><input type="date" value={form.tenggat} onChange={(e) => setForm({ ...form, tenggat: e.target.value })} /></Field>
       </Modal>
+      {xlsx.modal}
     </ModuleShell>
   );
 }

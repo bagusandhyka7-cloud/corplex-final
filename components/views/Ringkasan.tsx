@@ -2,9 +2,11 @@
 import React, { useEffect, useState } from "react";
 import { Bot, FileSignature, FolderArchive, Building, Hourglass, PenLine, ReceiptText, Scale, ShieldCheck, Wrench, LifeBuoy, CheckCircle2, Circle } from "lucide-react";
 import { useStore, ViewId } from "@/lib/store";
-import { Chip, Jargon, Kpi, Panel, Ring, Row, Spark } from "@/components/ui";
+import { Chip, Kpi, Panel, Row } from "@/components/ui";
 import Ldd from "@/components/views/Ldd";
 import HRDashboard from "@/components/views/HRDashboard";
+import { buildLdd } from "@/lib/ldd";
+import { api } from "@/lib/api";
 
 function useCountUp(target: number, dur = 1000) {
   const [v, setV] = useState(0);
@@ -56,27 +58,60 @@ function OnboardChecklist() {
 export default function Ringkasan({ onOpenWizard }: { onOpenWizard: () => void }) {
   const { ten, go, queueCount, quota, quotaMax } = useStore();
   const t = ten!;
-  const docs = useCountUp(t.kpiDocs);
-  const score = useCountUp(t.score, 1150);
-  const taxScore = useCountUp(t.tax.score);
+
+  /* ===== KPI dihitung dari rekam HIDUP (bukan field statis tenant) — "Data A masuk, semua layar ikut".
+   * Skor kesehatan menumpang mesin LDD yang sudah menilai 6 aspek dari rekam nyata (nol mesin baru). */
+  const ldd = React.useMemo(() => buildLdd(t), [t]);
+  const aspek = Object.values(ldd.counts);
+  const aspekAman = aspek.filter((a) => a.status === "AMAN").length;
+  const skorSehat = aspek.length ? Math.round((aspekAman / aspek.length) * 100) : 0;
+  const totalRekam = t.corp.docs.length + t.lic.length + t.assets.length + t.hki.length + t.asr.pol.length + t.agr.length + t.emp.length;
+  const izinAktif = t.lic.filter((r) => (r as unknown[])[7] === "AKTIF").length;
+  const asetPerhatian = t.assets.filter((r) => (r as unknown[])[6] !== "AMAN").length;
+
+  /* Kewajiban pajak ada di module_records mod 'tax' (di luar `ten`) — satu fetch, sama seperti modul Pajak. */
+  const [pajak, setPajak] = useState({ skor: 0, next: "—", nextTr: "belum ada kewajiban tercatat", total: 0 });
+  useEffect(() => {
+    const tid = localStorage.getItem("corplex_tid") || "";
+    if (!tid) return;
+    void api.records.list(tid).then((r) => {
+      if (!r.ok) return;
+      const rows = r.data.filter((x) => x.module === "tax").map((x) => x.data as { nama?: string; tenggat?: string; status?: string });
+      if (!rows.length) return;
+      const dipenuhi = rows.filter((x) => x.status === "DIPENUHI").length;
+      const terbuka = rows.filter((x) => x.status !== "DIPENUHI" && x.tenggat).sort((a, b) => (a.tenggat || "").localeCompare(b.tenggat || ""));
+      setPajak({
+        skor: Math.round((dipenuhi / rows.length) * 100),
+        next: terbuka[0]?.nama || "—",
+        nextTr: terbuka[0]?.tenggat ? `tenggat ${terbuka[0].tenggat}` : "seluruh kewajiban dipenuhi",
+        total: rows.length,
+      });
+    });
+  }, []);
+
+  const docs = useCountUp(totalRekam);
+  const score = useCountUp(skorSehat, 1150);
+  const taxScore = useCountUp(pajak.skor);
   const [today, setToday] = useState("");
   useEffect(() => {
     setToday(new Date().toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" }));
   }, []);
 
-  const verifData = t.verif.length >= 8 ? t.verif : [
-    ...t.verif,
-    ["Perjanjian Sewa Kantor Cabang", "Menunggu tanda tangan direksi", "c-draft", "DRAF AI"],
-    ["Perpanjangan Izin Usaha", "OSS RBA — Sedang diproses", "c-mon", "PENDING"],
-    ["Somasi Pelanggaran HKI", "Draf awal dari Legal Assistant", "c-draft", "DRAF AI"]
-  ];
+  /* NOL DUMMY: dulu daftar ini dipadatkan baris karangan (HGB, LKPM, somasi) saat rekam klien sedikit —
+   * berbahaya di platform hukum. Kini murni rekam nyata + empty state jujur. */
+  const verifData = t.verif;
+  const remData = t.rem;
 
-  const remData = t.rem.length >= 11 ? t.rem : [
-    ...t.rem,
-    ["Laporan Penanaman Modal (LKPM)", "Kewajiban pelaporan investasi berkala ke BKPM", "c-red", "5 HARI", "licensing"],
-    ["Perpanjangan Hak Guna Bangunan", "Sertifikat HGB akan habis masa berlakunya", "c-mon", "90 HARI", "asset"],
-    ["Audit Kepatuhan Lingkungan", "Pemeriksaan standar baku mutu air limbah", "c-draft", "45 HARI", "licensing"]
-  ];
+  /* Rekam per Bab dihitung dari koleksi nyata (bar relatif terhadap bab terbanyak). */
+  const babRows: [string, number, number][] = (() => {
+    const items: [string, number][] = [
+      ["Perizinan", t.lic.length], ["Aset & HKI", t.assets.length + t.hki.length],
+      ["Perjanjian", t.agr.length], ["Ketenagakerjaan", t.emp.length],
+      ["Asuransi", t.asr.pol.length], ["Tata Kelola", t.corp.docs.length],
+    ];
+    const max = Math.max(1, ...items.map((i) => i[1]));
+    return items.map(([l, n]) => [l, n, Math.round((n / max) * 100)]);
+  })();
 
   return (
     // id v-ringkasan + .on = kunci seluruh CSS hero animasi lama (aurora, heroShift, riseIn berjenjang) di globals.css
@@ -97,25 +132,25 @@ export default function Ringkasan({ onOpenWizard }: { onOpenWizard: () => void }
       <OnboardChecklist />
 
       <div className="grid g4">
-        <Kpi ico={<FolderArchive size={42} strokeWidth={1} opacity={0.15} />} v={docs} label="Dokumen dalam rekam (CATAT)" tr={t.kpiDocsTr} trCls="up" />
-        <Kpi ico={<ShieldCheck size={42} strokeWidth={1} opacity={0.15} />} v={t.kpiIzin} label="Izin aktif dipantau (JAGA)" tr={t.kpiIzinTr} trCls="dn" onClick={() => go("licensing")} />
+        <Kpi ico={<FolderArchive size={42} strokeWidth={1} opacity={0.15} />} v={docs} label="Rekam tercatat (CATAT)" tr={`${t.emp.length} karyawan · ${t.lic.length} izin · ${t.agr.length} perjanjian`} trCls="up" />
+        <Kpi ico={<ShieldCheck size={42} strokeWidth={1} opacity={0.15} />} v={izinAktif} label="Izin aktif dipantau (JAGA)" tr={t.lic.length ? `dari ${t.lic.length} izin dalam rekam` : "belum ada izin terdaftar"} trCls="dn" onClick={() => go("licensing")} />
         <Kpi ico={<Scale size={42} strokeWidth={1} opacity={0.15} />} v={queueCount} label="Draf menunggu verifikasi (JAMIN)" tr="SLA prioritas < 24 jam" trCls="md" onClick={() => go("lawyer")} />
         <div className="kpi">
           <div className="score-ring">
             <div className="ring" id="scoreRing"><i>{score}</i></div>
             <div>
               <span style={{ fontSize: 11.5, color: "var(--muted)" }}>Skor Kesehatan Hukum</span>
-              <span className="tr up" style={{ display: "block" }}>{t.delta}</span>
+              <span className="tr up" style={{ display: "block" }}>{aspekAman}/{aspek.length} aspek LDD aman</span>
             </div>
           </div>
         </div>
       </div>
 
       <div className="grid g4 mt16">
-        <Kpi ico={<Building size={42} strokeWidth={1} opacity={0.15} />} v={<span style={{ fontSize: 21 }}>{t.asetVal}</span>} label="Nilai aset tercatat — Asset & IP" tr={t.asetTr} trCls="md" onClick={() => go("asset")} />
-        <Kpi ico={<ReceiptText size={42} strokeWidth={1} opacity={0.15} />} v={taxScore} label="Skor kepatuhan pajak" tr={t.tax.trend} trCls="up" onClick={() => go("pajak")} />
-        <Kpi ico={<LifeBuoy size={42} strokeWidth={1} opacity={0.15} />} v={t.asr.pol.length} label="Polis asuransi dipantau" tr={t.asr.polTr} trCls="md" onClick={() => go("asuransi")} />
-        <Kpi ico={<Hourglass size={42} strokeWidth={1} opacity={0.15} />} v={<span style={{ fontSize: 21 }}>{t.tax.next}</span>} label="Kewajiban pajak terdekat" tr={t.tax.nextTr} trCls="dn" onClick={() => go("pajak")} />
+        <Kpi ico={<Building size={42} strokeWidth={1} opacity={0.15} />} v={t.assets.length + t.hki.length} label="Aset & HKI tercatat" tr={asetPerhatian ? `${asetPerhatian} aset perlu perhatian` : `${t.hki.length} HKI terdaftar`} trCls="md" onClick={() => go("asset")} />
+        <Kpi ico={<ReceiptText size={42} strokeWidth={1} opacity={0.15} />} v={taxScore} label="Skor kepatuhan pajak" tr={pajak.total ? `${pajak.total} kewajiban tercatat` : "belum ada kewajiban tercatat"} trCls="up" onClick={() => go("pajak")} />
+        <Kpi ico={<LifeBuoy size={42} strokeWidth={1} opacity={0.15} />} v={t.asr.pol.length} label="Polis asuransi dipantau" tr={t.asr.pol.length ? "seluruh polis dalam rekam" : "belum ada polis terdaftar"} trCls="md" onClick={() => go("asuransi")} />
+        <Kpi ico={<Hourglass size={42} strokeWidth={1} opacity={0.15} />} v={<span style={{ fontSize: 21 }}>{pajak.next}</span>} label="Kewajiban pajak terdekat" tr={pajak.nextTr} trCls="dn" onClick={() => go("pajak")} />
       </div>
 
       <div className="grid g-wide mt16" style={{ alignItems: "stretch" }}>
@@ -124,6 +159,7 @@ export default function Ringkasan({ onOpenWizard }: { onOpenWizard: () => void }
             {remData.map((r, i) => (
               <Row key={i} b={r[0]} d={r[1]} right={<Chip c={r[2]}>{r[3]}</Chip>} onClick={() => go(r[4] as ViewId)} />
             ))}
+            {!remData.length && <p className="note">Belum ada pengingat. Tenggat muncul otomatis begitu izin, perjanjian, atau kewajiban pajak tercatat.</p>}
           </div>
         </Panel>
         <Panel title="Alur Verifikasi — Fungsi Jamin" className="flex flex-col">
@@ -131,6 +167,7 @@ export default function Ringkasan({ onOpenWizard }: { onOpenWizard: () => void }
             {verifData.map((v, i) => (
               <Row key={i} b={v[0]} d={v[1]} right={<Chip c={v[2]}>{v[3]}</Chip>} />
             ))}
+            {!verifData.length && <p className="note">Belum ada pengajuan. Ajukan dokumen ke advokat dari modul mana pun — statusnya muncul di sini.</p>}
           </div>
           <div className="quota" style={{ marginTop: "auto", paddingTop: 14 }}>
             <div className="lbl"><span>Kuota verifikasi bulan ini</span><b>{quota} / {quotaMax}</b></div>
@@ -140,18 +177,22 @@ export default function Ringkasan({ onOpenWizard }: { onOpenWizard: () => void }
       </div>
 
       <div className="grid g3 mt16">
-        <Panel title="Tren Skor Kesehatan — 6 Bulan" className="flex flex-col">
-          <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-            <Spark points="0,38 60,34 120,40 180,26 240,18 300,12" fill />
+        {/* ponytail: riwayat skor belum punya tabel — kurva peraga DIBUANG (nol dummy).
+            Ganti grafik nyata saat tabel snapshot skor bulanan dibuat. */}
+        <Panel title="Skor Kesehatan Hukum — Aspek LDD" className="flex flex-col">
+          <div style={{ display: "grid", gap: 8, fontSize: 11.5 }}>
+            {aspek.length ? Object.entries(ldd.counts).map(([nama, c]) => (
+              <div key={nama} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nama}</span>
+                <Chip c={c.status === "AMAN" ? "c-ver" : c.status === "BERMASALAH" ? "c-red" : "c-draft"}>{c.status}</Chip>
+              </div>
+            )) : <p className="note">Belum ada rekam untuk dinilai.</p>}
           </div>
-          <div style={{ display: "flex", justifyContent: "space-between", fontFamily: "var(--mono)", fontSize: 9, color: "var(--muted)", paddingTop: 8 }}>
-            <span>FEB</span><span>MAR</span><span>APR</span><span>MEI</span><span>JUN</span>
-            <span style={{ color: "var(--gold-deep)", fontWeight: 700 }}>JUL</span>
-          </div>
+          <p className="note mt16">Riwayat tren bulanan tampil setelah snapshot skor terkumpul.</p>
         </Panel>
         <Panel title="Rekam per Bab">
           <div style={{ display: "grid", gap: 8, fontSize: 11.5 }}>
-            {t.bab.map((b, i) => (
+            {babRows.map((b, i) => (
               <div key={i}>
                 <div style={{ display: "flex", justifyContent: "space-between" }}><span>{b[0]}</span><b>{b[1]}</b></div>
                 <div className="bar"><i className="bl" style={{ width: `${b[2]}%` }} /></div>
@@ -159,8 +200,8 @@ export default function Ringkasan({ onOpenWizard }: { onOpenWizard: () => void }
             ))}
           </div>
         </Panel>
-        <Panel className="dark" title={<>Regulasi Terpantau <span className="chip c-ver">● PEMINDAIAN AKTIF</span></>}>
-          <p>3 perubahan regulasi relevan dengan bidang usaha Anda terdeteksi bulan ini — seluruh rujukan tertaut sumber resmi (JDIH · peraturan.go.id · Lembaran Negara).</p>
+        <Panel className="dark" title="Regulasi & Dasar Hukum">
+          <p>Tanyakan perubahan regulasi yang relevan dengan bidang usaha Anda kepada AI Assistant — jawaban merujuk sumber resmi (JDIH · peraturan.go.id · Lembaran Negara).</p>
           <button className="btn btn-gold btn-sm mt16" onClick={() => go("assistant")}>Tanyakan ke AI Assistant</button>
         </Panel>
       </div>
