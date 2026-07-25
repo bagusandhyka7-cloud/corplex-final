@@ -19,18 +19,14 @@ const BrandMark = ({ size, className = "" }: { size?: number, className?: string
 );
 
 /* ===== SIDEBAR ===== */
-/* Urutan (arahan owner 22 Jul): prioritas Ringkasan + Pengacara, lalu SEMUA menu tanpa dropdown,
- * baru kelompok ber-dropdown (AI, Ketenagakerjaan, Aset, Asuransi, Pajak) di bawah. */
+/* Urutan menu sidebar terbaru sesuai arahan: */
 export const NAV: { v: ViewId; label: string; icon: React.ReactNode; section: string; subItems?: { label: string; tab: number; icon?: React.ReactNode }[] }[] = [
   { v: "ringkasan", label: "Ringkasan", icon: <LayoutDashboard size={16} />, section: "" },
-  { v: "lawyer", label: "Pengacara MRWP", icon: <Gavel size={16} />, section: "" },
-  { v: "agreement", label: "Manajemen Kontrak", icon: <FileSignature size={16} />, section: "" },
-  { v: "licensing", label: "Perizinan", icon: <FileBadge size={16} />, section: "" },
-  { v: "corpsec", label: "Sekretaris Perusahaan", icon: <Landmark size={16} />, section: "" },
-  { v: "case", label: "Perkara", icon: <Scale size={16} />, section: "" },
-  { v: "tools", label: "Alat Legal", icon: <Wrench size={16} />, section: "" },
   { v: "assistant", label: "AI Assistant", icon: <Bot size={16} />, section: "AI" },
   { v: "drafter", label: "AI Drafting", icon: <PenLine size={16} />, section: "AI" },
+  { v: "corpsec", label: "Sekretaris Perusahaan", icon: <Landmark size={16} />, section: "" },
+  { v: "licensing", label: "Perizinan", icon: <FileBadge size={16} />, section: "" },
+  { v: "agreement", label: "Manajemen Kontrak", icon: <FileSignature size={16} />, section: "" },
   { v: "hr-database" as ViewId, label: "Database Karyawan", icon: <IdCard size={16} />, section: "Ketenagakerjaan" },
   { v: "hr-sp" as ViewId, label: "Surat Peringatan", icon: <FileWarning size={16} />, section: "Ketenagakerjaan" },
   { v: "hr-kalkulator" as ViewId, label: "Kalkulator Hukum", icon: <Calculator size={16} />, section: "Ketenagakerjaan" },
@@ -47,6 +43,9 @@ export const NAV: { v: ViewId; label: string; icon: React.ReactNode; section: st
     { label: "Kalender Kewajiban", tab: 0, icon: <CalendarDays size={13} /> },
     { label: "Profil Pajak", tab: 1, icon: <Landmark size={13} /> },
   ]},
+  { v: "case", label: "Perkara", icon: <Scale size={16} />, section: "" },
+  { v: "tools", label: "Alat Legal", icon: <Wrench size={16} />, section: "" },
+  { v: "lawyer", label: "Lawyer perusahaan MRWP", icon: <Gavel size={16} />, section: "" },
 ];
 
 const SECTION_ICONS: Record<string, React.ReactNode> = {
@@ -58,7 +57,7 @@ const SECTION_ICONS: Record<string, React.ReactNode> = {
 /* Dual-bahasa (5y-A): kamus EN utk label MENU & judul (fokus arahan owner: menu tak boleh campur).
  * ponytail: terjemah isi tiap modul = inkremental + istilah hukum wajib review MRWP — tak dipalsukan AI. */
 const EN: Record<string, string> = {
-  "Ringkasan": "Summary", "Pengacara MRWP": "MRWP Lawyers", "AI Assistant": "AI Assistant", "AI Drafting": "AI Drafting",
+  "Ringkasan": "Summary", "Lawyer perusahaan MRWP": "MRWP Lawyers", "Pengacara MRWP": "MRWP Lawyers", "AI Assistant": "AI Assistant", "AI Drafting": "AI Drafting",
   "Database Karyawan": "Employee Database", "Surat Peringatan": "Warning Letter", "Kalkulator Hukum": "Legal Calculator",
   "Aset & Merek": "Assets & Trademark", "Asuransi": "Insurance", "Kepatuhan Pajak": "Tax Compliance",
   "Perizinan": "Licensing", "Sekretaris Perusahaan": "Corporate Secretary", "Perkara": "Litigation",
