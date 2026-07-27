@@ -255,7 +255,7 @@ export const api = {
   /* Antrean verifikasi advokat — verification_queue (nyata di Supabase).
    * User push dari modul mana pun; advokat memutuskan di Konsol Advokat /adminmrwp. */
   verifq: {
-    async list(tenantId?: string, status?: string): Promise<ApiResult<{ id: string; tenant_id: string; title: string; meta: string; chip: string; label: string; sla: string; status: string; note: string | null; created_at: string; created_by: string | null; ref_mod: string | null; ref_id: string | null; refs: { mod: string; id: string; label: string }[]; detail: string | null }[]>> {
+    async list(tenantId?: string, status?: string): Promise<ApiResult<{ id: string; tenant_id: string; title: string; meta: string; chip: string; label: string; sla: string; status: string; note: string | null; created_at: string; created_by: string | null; ref_mod: string | null; ref_id: string | null; refs: { mod: string; id: string; label: string }[]; detail: string | null; dok_url: string | null; dok_nama: string | null }[]>> {
       let q = sb.from("verification_queue").select("*").order("created_at", { ascending: false });
       if (tenantId) q = q.eq("tenant_id", tenantId);
       if (status) q = q.eq("status", status);
@@ -263,10 +263,10 @@ export const api = {
       if (error) return err("network", "Gagal memuat antrean.");
       return ok(data);
     },
-    async push(tenantId: string, title: string, meta: string, chip: string, label: string, extra?: { by?: string; refs?: { mod: string; id: string; label: string }[]; detail?: string }) {
+    async push(tenantId: string, title: string, meta: string, chip: string, label: string, extra?: { by?: string; refs?: { mod: string; id: string; label: string }[]; detail?: string; dok?: { url: string; nama: string } }) {
       const r0 = extra?.refs?.[0]; // kolom lama tetap diisi (kompat pengajuan sebelum smart attachment)
       const { data, error } = await sb.from("verification_queue")
-        .insert({ tenant_id: tenantId, title, meta, chip, label, created_by: extra?.by || null, ref_mod: r0?.mod || null, ref_id: r0?.id || null, refs: extra?.refs || [], detail: extra?.detail || null })
+        .insert({ tenant_id: tenantId, title, meta, chip, label, created_by: extra?.by || null, ref_mod: r0?.mod || null, ref_id: r0?.id || null, refs: extra?.refs || [], detail: extra?.detail || null, dok_url: extra?.dok?.url || null, dok_nama: extra?.dok?.nama || null })
         .select("id").single();
       return error ? err("server", "Gagal mengirim ke antrean.") : ok(data);
     },

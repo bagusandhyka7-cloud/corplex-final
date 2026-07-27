@@ -26,7 +26,7 @@ interface Store {
   toast: (t: string, d: string, k?: string) => void;
   queue: QItem[];
   setQueue: React.Dispatch<React.SetStateAction<QItem[]>>;
-  pushQueue: (t: string, m: string, chip: string, lbl: string, refs?: { mod: string; id: string; label: string }[], detail?: string) => void;
+  pushQueue: (t: string, m: string, chip: string, lbl: string, refs?: { mod: string; id: string; label: string }[], detail?: string, dok?: { url: string; nama: string }) => void;
   quota: number; quotaMax: number; verified: number;
   setQuota: React.Dispatch<React.SetStateAction<number>>;
   setVerified: React.Dispatch<React.SetStateAction<number>>;
@@ -164,7 +164,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
   }, [router]);
 
-  const pushQueue = useCallback((t: string, m: string, chip: string, lbl: string, refs?: { mod: string; id: string; label: string }[], detail?: string) => {
+  const pushQueue = useCallback((t: string, m: string, chip: string, lbl: string, refs?: { mod: string; id: string; label: string }[], detail?: string, dok?: { url: string; nama: string }) => {
     setQueue((q) => [{ t, m, chip, lbl, sla: "SLA 24 JAM", status: "masuk" as const }, ...q]);
     setQuota((n) => n + 1); // kuota terpakai = jumlah pengajuan nyata
     toast("Masuk antrean verifikasi", `“${t}” — prioritas dihitung dari SLA paket + risiko + eskalasi.`);
@@ -174,7 +174,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     let by = "";
     try { const r = JSON.parse(localStorage.getItem("corplex_ten") || "null"); by = r?.user?.email || r?.user?.nama || ""; } catch { /* seed */ }
     if (!by) by = tenUserRef.current;
-    if (tid) void api.verifq.push(tid, t, m, chip, lbl, { by: by || undefined, refs, detail });
+    if (tid) void api.verifq.push(tid, t, m, chip, lbl, { by: by || undefined, refs, detail, dok });
   }, [toast, router]);
 
   const login = useCallback((id: string, real?: RealSession) => {

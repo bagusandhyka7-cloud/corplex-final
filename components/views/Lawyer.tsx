@@ -4,10 +4,11 @@
  * User hanya melihat: progress pengajuan (timeline 4 langkah) + sisa kuota + penugasan premium.
  * Aksi advokat (setujui/koreksi/tolak + ttd) pindah ke Konsol Advokat di /adminmrwp (slice berikutnya).
  */
-import React, { useState } from "react";
-import { Download, FileText, Plus, RefreshCw } from "lucide-react";
+import React, { useRef, useState } from "react";
+import { Download, FileText, Paperclip, Plus, RefreshCw } from "lucide-react";
 import { QItem } from "@/lib/data";
 import { useStore } from "@/lib/store";
+import { api } from "@/lib/api";
 import { downloadDoc } from "@/lib/vault";
 import { Chip, Field, Modal, Panel, Row, ViewHead } from "@/components/ui";
 
@@ -31,6 +32,10 @@ export default function Lawyer() {
   const [prBidang, setPrBidang] = useState("Legal Due Diligence");
   const [prSkema, setPrSkema] = useState("Fixed fee");
   const [prUraian, setPrUraian] = useState(""); // bug lama: textarea uncontrolled — uraian dibuang saat submit
+  /* Lampiran klien: advokat yang butuh dokumen dulu tak punya jalur menerimanya di aplikasi. */
+  const [prFile, setPrFile] = useState<File | null>(null);
+  const [prKirim, setPrKirim] = useState(false);
+  const prFileRef = useRef<HTMLInputElement>(null);
   /* Penugasan Premium NYATA: baris verification_queue berjudul khusus (bug lama: seed lokal
    * yang hilang saat reload dan tak pernah sampai ke Konsol Advokat). */
   const isPrem = (t2: string) => t2.startsWith("Penugasan Premium");
@@ -50,14 +55,22 @@ export default function Lawyer() {
     toast("Diajukan ulang", "Pengajuan revisi masuk antrean verifikasi advokat.", "ok");
   };
 
-  const sendPremium = () => {
-    setPremOpen(false);
+  const sendPremium = async () => {
+    if (prKirim) return;
     /* nyata: masuk verification_queue → tampil di panel ini, badge sidebar, dan Konsol Advokat admin */
-    if (!prUraian.trim()) { toast("Uraian kebutuhan wajib diisi", "Advokat butuh konteks masalah untuk menyusun penawaran.", "warn"); setPremOpen(true); return; }
+    if (!prUraian.trim()) { toast("Uraian kebutuhan wajib diisi", "Advokat butuh konteks masalah untuk menyusun penawaran.", "warn"); return; }
+    setPrKirim(true);
+    let dok: { url: string; nama: string } | undefined;
+    if (prFile) {
+      const up = await api.records.uploadDoc(localStorage.getItem("corplex_tid") || "", prFile);
+      if (!up.ok) { setPrKirim(false); return toast("Lampiran gagal diunggah", up.error.message, "warn"); }
+      dok = up.data;
+    }
+    setPremOpen(false); setPrKirim(false);
     /* JANGAN klaim "cek konflik kepentingan dijalankan" — sistem tidak menjalankan pemeriksaan apa pun.
      * Cek konflik adalah kewajiban etik yang dilakukan MANUSIA di MRWP sebelum menerima penugasan. */
-    pushQueue(`Penugasan Premium — ${prBidang}`, `${prSkema} · menunggu peninjauan & penawaran dari MRWP`, "c-gold", "PENAWARAN", undefined, prUraian.trim());
-    setPrUraian("");
+    pushQueue(`Penugasan Premium — ${prBidang}`, `${prSkema} · menunggu peninjauan & penawaran dari MRWP`, "c-gold", "PENAWARAN", undefined, prUraian.trim(), dok);
+    setPrUraian(""); setPrFile(null);
     toast("Permintaan terkirim", "Tim MRWP meninjau permintaan Anda — termasuk pemeriksaan konflik kepentingan — sebelum penawaran disampaikan.", "ok");
   };
 
@@ -178,10 +191,10 @@ export default function Lawyer() {
         </>}
       </Modal>
 
-      <Modal open={premOpen} title="Penugasan Premium — Permintaan Penawaran" onClose={() => setPremOpen(false)}
+      <Modal right open={premOpen} title="Penugasan Premium — Permintaan Penawaran" onClose={() => setPremOpen(false)}
         footer={<>
           <button className="btn btn-line" onClick={() => setPremOpen(false)}>Batal</button>
-          <button className="btn btn-gold" onClick={sendPremium}>Kirim Permintaan</button>
+          <button className="btn btn-gold" disabled={prKirim} aria-busy={prKirim} onClick={() => void sendPremium()}>Kirim Permintaan</button>
         </>}>
         <Field label="Bidang">
           <select value={prBidang} onChange={(e) => setPrBidang(e.target.value)}>
@@ -194,8 +207,27 @@ export default function Lawyer() {
             <option>Fixed fee</option><option>Capped fee</option><option>Hourly</option>
           </select>
         </Field>
+        {/* LAMPIRAN — jalur yang dulu tidak ada: advokat butuh dokumen, klien tak bisa mengirim. */}
+        <Field label={<>Lampiran dokumen <em style={{ color: "var(--muted)", fontStyle: "normal", fontWeight: 400 }}>(opsional — PDF / gambar, maks 10MB)</em></>}>
+          <input ref={prFileRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" style={{ display: "none" }}
+            onChange={(e) => {
+              const f2 = e.target.files?.[0];
+              if (f2 && f2.size > 10 * 1024 * 1024) { toast("Berkas terlalu besar", "Maksimal 10MB per lampiran.", "warn"); e.target.value = ""; return; }
+              if (f2) setPrFile(f2);
+              e.target.value = "";
+            }} />
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <button type="button" className="btn btn-line btn-sm" onClick={() => prFileRef.current?.click()}>
+              <Paperclip size={12} /> {prFile ? "Ganti berkas" : "Pilih berkas"}
+            </button>
+            <span className="sub" style={{ fontSize: 11, flex: 1, minWidth: 120, overflow: "hidden", textOverflow: "ellipsis" }}>
+              {prFile ? `${prFile.name} · ${(prFile.size / 1024 / 1024).toFixed(2)} MB` : "belum ada lampiran"}
+            </span>
+            {prFile && <button type="button" className="btn btn-red btn-sm" onClick={() => setPrFile(null)}>Hapus</button>}
+          </div>
+        </Field>
         {/* Dulu: "sistem menjalankan cek konflik kepentingan" — tidak ada pemeriksaan otomatis apa pun. */}
-        <div className="note">Penawaran transparan di muka. Pagar etik: advokat MRWP melakukan <b>pemeriksaan konflik kepentingan</b> sebelum menerima penugasan.</div>
+        <div className="note">Lampiran terbuka langsung di meja advokat bersama pengajuan Anda. Penawaran transparan di muka; pagar etik: advokat MRWP melakukan <b>pemeriksaan konflik kepentingan</b> sebelum menerima penugasan.</div>
       </Modal>
     </div>
   );

@@ -18,3 +18,6 @@ next-env.d.ts
 
 # local tooling
 /scratch
+
+# knowledge graph artefak build (1.2M, dapat dibangun ulang)
+graphify-out/

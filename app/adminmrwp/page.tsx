@@ -92,10 +92,26 @@ function AdminLogin({ onOk }: { onOk: () => void }) {
         .am-wrap::after{content:'';position:fixed;inset:-25%;pointer-events:none;filter:blur(100px);
           background:radial-gradient(closest-side,rgba(176,138,62,.2),transparent 66%);
           animation:amGlow2 44s ease-in-out infinite alternate;will-change:transform}
-        .am-card{position:relative;z-index:1;width:min(392px,100%);text-align:center;padding:36px 32px 30px;
-          border-radius:22px;background:#0B0E14;border:1px solid rgba(255,255,255,.085);
+        /* Kartu DUA WARNA: bagian atas (identitas) lebih terang & kebiruan, bagian bawah (form)
+         * lebih gelap. Batas keduanya = garis pembatas melintang penuh yang BERANIMASI. */
+        .am-card{position:relative;z-index:1;width:min(400px,100%);text-align:center;overflow:hidden;
+          border-radius:22px;background:#090C12;border:1px solid rgba(255,255,255,.085);
           box-shadow:0 50px 110px -45px rgba(0,0,0,.85);
           animation:amIn .55s cubic-bezier(.2,.8,.25,1) both}
+        /* ATAS — warna berbeda + aksen cahaya bergerak di dalamnya */
+        .am-top{position:relative;padding:34px 32px 26px;overflow:hidden;
+          background:linear-gradient(168deg,#12243E 0%,#0D1B30 58%,#0A1424 100%)}
+        .am-top::before{content:'';position:absolute;inset:-60% -20%;pointer-events:none;filter:blur(46px);
+          background:radial-gradient(closest-side,rgba(56,132,190,.5),transparent 68%);
+          animation:amTop 22s ease-in-out infinite alternate;will-change:transform}
+        .am-top>*{position:relative;z-index:1}
+        /* GARIS PEMBATAS — melintang penuh, pita cahaya emas menyapu bolak-balik di atasnya */
+        .am-line{position:relative;height:1px;background:rgba(255,255,255,.1);overflow:hidden}
+        .am-line::after{content:'';position:absolute;inset:0;width:45%;
+          background:linear-gradient(90deg,transparent,rgba(217,188,128,.95),transparent);
+          animation:amSweep 4.6s ease-in-out infinite;will-change:transform}
+        /* BAWAH — form, lebih gelap */
+        .am-bot{padding:26px 32px 28px;background:#080B11}
         .am-in{width:100%;border:1px solid rgba(255,255,255,.11);border-radius:11px;padding:11px 14px 11px 42px;
           background:rgba(255,255,255,.045);color:#EAF0FA;font-size:13px;font-family:inherit;font-weight:500;outline:none;
           transition:border-color .22s,background .22s,box-shadow .22s}
@@ -106,29 +122,41 @@ function AdminLogin({ onOk }: { onOk: () => void }) {
           box-shadow:inset 0 1px 0 rgba(255,255,255,.35);transition:transform .18s,filter .18s}
         .am-btn:hover:not(:disabled){filter:brightness(1.05);transform:translateY(-1px)}
         .am-btn:disabled{opacity:.45;cursor:not-allowed}
+        @keyframes amTop{0%{transform:translate3d(-14%,-8%,0) scale(1)}100%{transform:translate3d(14%,10%,0) scale(1.25)}}
+        @keyframes amSweep{0%{transform:translateX(-110%)}50%{transform:translateX(232%)}100%{transform:translateX(-110%)}}
         @keyframes amIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
         @keyframes amGlow{0%{transform:translate3d(-10%,-6%,0) scale(1)}100%{transform:translate3d(10%,8%,0) scale(1.2)}}
         @keyframes amGlow2{0%{transform:translate3d(12%,8%,0) scale(1.15)}100%{transform:translate3d(-9%,-7%,0) scale(1)}}
-        @media(prefers-reduced-motion:reduce){.am-wrap::before,.am-wrap::after,.am-card{animation:none!important}}
+        @media(prefers-reduced-motion:reduce){.am-wrap::before,.am-wrap::after,.am-card,.am-top::before,.am-line::after{animation:none!important}}
       `}</style>
       <div className="am-card">
-        <img src="/logo-mrwp.svg" alt="MRWP" style={{ width: 52, height: 52, objectFit: "contain", margin: "0 auto 14px", display: "block" }} />
-        <h2 style={{ fontFamily: "var(--serif)", color: "#fff", fontSize: 23, margin: 0, letterSpacing: "-.01em" }}>Panel MRWP</h2>
-        <span style={{ fontFamily: "var(--mono)", fontSize: 8.5, letterSpacing: ".28em", color: "#D9BC80", display: "block", margin: "8px 0 24px" }}>KHUSUS STAF · SUPER ADMIN</span>
-        <div style={{ display: "grid", gap: 11, textAlign: "left" }}>
-          <div style={{ position: "relative" }}>
-            <input className="am-in" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email admin" />
-            <Mail size={15} style={ico} />
-          </div>
-          <div style={{ position: "relative" }}>
-            <input className="am-in" type="password" value={pw} onChange={(e) => setPw(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void masuk(); }} placeholder="Kata sandi" />
-            <Lock size={15} style={ico} />
-          </div>
-          <button className="am-btn" style={{ marginTop: 3 }} disabled={pending} aria-busy={pending} onClick={() => void masuk()}>
-            {pending ? "Memverifikasi…" : "Masuk ke Panel"}
-          </button>
+        {/* ZONA ATAS — identitas, warna lebih terang + cahaya bergerak */}
+        <div className="am-top">
+          <img src="/logo-mrwp.svg" alt="MRWP" style={{ width: 54, height: 54, objectFit: "contain", margin: "0 auto 14px", display: "block" }} />
+          <h2 style={{ fontFamily: "var(--serif)", color: "#fff", fontSize: 23, margin: 0, letterSpacing: "-.01em" }}>Panel MRWP</h2>
+          <span style={{ fontFamily: "var(--mono)", fontSize: 8.5, letterSpacing: ".28em", color: "#D9BC80", display: "block", marginTop: 9 }}>KHUSUS STAF · SUPER ADMIN</span>
         </div>
-        <p style={{ fontSize: 10.5, lineHeight: 1.6, color: "rgba(206,218,238,.45)", marginTop: 18 }}>Akses tercatat pada jejak audit. Bukan staf MRWP? Tutup halaman ini.</p>
+
+        {/* GARIS PEMBATAS melintang — pita emas menyapu bolak-balik */}
+        <div className="am-line" />
+
+        {/* ZONA BAWAH — form, warna lebih gelap */}
+        <div className="am-bot">
+          <div style={{ display: "grid", gap: 11, textAlign: "left" }}>
+            <div style={{ position: "relative" }}>
+              <input className="am-in" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email admin" />
+              <Mail size={15} style={ico} />
+            </div>
+            <div style={{ position: "relative" }}>
+              <input className="am-in" type="password" value={pw} onChange={(e) => setPw(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void masuk(); }} placeholder="Kata sandi" />
+              <Lock size={15} style={ico} />
+            </div>
+            <button className="am-btn" style={{ marginTop: 3 }} disabled={pending} aria-busy={pending} onClick={() => void masuk()}>
+              {pending ? "Memverifikasi…" : "Masuk ke Panel"}
+            </button>
+          </div>
+          <p style={{ fontSize: 10.5, lineHeight: 1.6, color: "rgba(206,218,238,.45)", marginTop: 18, textAlign: "center" }}>Akses tercatat pada jejak audit. Bukan staf MRWP? Tutup halaman ini.</p>
+        </div>
       </div>
     </div>
   );
@@ -285,7 +313,7 @@ function AdminInner() {
 
   /* konsol advokat — antrean verifikasi nyata dari DB */
   type VQRef = { mod: string; id: string; label: string };
-  type VQ = { id: string; tenant_id: string; title: string; meta: string; chip: string; label: string; sla: string; status: string; note: string | null; created_at?: string; created_by?: string | null; ref_mod?: string | null; ref_id?: string | null; refs?: VQRef[]; detail?: string | null };
+  type VQ = { id: string; tenant_id: string; title: string; meta: string; chip: string; label: string; sla: string; status: string; note: string | null; created_at?: string; created_by?: string | null; ref_mod?: string | null; ref_id?: string | null; refs?: VQRef[]; detail?: string | null; dok_url?: string | null; dok_nama?: string | null };
   const [vq, setVq] = useState<VQ[]>([]);
   const [vqLoading, setVqLoading] = useState(true);
   const muatVq = React.useCallback(() => {
@@ -731,6 +759,27 @@ function AdminInner() {
                       </div>
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* LAMPIRAN KLIEN — berkas yang diunggah klien saat mengajukan. Ditaruh paling bawah
+                  (setelah narasi & rekam sumber) sesuai urutan baca advokat: konteks dulu, bukti terakhir. */}
+              {vqSel.dok_url && (
+                <div className="panel boxed" style={{ marginTop: 16 }}>
+                  <h4>Lampiran dari Klien</h4>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+                    <span style={{ fontSize: 12.5, color: "var(--ink)", flex: 1, minWidth: 200, overflowWrap: "anywhere" }}>
+                      📎 {vqSel.dok_nama || "dokumen"}
+                    </span>
+                    <a className="btn btn-line btn-sm" href={vqSel.dok_url} target="_blank" rel="noreferrer">Buka di tab baru</a>
+                    <a className="btn btn-navy btn-sm" href={vqSel.dok_url} download={vqSel.dok_nama || undefined}>Unduh</a>
+                  </div>
+                  <div style={{ background: "var(--sur-3)", border: "1px solid var(--line)", borderRadius: 10, overflow: "hidden", height: 460, display: "flex", flexDirection: "column" }}>
+                    {/\.(jpe?g|png|webp|gif)(\?|$)/i.test(vqSel.dok_url)
+                      ? <div style={{ flex: 1, overflow: "auto", display: "grid", placeItems: "center", background: "#0A1830" }}><img src={vqSel.dok_url} alt={vqSel.dok_nama || "Lampiran"} style={{ maxWidth: "100%" }} /></div>
+                      : <iframe src={vqSel.dok_url} style={{ flex: 1, border: "none", background: "#fff" }} title="Lampiran klien" />}
+                  </div>
+                  <p className="note mt16">Diunggah klien bersama pengajuan ini — bukan hasil ekstraksi sistem. Nama berkas &amp; isinya persis seperti yang dikirim.</p>
                 </div>
               )}
 
