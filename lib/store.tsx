@@ -227,6 +227,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     const ch = sb.channel(`rekam:${tid}:${++rekamSeq}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "module_records", filter: `tenant_id=eq.${tid}` }, tandai)
       .on("postgres_changes", { event: "*", schema: "public", table: "employees", filter: `tenant_id=eq.${tid}` }, tandai)
+      .on("postgres_changes", { event: "*", schema: "public", table: "attendance", filter: `tenant_id=eq.${tid}` }, tandai)
       .subscribe();
     return () => { if (t) clearTimeout(t); void sb.removeChannel(ch); };
   }, [ten?.id]);

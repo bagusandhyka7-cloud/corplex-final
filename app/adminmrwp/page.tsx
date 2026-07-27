@@ -235,6 +235,7 @@ function AdminInner() {
     const ch = sb.channel(`admin-modul:${Date.now()}`) // topik unik — hindari reuse channel ter-subscribe
       .on("postgres_changes", { event: "*", schema: "public", table: "module_records" }, () => void muatModul())
       .on("postgres_changes", { event: "*", schema: "public", table: "employees" }, () => void muatModul())
+      .on("postgres_changes", { event: "*", schema: "public", table: "attendance" }, () => void muatModul())
       .subscribe();
     return () => { void sb.removeChannel(ch); };
   }, [menu, muatModul]);
