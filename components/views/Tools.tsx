@@ -6,7 +6,7 @@ import { ArrowLeftRight, Download, FileText, Globe, KeyRound, Paperclip, PenTool
 import { TOOLS } from "@/lib/data";
 import { api, empToRow } from "@/lib/api";
 import { useStore } from "@/lib/store";
-import { Chip, Modal, Panel, Row, ViewHead } from "@/components/ui";
+import { Chip, Md, Modal, Panel, Row, ViewHead } from "@/components/ui";
 import { parseWorkbook, SHEETS, buatTemplateSatu, toPayload } from "@/lib/impor";
 
 const ICONS: Record<string, React.ReactNode> = {
@@ -95,15 +95,27 @@ const STUB_KEY: Record<string, { key: string; dua?: boolean; ket: string }> = {
   "AI Clause Extraction": { key: "clause", ket: "Kontrak — pasal kunci diekstrak jadi metadata terstruktur." },
   "AI Comparison": { key: "compare", dua: true, ket: "Dua versi kontrak yang ingin dibandingkan." },
 };
-const TAHAP = ["Membaca dokumen…", "Menyiapkan mesin pemroses…", "Menyusun hasil…"];
+const TAHAP = ["Membaca dokumen…", "Menganalisis isi…", "Menyusun hasil…"];
+/* Alat yang mesinnya SUDAH nyata (/api/analyze, Gemini multimodal). Sisanya tetap stub jujur. */
+const AI_NYATA = new Set(["summarize", "clause", "compare"]);
+const toB64 = (f: File) => new Promise<string>((res, rej) => {
+  const r = new FileReader();
+  r.onload = () => res(String(r.result).split(",")[1] || "");
+  r.onerror = () => rej(new Error("gagal membaca berkas"));
+  r.readAsDataURL(f);
+});
 
 function StubTool({ nama }: { nama: string }) {
+  const { toast } = useStore();
   const cfg = STUB_KEY[nama];
   const [files, setFiles] = useState<File[]>([]);
   const [fase, setFase] = useState<"idle" | "proses" | "selesai">("idle");
   const [tahap, setTahap] = useState(0);
+  const [hasil, setHasil] = useState("");
+  const [galat, setGalat] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const butuh = cfg.dua ? 2 : 1;
+  const nyata = AI_NYATA.has(cfg.key);
 
   const terima = (fs: FileList | null) => {
     if (!fs?.length) return;
@@ -112,12 +124,28 @@ function StubTool({ nama }: { nama: string }) {
   };
 
   const jalankan = async () => {
-    setFase("proses"); setTahap(0);
+    setFase("proses"); setTahap(0); setHasil(""); setGalat("");
     const iv = setInterval(() => setTahap((n) => (n + 1) % TAHAP.length), 1200);
-    await Promise.all([
-      fetch("/api/tools", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ tool: cfg.key }) }).catch(() => null),
-      new Promise((res) => setTimeout(res, 3500)), // simulasi pemrosesan 3-5 dtk
-    ]);
+    try {
+      if (nyata) {
+        /* NYATA: berkas dikirim ke Gemini lewat route server — kunci tak pernah ke klien. */
+        const lampiran = await Promise.all(files.map(async (f2) => ({
+          mime: f2.type || (/\.pdf$/i.test(f2.name) ? "application/pdf" : "image/jpeg"),
+          data: await toB64(f2), nama: f2.name,
+        })));
+        const r = await fetch("/api/analyze", {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ tool: cfg.key, files: lampiran }),
+        });
+        const j = await r.json();
+        if (j.ok) setHasil(j.hasil); else setGalat(j.error || "Gagal menganalisis dokumen.");
+      } else {
+        /* Stub jujur — mesin pemroses belum ada; jeda singkat agar transisi tak berkedip. */
+        await new Promise((res) => setTimeout(res, 1200));
+      }
+    } catch {
+      setGalat("Gagal menghubungi layanan analisis.");
+    }
     clearInterval(iv);
     setFase("selesai");
   };
@@ -138,10 +166,26 @@ function StubTool({ nama }: { nama: string }) {
           <span className="sub mono" style={{ fontSize: 11, letterSpacing: ".08em" }}>{TAHAP[tahap]}</span>
         </div>
       ) : fase === "selesai" ? (
-        <div className="note" style={{ borderColor: "var(--gold)", display: "flex", alignItems: "center", gap: 10 }}>
-          <Chip c="c-gold">DALAM PENGEMBANGAN</Chip>
-          <span><b>Layanan dalam tahap integrasi engine</b> — alat ini belum memproses berkas Anda dan tidak menyimpan apa pun; aktif begitu mesin pemroses tersambung.</span>
-        </div>
+        galat ? (
+          <div className="note" style={{ borderColor: "#C4574F", display: "flex", alignItems: "center", gap: 10 }}>
+            <Chip c="c-red">GAGAL</Chip><span>{galat}</span>
+          </div>
+        ) : hasil ? (
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
+              <Chip c="c-draft">DRAF AI</Chip>
+              <span className="sub" style={{ fontSize: 11, flex: 1, minWidth: 150 }}>Dianalisis dari berkas yang Anda unggah.</span>
+              <button className="btn btn-line btn-sm" onClick={() => { void navigator.clipboard?.writeText(hasil); toast("Hasil disalin", "Tempel ke dokumen Anda.", "ok"); }}>Salin</button>
+            </div>
+            <div style={PANEL_DOC}><Md t={hasil} /></div>
+            <p className="note mt16">Hasil analisis AI berstatus <b>DRAF</b> — belum ditinjau advokat. Untuk keputusan berakibat hukum, ajukan verifikasi lewat menu Pengacara MRWP.</p>
+          </div>
+        ) : (
+          <div className="note" style={{ borderColor: "var(--gold)", display: "flex", alignItems: "center", gap: 10 }}>
+            <Chip c="c-gold">DALAM PENGEMBANGAN</Chip>
+            <span><b>Layanan dalam tahap integrasi engine</b> — alat ini belum memproses berkas Anda dan tidak menyimpan apa pun; aktif begitu mesin pemroses tersambung.</span>
+          </div>
+        )
       ) : null}
       <button className="btn btn-gold" style={{ marginTop: 4 }} disabled={fase === "proses" || files.length < butuh}
         onClick={() => void jalankan()}>{fase === "proses" ? "Memproses…" : "Proses"}</button>
