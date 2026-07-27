@@ -93,9 +93,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     const tid = localStorage.getItem("corplex_tid");
     if (!tid) return;
     return subscribeRealtime(tid, (row) => {
-      const item: QItem = { id: row.id, t: row.title, m: row.meta, chip: row.chip, lbl: row.label, sla: row.sla, status: row.status as QItem["status"], note: row.note || undefined };
+      const item: QItem = { id: row.id, t: row.title, m: row.meta, chip: row.chip, lbl: row.label, sla: row.sla, status: row.status as QItem["status"], note: row.note || undefined, msgs: row.msgs || [] };
       setQueue((q) => q.some((x) => x.id === row.id) ? q.map((x) => x.id === row.id ? item : x) : [item, ...q]);
-      if (row.status === "verified") toast("TERVERIFIKASI ADVOKAT ✓", `“${row.title}” — ttd digital tercatat.`, "ok");
+      if (row.status === "verified") toast("TERVERIFIKASI ADVOKAT ✓", `“${row.title}” — keputusan advokat tercatat.`, "ok");
       if (row.status === "rejected") toast("Perlu revisi", `“${row.title}” — catatan advokat tersedia.`, "warn");
     });
   }, [ten, toast]);
@@ -112,7 +112,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setQuota(0); setQuotaMax(T.quota.max); setVerified(0);
       void api.verifq.list(storedTid).then((r) => {
         if (!r.ok) return;
-        const rows: QItem[] = r.data.map((x) => ({ id: x.id, t: x.title, m: x.meta, chip: x.chip, lbl: x.label, sla: x.sla, status: x.status as QItem["status"], note: x.note || undefined }));
+        const rows: QItem[] = r.data.map((x) => ({ id: x.id, t: x.title, m: x.meta, chip: x.chip, lbl: x.label, sla: x.sla, status: x.status as QItem["status"], note: x.note || undefined, msgs: x.msgs || [] }));
         setQueue(rows);
         setQuota(rows.length);
         setVerified(rows.filter((x) => x.status === "verified").length);

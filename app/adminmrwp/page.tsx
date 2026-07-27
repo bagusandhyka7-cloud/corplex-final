@@ -7,10 +7,10 @@
 import React, { useEffect, useState } from "react";
 import { BadgeCheck, ChevronDown, Copy, Download, Gavel, KeyRound, LayoutDashboard, Lock, LogOut, Mail, Plus, ShieldCheck, Ticket, Trash2, UserPlus, Users } from "lucide-react";
 import { StoreProvider, useStore } from "@/lib/store";
-import { admin, api, InviteRow } from "@/lib/api";
+import { admin, api, InviteRow, VqMsg } from "@/lib/api";
 import { sb } from "@/lib/supabase";
 import { useAsyncAction } from "@/lib/hooks";
-import { askConfirm, Chip, ConfirmHost, Field, Modal, Row } from "@/components/ui";
+import { askConfirm, Chip, ConfirmHost, Field, Modal, Row, VqThread } from "@/components/ui";
 import { RowActions } from "@/components/RecordModal";
 import { RecRow, SPECS, stripId } from "@/lib/records";
 import { Toasts } from "@/components/shell";
@@ -314,7 +314,7 @@ function AdminInner() {
 
   /* konsol advokat — antrean verifikasi nyata dari DB */
   type VQRef = { mod: string; id: string; label: string };
-  type VQ = { id: string; tenant_id: string; title: string; meta: string; chip: string; label: string; sla: string; status: string; note: string | null; created_at?: string; created_by?: string | null; ref_mod?: string | null; ref_id?: string | null; refs?: VQRef[]; detail?: string | null; dok_url?: string | null; dok_nama?: string | null };
+  type VQ = { id: string; tenant_id: string; title: string; meta: string; chip: string; label: string; sla: string; status: string; note: string | null; created_at?: string; created_by?: string | null; ref_mod?: string | null; ref_id?: string | null; refs?: VQRef[]; detail?: string | null; dok_url?: string | null; dok_nama?: string | null; msgs?: VqMsg[] };
   const [vq, setVq] = useState<VQ[]>([]);
   const [vqLoading, setVqLoading] = useState(true);
   const muatVq = React.useCallback(() => {
@@ -356,14 +356,21 @@ function AdminInner() {
       void api.verifq.askInfo(item.id, v).then((r) => {
         if (!r.ok) return toast("Gagal", r.error.message, "warn");
         const note = "PERTANYAAN ADVOKAT: " + v;
-        setVq((xs) => xs.map((x) => (x.id === item.id ? { ...x, status: "meninjau", note } : x)));
-        setVqSel((s) => (s && s.id === item.id ? { ...s, status: "meninjau", note } : s));
-        toast("Pertanyaan terkirim", "Klien melihatnya pada kartu pengajuan di portal Corplex.", "ok");
+        setVq((xs) => xs.map((x) => (x.id === item.id ? { ...x, status: "meninjau", note, msgs: r.data } : x)));
+        setVqSel((s) => (s && s.id === item.id ? { ...s, status: "meninjau", note, msgs: r.data } : s));
+        toast("Pertanyaan terkirim", "Klien melihatnya pada kartu pengajuan di portal Corplex — dan dapat membalas berikut dokumen susulan.", "ok");
       });
     } });
   };
   const bukaVq = (x: VQ) => {
     setVqSel(x);
+    /* utas ditarik ulang saat detail dibuka — balasan klien yang masuk setelah daftar dimuat
+     * tetap terlihat tanpa muat ulang halaman. ponytail: realtime di sisi admin bila perlu live. */
+    void api.verifq.msgs(x.id).then((r) => {
+      if (!r.ok) return;
+      setVq((xs) => xs.map((y) => (y.id === x.id ? { ...y, msgs: r.data } : y)));
+      setVqSel((s) => (s && s.id === x.id ? { ...s, msgs: r.data } : s));
+    });
     if (x.status === "masuk") {
       void api.verifq.review(x.id).then((r) => {
         if (!r.ok) return;
@@ -384,7 +391,7 @@ function AdminInner() {
       return;
     }
     if (modeKoreksi) {
-      setNoteForm({ title: `Koreksi — ${item.title}`, label: "Ringkasan koreksi (tersimpan sebagai versi baru)", val: "", onOk: (v) => void eksekusiVq(item, "verified", `Disetujui dengan koreksi: ${v} · versi baru dibuat · ttd digital.`) });
+      setNoteForm({ title: `Koreksi — ${item.title}`, label: "Ringkasan koreksi (tersimpan sebagai versi baru)", val: "", onOk: (v) => void eksekusiVq(item, "verified", `Disetujui dengan koreksi: ${v}`) });
       return;
     }
     await eksekusiVq(item, "verified", "Disetujui tanpa koreksi · keputusan tercatat atas nama advokat beserta waktunya.");
@@ -392,10 +399,10 @@ function AdminInner() {
   const eksekusiVq = async (item: VQ, status: "verified" | "rejected", note: string) => {
     const r = await api.verifq.decide(item.id, status, note);
     if (!r.ok) return toast("Gagal", r.error.message, "warn");
-    setVq((xs) => xs.map((x) => x.id === item.id ? { ...x, status, note } : x));
-    setVqSel((s) => (s && s.id === item.id ? { ...s, status, note } : s));
+    setVq((xs) => xs.map((x) => x.id === item.id ? { ...x, status, note, msgs: r.data } : x));
+    setVqSel((s) => (s && s.id === item.id ? { ...s, status, note, msgs: r.data } : s));
     log(`Advokat ${status === "verified" ? "SETUJUI" : "TOLAK"}: ${item.title} (${item.tenant_id})`);
-    toast(status === "verified" ? "TERVERIFIKASI ADVOKAT ✓" : "Ditolak dengan catatan", status === "verified" ? "Ttd digital tercatat · status klien diperbarui." : "Catatan dikirim — klien dapat memperbaiki & mengajukan ulang.", status === "verified" ? "ok" : "warn");
+    toast(status === "verified" ? "TERVERIFIKASI ADVOKAT ✓" : "Ditolak dengan catatan", status === "verified" ? "Keputusan tercatat · status klien diperbarui." : "Catatan dikirim — klien dapat memperbaiki & mengajukan ulang.", status === "verified" ? "ok" : "warn");
   };
 
   const { run: buatKode, pending: making } = useAsyncAction(async () => {
@@ -704,11 +711,13 @@ function AdminInner() {
                 })()}
               </div>
 
-              {/* 4 · catatan/pertanyaan advokat — kotak sendiri lebar penuh (tak lagi nyempil di kolom) */}
-              {vqSel.note && (
+              {/* 4 · UTAS percakapan — dulu satu kolom `note` yang saling menimpa: pertanyaan advokat
+                  hilang begitu keputusan ditulis, dan balasan klien tak punya tempat sama sekali. */}
+              {(vqSel.msgs?.length || vqSel.note) && (
                 <div className="panel boxed" style={{ marginTop: 16, borderLeft: "3px solid var(--gold-bright)" }}>
-                  <h4>Catatan / Pertanyaan Advokat</h4>
-                  <p style={{ fontSize: 13, color: "var(--ink)", lineHeight: 1.7, whiteSpace: "pre-wrap", margin: 0 }}>{vqSel.note}</p>
+                  <h4>Percakapan dengan Klien</h4>
+                  <VqThread msgs={vqSel.msgs || []} me="advokat" />
+                  <p className="note mt16">Pertanyaan dikirim lewat tombol <b>Minta Info</b>; klien membalas dari portal Corplex dan dapat melampirkan dokumen susulan. Seluruh pesan tersimpan permanen — tak ada yang tertimpa.</p>
                 </div>
               )}
 

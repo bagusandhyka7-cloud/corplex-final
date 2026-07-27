@@ -1,5 +1,7 @@
 /* Dataset multi-tenant — porting 1:1 dari referensi Corplex Platform v2 */
 
+import type { VqMsg } from "./api"; // tipe saja — api.ts tak mengimpor data.ts, jadi nol siklus
+
 export interface Msg { r: "q" | "a" | "esc"; t: string; src?: string; chip?: string; esc?: boolean; cit?: number }
 export interface Conv { title: string; domain: string; time: string; msgs: Msg[] }
 export interface Flag { id: number; t: string; d: string; w: number; cls: string; fix: string; fixText: string; done?: boolean }
@@ -14,7 +16,7 @@ export interface Emp {
 export interface Case { id?: string; dokUrl?: string | null; dokNama?: string | null; tab?: string; head: string; tl: string[][]; bukti: string[][]; biaya: string[][]; aksi: { t: string; d: string; btn?: string; toast?: [string, string] }[]; custody?: boolean }
 export interface Agr { n: string; p1: string; p2: string; mulai: string; akhir: string; nilai: string; st: string; cls: string; lbl: string; dok: string }
 export interface Klaim { t: string; obj: string; nilai: string; cls: string; lbl: string; tl: string[][] | null }
-export interface QItem { id?: string; t: string; m: string; chip: string; lbl: string; sla: string; status: "masuk" | "meninjau" | "verified" | "rejected"; note?: string }
+export interface QItem { id?: string; t: string; m: string; chip: string; lbl: string; sla: string; status: "masuk" | "meninjau" | "verified" | "rejected"; note?: string; msgs?: VqMsg[] }
 export interface IdxItem { t: string; s: string; v: string }
 
 export interface Tenant {

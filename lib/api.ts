@@ -13,6 +13,17 @@ export type ApiResult<T> = { ok: true; data: T } | { ok: false; error: ApiError 
 export const err = (code: ApiError["code"], message: string): ApiResult<never> => ({ ok: false, error: { code, message } });
 export const ok = <T,>(data: T): ApiResult<T> => ({ ok: true, data });
 
+/* Satu pesan pada utas pengajuan advokat (verification_queue.msgs). `by` ditentukan SERVER
+ * (is_super() di dalam vq_append_msg) — klien tak bisa mengaku sebagai advokat. */
+export type VqMsg = { at: string; by: "advokat" | "klien"; text: string; dok_url: string | null; dok_nama: string | null };
+
+/* Append atomik lewat RPC — hindari baca-ubah-tulis yang menimpa pesan lawan bicara
+ * ketika advokat & klien menulis nyaris bersamaan. */
+async function appendMsg(id: string, text: string, dok?: { url: string; nama: string }): Promise<ApiResult<VqMsg[]>> {
+  const { data, error } = await sb.rpc("vq_append_msg", { p_id: id, p_text: text, p_dok_url: dok?.url ?? null, p_dok_nama: dok?.nama ?? null });
+  return error ? err("server", "Gagal menyimpan pesan.") : ok((data || []) as VqMsg[]);
+}
+
 /* Simulated network transport: latency + abort support. Deterministic by default
  * (failRate opt-in) so the demo stays reliable while the retry path stays real. */
 function net<T>(data: T, opts?: { ms?: number; signal?: AbortSignal; failRate?: number }): Promise<ApiResult<T>> {
@@ -255,7 +266,11 @@ export const api = {
   /* Antrean verifikasi advokat — verification_queue (nyata di Supabase).
    * User push dari modul mana pun; advokat memutuskan di Konsol Advokat /adminmrwp. */
   verifq: {
-    async list(tenantId?: string, status?: string): Promise<ApiResult<{ id: string; tenant_id: string; title: string; meta: string; chip: string; label: string; sla: string; status: string; note: string | null; created_at: string; created_by: string | null; ref_mod: string | null; ref_id: string | null; refs: { mod: string; id: string; label: string }[]; detail: string | null; dok_url: string | null; dok_nama: string | null }[]>> {
+    async msgs(id: string): Promise<ApiResult<VqMsg[]>> {
+      const { data, error } = await sb.from("verification_queue").select("msgs").eq("id", id).single();
+      return error ? err("network", "Gagal memuat utas.") : ok((data.msgs || []) as VqMsg[]);
+    },
+    async list(tenantId?: string, status?: string): Promise<ApiResult<{ id: string; tenant_id: string; title: string; meta: string; chip: string; label: string; sla: string; status: string; note: string | null; created_at: string; created_by: string | null; ref_mod: string | null; ref_id: string | null; refs: { mod: string; id: string; label: string }[]; detail: string | null; dok_url: string | null; dok_nama: string | null; msgs: VqMsg[] }[]>> {
       let q = sb.from("verification_queue").select("*").order("created_at", { ascending: false });
       if (tenantId) q = q.eq("tenant_id", tenantId);
       if (status) q = q.eq("status", status);
@@ -277,14 +292,26 @@ export const api = {
     },
     /* advokat bertanya tanpa menolak — catatan tampil di portal klien, status tetap ditinjau */
     async askInfo(id: string, note: string) {
+      const a = await appendMsg(id, "PERTANYAAN ADVOKAT: " + note);
+      if (!a.ok) return a;
       const { error } = await sb.from("verification_queue").update({ status: "meninjau", note: "PERTANYAAN ADVOKAT: " + note }).eq("id", id);
       void sb.from("audit_logs").insert({ action: "advokat_minta_info", detail: { id, note }, actor: "adminmrwp" }).then(() => {});
-      return error ? err("server", "Gagal mengirim pertanyaan.") : ok(null);
+      return error ? err("server", "Gagal mengirim pertanyaan.") : ok(a.data);
+    },
+    /* balasan KLIEN atas pertanyaan advokat (boleh berlampiran dokumen susulan).
+     * Status sengaja tak diubah: bola tetap di meja advokat sampai ia memutuskan. */
+    async reply(id: string, text: string, dok?: { url: string; nama: string }) {
+      const a = await appendMsg(id, text, dok);
+      if (!a.ok) return a;
+      const { error } = await sb.from("verification_queue").update({ note: "BALASAN KLIEN: " + text }).eq("id", id);
+      return error ? err("server", "Gagal mengirim balasan.") : ok(a.data);
     },
     async decide(id: string, status: "verified" | "rejected", note: string) {
+      const a = await appendMsg(id, note);
+      if (!a.ok) return a;
       const { error } = await sb.from("verification_queue").update({ status, note, decided_by: "Adv. MRWP", decided_at: new Date().toISOString() }).eq("id", id);
       void sb.from("audit_logs").insert({ action: "advokat_" + status, detail: { id, note }, actor: "adminmrwp" }).then(() => {});
-      return error ? err("server", "Gagal menyimpan keputusan.") : ok(null);
+      return error ? err("server", "Gagal menyimpan keputusan.") : ok(a.data);
     },
   },
 
@@ -513,7 +540,7 @@ export const admin = {
  * Topik diberi suffix unik — sb.channel(nama) mengembalikan channel LAMA bila topik sama, dan
  * menambah callback setelah subscribe() dilarang (crash saat remount/StrictMode). */
 let vqSeq = 0;
-export function subscribeRealtime(tenantId: string, cb: (row: { id: string; title: string; meta: string; chip: string; label: string; sla: string; status: string; note: string | null }) => void): () => void {
+export function subscribeRealtime(tenantId: string, cb: (row: { id: string; title: string; meta: string; chip: string; label: string; sla: string; status: string; note: string | null; msgs: VqMsg[] }) => void): () => void {
   const ch = sb.channel(`vq:${tenantId}:${++vqSeq}`)
     .on("postgres_changes", { event: "*", schema: "public", table: "verification_queue", filter: `tenant_id=eq.${tenantId}` },
       (p) => { const r = p.new as Parameters<typeof cb>[0] | null; if (r && r.id) cb(r); })

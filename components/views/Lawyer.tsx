@@ -10,25 +10,33 @@ import { QItem } from "@/lib/data";
 import { useStore } from "@/lib/store";
 import { api } from "@/lib/api";
 import { downloadDoc } from "@/lib/vault";
-import { Chip, Field, Modal, Panel, Row, ViewHead } from "@/components/ui";
+import { Chip, Field, Modal, Panel, Row, ViewHead, VqThread } from "@/components/ui";
 
 const STEPS = ["Diajukan", "Antre verifikasi", "Ditinjau advokat", "Selesai"];
 
 /* S4: tanpa badge status — status dibaca dari timeline (lingkaran akhir hijau "Terverifikasi" / merah) */
 const progress = (q: QItem): { at: number; done: boolean; kalimat: string } => {
-  if (q.status === "verified") return { at: 3, done: true, kalimat: "Selesai — ditandatangani digital oleh advokat MRWP." };
+  if (q.status === "verified") return { at: 3, done: true, kalimat: "Selesai — disetujui advokat MRWP, keputusan tercatat beserta waktunya." };
   if (q.status === "rejected") return { at: 3, done: true, kalimat: "Dikembalikan dengan catatan advokat — perbaiki lalu ajukan ulang." };
   if (q.status === "meninjau") return { at: 2, done: false, kalimat: "Sedang ditinjau advokat MRWP — dokumen dibuka di meja advokat." };
   return { at: 1, done: false, kalimat: "Sedang antre verifikasi advokat — estimasi selesai < 24 jam." };
 };
 
 export default function Lawyer() {
-  const { ten, toast, queue, pushQueue, quota, quotaMax } = useStore();
+  const { ten, toast, queue, setQueue, pushQueue, quota, quotaMax } = useStore();
   const t = ten!;
   const [f, setF] = useState("semua");
   const [cari, setCari] = useState("");
   const [premOpen, setPremOpen] = useState(false);
-  const [noteQ, setNoteQ] = useState<QItem | null>(null); // drawer kanan: catatan advokat
+  const [noteSel, setNoteSel] = useState<QItem | null>(null); // drawer kanan: utas percakapan
+  /* Baca dari queue (bukan salinan beku) agar pesan baru advokat masuk lewat realtime
+   * selagi drawer terbuka. Fallback ke salinan untuk pengajuan yang belum punya id DB. */
+  const noteQ = noteSel ? queue.find((x) => x.id && x.id === noteSel.id) || noteSel : null;
+  const setNoteQ = setNoteSel;
+  const [balas, setBalas] = useState("");
+  const [balasFile, setBalasFile] = useState<File | null>(null);
+  const [balasKirim, setBalasKirim] = useState(false);
+  const balasFileRef = useRef<HTMLInputElement>(null);
   const [prBidang, setPrBidang] = useState("Legal Due Diligence");
   const [prSkema, setPrSkema] = useState("Fixed fee");
   const [prUraian, setPrUraian] = useState(""); // bug lama: textarea uncontrolled — uraian dibuang saat submit
@@ -49,6 +57,26 @@ export default function Lawyer() {
     if (f === "revisi" && q.status !== "rejected") return false;
     return (q.t + " " + q.m).toLowerCase().includes(cari.toLowerCase());
   });
+
+  /* Balasan klien masuk UTAS (msgs), bukan menimpa `note` — dokumen susulan menumpang
+   * bucket module-docs yang sudah dipakai lampiran pengajuan. */
+  const kirimBalasan = async () => {
+    if (!noteQ?.id || balasKirim) return;
+    if (!balas.trim()) { toast("Balasan kosong", "Tulis jawaban untuk advokat terlebih dahulu.", "warn"); return; }
+    setBalasKirim(true);
+    let dok: { url: string; nama: string } | undefined;
+    if (balasFile) {
+      const up = await api.records.uploadDoc(localStorage.getItem("corplex_tid") || "", balasFile);
+      if (!up.ok) { setBalasKirim(false); return toast("Lampiran gagal diunggah", up.error.message, "warn"); }
+      dok = up.data;
+    }
+    const r = await api.verifq.reply(noteQ.id, balas.trim(), dok);
+    setBalasKirim(false);
+    if (!r.ok) return toast("Gagal mengirim", r.error.message, "warn");
+    setQueue((qs) => qs.map((x) => (x.id === noteQ.id ? { ...x, msgs: r.data } : x)));
+    setBalas(""); setBalasFile(null);
+    toast("Balasan terkirim", "Advokat MRWP melihatnya di Konsol Advokat — riwayat percakapan tersimpan.", "ok");
+  };
 
   const ajukanUlang = (q: QItem) => {
     pushQueue(q.t + " (revisi)", "Diajukan ulang setelah perbaikan · " + (q.note || "catatan advokat ditindaklanjuti"), "c-draft", "DRAF AI");
@@ -129,7 +157,7 @@ export default function Lawyer() {
                   <span style={{ color: "var(--muted)", fontWeight: 500 }}> — {(q.m.split("·")[0].trim().replace(/^Dari\s+/i, "Dari ")) || "Pengajuan"}</span>
                 </b>
                 {q.status === "verified" && <span style={{ display: "inline-flex", gap: 8 }}>
-                  <button className="btn btn-navy btn-sm" onClick={() => { downloadDoc(q.t.replace(/[^\w]+/g, "_") + ".pdf", t.name); toast("Unduhan dimulai", "Dokumen final ber-ttd digital · akses tercatat pada jejak audit.", "ok"); }}>
+                  <button className="btn btn-navy btn-sm" onClick={() => { downloadDoc(q.t.replace(/[^\w]+/g, "_") + ".pdf", t.name); toast("Unduhan dimulai", "Dokumen final hasil keputusan advokat.", "ok"); }}>
                     <Download size={12} /> Unduh dokumen final
                   </button>
                   {q.note && <button className="btn btn-line btn-sm" onClick={() => setNoteQ(q)}><FileText size={12} /> Lihat catatan</button>}
@@ -178,8 +206,8 @@ export default function Lawyer() {
         </div>
       </Panel>
 
-      {/* drawer kanan: catatan advokat (gaya form) */}
-      <Modal open={!!noteQ} right title="Catatan Advokat" onClose={() => setNoteQ(null)}
+      {/* drawer kanan: UTAS percakapan advokat<->klien (dulu textarea read-only satu catatan) */}
+      <Modal open={!!noteQ} right title="Percakapan dengan Advokat" onClose={() => setNoteQ(null)}
         footer={<>
           <button className="btn btn-line" onClick={() => setNoteQ(null)}>Tutup</button>
           {noteQ?.status === "rejected" && <button className="btn btn-gold" onClick={() => { ajukanUlang(noteQ); setNoteQ(null); }}><RefreshCw size={12} /> Perbaiki &amp; ajukan ulang</button>}
@@ -187,7 +215,20 @@ export default function Lawyer() {
         {noteQ && <>
           <Field label="Pengajuan"><input value={noteQ.t} readOnly /></Field>
           <Field label="Status"><input value={noteQ.status === "verified" ? "Disetujui / terverifikasi" : noteQ.status === "meninjau" ? "Sedang ditinjau — advokat butuh info tambahan" : "Ditolak — perlu revisi"} readOnly /></Field>
-          <Field label="Catatan dari advokat"><textarea rows={7} value={noteQ.note || "— tidak ada catatan —"} readOnly /></Field>
+          <Field label="Riwayat percakapan"><VqThread msgs={noteQ.msgs || []} me="klien" /></Field>
+          <Field label="Balasan Anda">
+            <textarea rows={4} value={balas} placeholder="Jawab pertanyaan advokat — lampirkan dokumen susulan bila diminta." onChange={(e) => setBalas(e.target.value)} />
+          </Field>
+          <Field label="Dokumen susulan (opsional · PDF/gambar, maks 10MB)">
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <input ref={balasFileRef} type="file" accept="application/pdf,image/*" style={{ display: "none" }}
+                onChange={(e) => { const f = e.target.files?.[0] || null; if (f && f.size > 10 * 1024 * 1024) { toast("Berkas terlalu besar", "Maksimal 10MB.", "warn"); return; } setBalasFile(f); }} />
+              <button className="btn btn-line btn-sm" onClick={() => balasFileRef.current?.click()}><Paperclip size={12} /> {balasFile ? "Ganti berkas" : "Pilih berkas"}</button>
+              {balasFile && <><span style={{ fontSize: 12, color: "var(--ink)" }}>{balasFile.name}</span>
+                <button className="btn btn-line btn-sm" onClick={() => setBalasFile(null)}>Hapus</button></>}
+            </div>
+          </Field>
+          <button className="btn btn-gold" disabled={balasKirim} aria-busy={balasKirim} onClick={() => void kirimBalasan()}>Kirim Balasan ke Advokat</button>
         </>}
       </Modal>
 

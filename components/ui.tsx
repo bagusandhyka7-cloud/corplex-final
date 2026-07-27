@@ -1,6 +1,7 @@
 "use client";
 import React from "react";
 import { X } from "lucide-react";
+import type { VqMsg } from "@/lib/api";
 
 export const Chip = ({ c, children }: { c: string; children: React.ReactNode }) => (
   <span className={`chip ${c}`}>{children}</span>
@@ -189,6 +190,40 @@ export function RpInput({ value, onChange, placeholder }: { value: string; onCha
       <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", fontSize: 12, color: "var(--muted)", pointerEvents: "none" }}>Rp</span>
       <input inputMode="numeric" style={{ paddingLeft: 34 }} value={rpFormat(value)} placeholder={placeholder}
         onChange={(e) => onChange(String(rpValue(e.target.value) || ""))} />
+    </div>
+  );
+}
+
+/* Utas percakapan pengajuan advokat (verification_queue.msgs). Dipakai dua sisi:
+ * portal klien (Lawyer) & Konsol Advokat (/adminmrwp) — `me` cuma menentukan kata "Anda". */
+export function VqThread({ msgs, me }: { msgs: VqMsg[]; me: "advokat" | "klien" }) {
+  if (!msgs.length) return <p className="note" style={{ margin: 0 }}>Belum ada percakapan pada pengajuan ini.</p>;
+  return (
+    <div style={{ display: "grid", gap: 10 }}>
+      {msgs.map((m, i) => {
+        const mine = m.by === me;
+        return (
+          <div key={i} style={{
+            border: "1px solid var(--line2)", borderRadius: 10, padding: "10px 12px",
+            borderLeft: `3px solid ${m.by === "advokat" ? "var(--gold-bright)" : "#5F84C4"}`,
+            background: mine ? "rgba(255,255,255,.03)" : "transparent",
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginBottom: 5 }}>
+              <b style={{ fontSize: 11.5, letterSpacing: ".04em", color: m.by === "advokat" ? "var(--gold-bright)" : "#8FB0E0" }}>
+                {m.by === "advokat" ? "ADVOKAT MRWP" : "KLIEN"}{mine ? " (Anda)" : ""}
+              </b>
+              <span style={{ fontSize: 10.5, color: "var(--muted)" }}>{new Date(m.at).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" })}</span>
+            </div>
+            <p style={{ fontSize: 12.5, lineHeight: 1.7, color: "var(--ink)", whiteSpace: "pre-wrap", margin: 0 }}>{m.text}</p>
+            {m.dok_url && (
+              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                <a className="btn btn-line btn-sm" href={m.dok_url} target="_blank" rel="noreferrer">Buka {m.dok_nama || "lampiran"}</a>
+                <a className="btn btn-navy btn-sm" href={m.dok_url} download={m.dok_nama || undefined}>Unduh</a>
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
