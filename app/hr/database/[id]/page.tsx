@@ -290,7 +290,7 @@ export default function EmployeeProfile({ params }: { params: Promise<{ id: stri
 
       {/* Footer Note (Full Width) */}
       <div className="note" style={{ marginTop: "24px", textAlign: "center" }}>
-        Corplex <b>merekam dan menjaga basis data hukum</b> perusahaan: setiap dokumen terunggah (PK · SP · KTP · RPTKA) tersimpan di vault dengan hash, dapat <b>diunduh ulang kapan pun</b>, dan masa berlakunya dipantau fungsi JAGA.
+        Corplex <b>merekam dan menjaga basis data hukum</b> perusahaan: setiap dokumen terunggah (PK · SP · KTP · RPTKA) tersimpan di vault, dapat <b>diunduh ulang kapan pun</b>, dan masa berlakunya dipantau fungsi JAGA.
       </div>
     </div>
   );

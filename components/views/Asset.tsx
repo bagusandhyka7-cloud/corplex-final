@@ -59,7 +59,7 @@ export default function Asset() {
   /* Enforcement Strategy: rekam HKI baru bertipe penindakan + eskalasi ke advokat (CRUD nyata). */
   const enforcement = async () => {
     const tid = localStorage.getItem("corplex_tid") || "";
-    const data = ["Enforcement — Desain Kemasan Seri B", "Strategi penindakan pelanggaran", "Watcher marketplace", "", 0, "Bukti berstempel waktu + hash SHA-256", ["c-red", "PELANGGARAN"], ["c-gold", "PROSES"]];
+    const data = ["Enforcement — Desain Kemasan Seri B", "Strategi penindakan pelanggaran", "Watcher marketplace", "", 0, "Bukti berstempel waktu", ["c-red", "PELANGGARAN"], ["c-gold", "PROSES"]];
     const r = await api.records.create(tid, "hki", data);
     if (!r.ok) return toast("Gagal", r.error.message, "warn");
     patchTen({ hki: [[...data, r.data.id], ...t.hki] as never });
@@ -70,7 +70,7 @@ export default function Asset() {
   const catatWatcher = async (jenis: "bukti" | "bukan") => {
     const tid = localStorage.getItem("corplex_tid") || "";
     const data = jenis === "bukti"
-      ? ["Arsip Bukti — Desain Kemasan Seri B", "Tangkapan layar + URL + stempel waktu + hash", "Watcher marketplace", "", 0, "Siap dipakai bundel perkara", ["c-mon", "ARSIP"], ["c-mon", "TERCATAT"]]
+      ? ["Arsip Bukti — Desain Kemasan Seri B", "Tangkapan layar + URL + stempel waktu", "Watcher marketplace", "", 0, "Siap dipakai bundel perkara", ["c-mon", "ARSIP"], ["c-mon", "TERCATAT"]]
       : ["Watcher — ditandai bukan pelanggaran", "Koreksi manual atas temuan kemiripan", "Watcher marketplace", "", 0, "Model kemiripan belajar dari koreksi", null, ["c-ver", "DITUTUP"]];
     const r = await api.records.create(tid, "hki", data);
     if (!r.ok) return toast("Gagal", r.error.message, "warn");
@@ -214,7 +214,7 @@ export default function Asset() {
             <Panel title="Watcher Pelanggaran — Desain Kemasan Seri B">
               <div className="flag">
                 <b>Produk serupa terdeteksi di marketplace</b>
-                <span>Skor kemiripan 0,87 (nama + visual) · bukti otomatis diarsip: tangkapan layar + URL + stempel waktu + hash SHA-256.</span>
+                <span>Skor kemiripan 0,87 (nama + visual) · bukti otomatis diarsip: tangkapan layar + URL + stempel waktu.</span>
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <button className="btn btn-line btn-sm" onClick={() => void catatWatcher("bukti")}>Lihat Bukti</button>

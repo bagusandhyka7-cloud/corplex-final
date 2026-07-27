@@ -387,7 +387,7 @@ function AdminInner() {
       setNoteForm({ title: `Koreksi — ${item.title}`, label: "Ringkasan koreksi (tersimpan sebagai versi baru)", val: "", onOk: (v) => void eksekusiVq(item, "verified", `Disetujui dengan koreksi: ${v} · versi baru dibuat · ttd digital.`) });
       return;
     }
-    await eksekusiVq(item, "verified", "Disetujui tanpa koreksi · ttd digital atas hash versi final.");
+    await eksekusiVq(item, "verified", "Disetujui tanpa koreksi · keputusan tercatat atas nama advokat beserta waktunya.");
   };
   const eksekusiVq = async (item: VQ, status: "verified" | "rejected", note: string) => {
     const r = await api.verifq.decide(item.id, status, note);
@@ -816,7 +816,7 @@ function AdminInner() {
                     </tbody>
                   </table>
                 </div>
-                <p className="note mt16"><b>Prinsip tata kelola:</b> nasihat hukum final hanya lahir dari status TERVERIFIKASI ADVOKAT — tanda tangan digital atas hash versi final, dalam tanggung jawab profesional advokat MRWP. Membuka pengajuan otomatis menandai <b>SEDANG DITINJAU</b> pada portal klien.</p>
+                <p className="note mt16"><b>Prinsip tata kelola:</b> nasihat hukum final hanya lahir dari status TERVERIFIKASI ADVOKAT — keputusan tercatat atas nama advokat beserta waktunya, dalam tanggung jawab profesional advokat MRWP. Membuka pengajuan otomatis menandai <b>SEDANG DITINJAU</b> pada portal klien.</p>
               </div>
               {vq.some((x) => x.status === "verified" || x.status === "rejected") && (
                 <div className="panel" style={{ marginTop: 16 }}><h4>Keputusan Terakhir</h4>

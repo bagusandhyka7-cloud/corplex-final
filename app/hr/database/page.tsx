@@ -225,7 +225,7 @@ export default function DatabaseKaryawan() {
     if (!res.ok) { toast("Gagal menyimpan", res.error.message, "warn"); return; }
     patchTen({ emp: [empFromRow(res.data), ...emp] });
     setExOpen(false); setExFile(null);
-    toast("Tenaga kerja tercatat — DRAF AI", `Dokumen tersimpan di vault (hash tercatat) · rekap LKPM diperbarui otomatis${ex.wn === "TKA" ? " · validasi keterkaitan RPTKA dijalankan" : ""}.`, "ok");
+    toast("Tenaga kerja tercatat — DRAF AI", `Dokumen tersimpan di vault · rekap LKPM diperbarui otomatis${ex.wn === "TKA" ? " · validasi keterkaitan RPTKA dijalankan" : ""}.`, "ok");
   });
 
   const c = (wn: string, jk: string) => emp.filter((e) => e.wn === wn && e.jk === jk).length;
@@ -353,7 +353,7 @@ export default function DatabaseKaryawan() {
               <Row b="Rincian TKI & TKA per jenis kelamin" d="Klasifikasi mengikuti kolom formulir LKPM OSS-RBA · TKA wajib tertaut pengesahan RPTKA" right={<Chip c="c-ver">DITERAPKAN</Chip>} />
               <Row b="Pengurangan tenaga kerja periode pelaporan" d="PHK / berakhirnya PKWT pada periode berjalan tercatat otomatis dari rekam" right={<Chip c="c-mon">OTOMATIS</Chip>} />
             </div>
-            <p className="note mt16">Setiap baris tabel bersumber dari <b>dokumen terunggah</b> (PK/KTP/RPTKA) yang tersimpan di vault dengan hash — angka rekap LKPM selalu dapat diaudit ke dokumen asalnya. Kolom data pribadi tunduk UU PDP (register pemrosesan: dasar kontraktual).</p>
+            <p className="note mt16">Setiap baris tabel bersumber dari <b>dokumen terunggah</b> (PK/KTP/RPTKA) yang tersimpan di vault — angka rekap LKPM selalu dapat diaudit ke dokumen asalnya. Kolom data pribadi tunduk UU PDP (register pemrosesan: dasar kontraktual).</p>
           </Panel>
         </div>
       </div>

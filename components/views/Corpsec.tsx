@@ -101,7 +101,7 @@ export default function Corpsec() {
           <Panel title={<><Jargon k="keputusan sirkuler">Keputusan Sirkuler</Jargon> — Persetujuan Elektronik <Chip c={allOk ? "c-ver" : "c-draft"}>{allOk ? `SAH — ${done}/${c.dirs.length} (100%)` : `${done} / ${c.dirs.length || 0} SETUJU`}</Chip></>}>
             <div className="rows">
               {c.dirs.map((d, i) => d[2] === "ok" ? (
-                <Row key={i} b={`${d[0]} — ${d[1]}`} d={`Disetujui · hash ttd tercatat · ${d[3]}`} right={<Chip c="c-ver"><Check size={9} style={{ display: "inline" }} /></Chip>} />
+                <Row key={i} b={`${d[0]} — ${d[1]}`} d={`Disetujui · tercatat ${d[3]}`} right={<Chip c="c-ver"><Check size={9} style={{ display: "inline" }} /></Chip>} />
               ) : (
                 <Row key={i} b={`${d[0]} — ${d[1]}`} d="Menunggu persetujuan (constraint: sirkuler butuh 100%)"
                   right={<><Chip c="c-draft">MENUNGGU</Chip><button className="btn btn-navy btn-sm" disabled={busy} onClick={() => void setuju(i)}>Setujui</button></>} />

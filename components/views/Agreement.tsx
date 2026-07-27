@@ -141,7 +141,7 @@ export default function Agreement() {
           </tbody>
         </table>
       </div>
-      <p className="note mt16"><b>Rantai status:</b> hasil ekstraksi berstatus <b>DRAF AI</b> hingga dikonfirmasi; perjanjian yang berakibat hukum masuk alur verifikasi advokat MRWP. Tanggal berakhir otomatis menjadi aturan JAGA (tangga pengingat H-90 → H-60 → H-30 → H-14). Berkas asli tersimpan di vault dengan hash — setiap baris menunjuk dokumen sumbernya.</p>
+      <p className="note mt16"><b>Rantai status:</b> hasil ekstraksi berstatus <b>DRAF AI</b> hingga dikonfirmasi; perjanjian yang berakibat hukum masuk alur verifikasi advokat MRWP. Tanggal berakhir otomatis menjadi aturan JAGA (tangga pengingat H-90 → H-60 → H-30 → H-14). Berkas asli tersimpan di vault — setiap baris menunjuk dokumen sumbernya.</p>
 
       <Modal open={axOpen} title="Ekstraksi AI — Registrasi Perjanjian" onClose={() => setAxOpen(false)}
         footer={<>
