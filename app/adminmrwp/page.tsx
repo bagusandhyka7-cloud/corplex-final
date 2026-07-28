@@ -10,13 +10,13 @@ import { StoreProvider, useStore } from "@/lib/store";
 import { admin, api, InviteRow, VqMsg } from "@/lib/api";
 import { sb } from "@/lib/supabase";
 import { useAsyncAction } from "@/lib/hooks";
-import { askConfirm, Chip, ConfirmHost, Field, Modal, Row, VqThread } from "@/components/ui";
+import { askConfirm, Chip, ConfirmHost, Field, HashChip, Modal, Row, VqThread } from "@/components/ui";
 import { RowActions } from "@/components/RecordModal";
 import { RecRow, SPECS, stripId } from "@/lib/records";
 import { Toasts } from "@/components/shell";
 
 /* ===== tipe & seed (in-memory; PROD: Supabase) ===== */
-type Invite = { code: string; email: string; tier: string; expiresAt: number | null; createdAt: number; status: "active" | "used" | "expired" | "revoked" };
+type Invite = { code: string; email: string; tier: string; expiresAt: number | null; createdAt: number; status: "active" | "used" | "expired" | "revoked"; sentAt: number | null };
 /* Durasi asli yang dipilih saat kode dibuat — diturunkan dari (expires_at − created_at), tanpa kolom baru */
 const durLabel = (inv: Invite) => {
   if (!inv.expiresAt) return "Tanpa batas";
@@ -41,6 +41,7 @@ const fromRow = (r: InviteRow): Invite => ({
   expiresAt: r.expires_at ? new Date(r.expires_at).getTime() : null,
   createdAt: r.created_at ? new Date(r.created_at).getTime() : Date.now(),
   status: r.status as Invite["status"],
+  sentAt: r.sent_at ? new Date(r.sent_at).getTime() : null,
 });
 const TIERS = ["Demo", "Tier 1", "Tier 2", "Tier 3 Lifetime"];
 const EXP = [["24 jam", DAY], ["3 hari", 3 * DAY], ["7 hari", 7 * DAY], ["30 hari", 30 * DAY], ["Tanpa batas", 0]] as const;
@@ -314,7 +315,7 @@ function AdminInner() {
 
   /* konsol advokat — antrean verifikasi nyata dari DB */
   type VQRef = { mod: string; id: string; label: string };
-  type VQ = { id: string; tenant_id: string; title: string; meta: string; chip: string; label: string; sla: string; status: string; note: string | null; created_at?: string; created_by?: string | null; ref_mod?: string | null; ref_id?: string | null; refs?: VQRef[]; detail?: string | null; dok_url?: string | null; dok_nama?: string | null; msgs?: VqMsg[] };
+  type VQ = { id: string; tenant_id: string; title: string; meta: string; chip: string; label: string; sla: string; status: string; note: string | null; created_at?: string; created_by?: string | null; ref_mod?: string | null; ref_id?: string | null; refs?: VQRef[]; detail?: string | null; dok_url?: string | null; dok_nama?: string | null; dok_hash?: string | null; msgs?: VqMsg[] };
   const [vq, setVq] = useState<VQ[]>([]);
   const [vqLoading, setVqLoading] = useState(true);
   const muatVq = React.useCallback(() => {
@@ -408,12 +409,16 @@ function AdminInner() {
   /* Kirim kode ke email calon klien — menggantikan salin-tempel ke WhatsApp/Gmail.
    * Admin tetap yang memutuskan kapan dikirim (semi-otomatis, bukan otomatis penuh). */
   const [kirimKode, setKirimKode] = useState<string | null>(null);
-  const kirimInvite = async (code: string, email?: string) => {
+  const kirimInvite = async (code: string, email?: string, sentAt?: number | null) => {
     if (!email) { toast("Kode generik", "Kode ini dibuat tanpa email tujuan — salin tautannya, atau buat kode baru dengan email.", "warn"); return; }
+    /* Kirim ulang tetap DIIZINKAN (email hilang/masuk spam itu wajar) — hanya tak boleh terjadi
+     * tanpa sadar: tiap email tambahan membakar kuota Gmail dan menurunkan reputasi pengirim. */
+    if (sentAt && !(await askConfirm(`Kode ${code} sudah dikirim ke ${email} pada ${new Date(sentAt).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" })}. Kirim ulang email yang sama?`))) return;
     setKirimKode(code);
     const r = await admin.sendInvite(code);
     setKirimKode(null);
     if (!r.ok) { toast("Gagal mengirim", r.error.message, "warn"); return; }
+    setInv((xs) => xs.map((x) => (x.code === code ? { ...x, sentAt: new Date(r.data.sent_at).getTime() } : x)));
     const sandbox = r.data.mode === "sandbox";
     log(`Kode ${code} dikirim ke ${r.data.to} (${r.data.mode})`);
     toast(sandbox ? "Terkirim ke SANDBOX" : "Kode terkirim",
@@ -427,7 +432,7 @@ function AdminInner() {
     const code = genCode();
     const res = await admin.act("create_invite", { code, email: nEmail, tier: nTier, expMs: isLifetime ? 0 : nExp });
     if (!res.ok) { toast("Gagal membuat kode", res.error.message, "warn"); return; }
-    setInv((xs) => [{ code, email: nEmail, tier: nTier, expiresAt: isLifetime || !nExp ? null : now() + nExp, createdAt: now(), status: "active" }, ...xs]);
+    setInv((xs) => [{ code, email: nEmail, tier: nTier, expiresAt: isLifetime || !nExp ? null : now() + nExp, createdAt: now(), status: "active", sentAt: null }, ...xs]);
     setNOpen(false); setNEmail("");
     void navigator.clipboard?.writeText(code).catch(() => {});
     log(`Kode ${code} dibuat (${nTier}${nEmail ? " → " + nEmail : ""})`);
@@ -800,6 +805,7 @@ function AdminInner() {
                     <a className="btn btn-line btn-sm" href={vqSel.dok_url} target="_blank" rel="noreferrer">Buka di tab baru</a>
                     <a className="btn btn-navy btn-sm" href={vqSel.dok_url} download={vqSel.dok_nama || undefined}>Unduh</a>
                   </div>
+                  <HashChip hash={vqSel.dok_hash} />
                   <div style={{ background: "var(--sur-3)", border: "1px solid var(--line)", borderRadius: 10, overflow: "hidden", height: 460, display: "flex", flexDirection: "column" }}>
                     {/\.(jpe?g|png|webp|gif)(\?|$)/i.test(vqSel.dok_url)
                       ? <div style={{ flex: 1, overflow: "auto", display: "grid", placeItems: "center", background: "#0A1830" }}><img src={vqSel.dok_url} alt={vqSel.dok_nama || "Lampiran"} style={{ maxWidth: "100%" }} /></div>
@@ -811,7 +817,7 @@ function AdminInner() {
 
               {(vqSel.status === "masuk" || vqSel.status === "meninjau") && (
                 <div className="panel boxed" style={{ marginTop: 16, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                  <span style={{ fontSize: 12.5, color: "var(--txt2)", flex: 1, minWidth: 220 }}>Keputusan bertanda tangan digital & tercatat pada jejak audit:</span>
+                  <span style={{ fontSize: 12.5, color: "var(--txt2)", flex: 1, minWidth: 220 }}>Keputusan tercatat atas nama advokat, berikut waktunya, pada jejak audit:</span>
                   <button className="btn btn-line" onClick={() => mintaInfo(vqSel)}>Minta Info</button>
                   <button className="btn btn-ok" onClick={() => void putuskanVq(vqSel, "verified")}>Setujui</button>
                   <button className="btn btn-navy" onClick={() => void putuskanVq(vqSel, "verified", true)}>Koreksi</button>
@@ -906,10 +912,12 @@ function AdminInner() {
                               <div className="flex items-center gap-2">
                                 <button className="btn btn-line btn-sm" title="Salin link" onClick={() => { void navigator.clipboard?.writeText(`${location.origin}/login?kode=${x.code}`); toast("Link disalin", x.code, "ok"); }}><Copy size={11} /></button>
                                 {lbl === "AKTIF" && (
-                                  <button className="btn btn-gold btn-sm" disabled={kirimKode === x.code}
-                                    title={x.email ? `Kirim kode ke ${x.email}` : "Kode generik tanpa email tujuan — salin manual"}
-                                    onClick={() => void kirimInvite(x.code, x.email)}>
-                                    <Send size={11} /> {kirimKode === x.code ? "Mengirim…" : "Kirim"}
+                                  <button className={`btn btn-sm ${x.sentAt ? "btn-line" : "btn-gold"}`} disabled={kirimKode === x.code}
+                                    title={x.email
+                                      ? (x.sentAt ? `Sudah dikirim ke ${x.email} pada ${new Date(x.sentAt).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" })}` : `Kirim kode ke ${x.email}`)
+                                      : "Kode generik tanpa email tujuan — salin manual"}
+                                    onClick={() => void kirimInvite(x.code, x.email, x.sentAt)}>
+                                    <Send size={11} /> {kirimKode === x.code ? "Mengirim…" : x.sentAt ? "Kirim ulang" : "Kirim"}
                                   </button>
                                 )}
                                 {lbl === "AKTIF" && <button className="btn btn-red btn-sm" onClick={() => void cabut(x.code)}>Cabut</button>}

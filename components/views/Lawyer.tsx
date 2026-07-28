@@ -14,6 +14,16 @@ import { Chip, Field, Modal, Panel, Row, ViewHead, VqThread } from "@/components
 
 const STEPS = ["Diajukan", "Antre verifikasi", "Ditinjau advokat", "Selesai"];
 
+/* Pengajuan masih di meja advokat? Hanya yang terbuka boleh menerima balasan klien. */
+const terbuka = (q: QItem) => q.status === "masuk" || q.status === "meninjau";
+/* Label tombol mengikuti PENULIS pesan terakhir — dulu selalu "Pertanyaan advokat" walau
+ * pertanyaannya sudah dijawab klien (kolom `note` ikut berubah, labelnya tidak). */
+const labelUtas = (q: QItem) => {
+  const akhir = q.msgs?.[q.msgs.length - 1];
+  return akhir?.by === "advokat" && terbuka(q) ? "Pertanyaan advokat" : "Lihat percakapan";
+};
+const adaUtas = (q: QItem) => !!(q.msgs?.length || q.note);
+
 /* S4: tanpa badge status — status dibaca dari timeline (lingkaran akhir hijau "Terverifikasi" / merah) */
 const progress = (q: QItem): { at: number; done: boolean; kalimat: string } => {
   if (q.status === "verified") return { at: 3, done: true, kalimat: "Selesai — disetujui advokat MRWP, keputusan tercatat beserta waktunya." };
@@ -160,13 +170,13 @@ export default function Lawyer() {
                   <button className="btn btn-navy btn-sm" onClick={() => { downloadDoc(q.t.replace(/[^\w]+/g, "_") + ".pdf", t.name); toast("Unduhan dimulai", "Dokumen final hasil keputusan advokat.", "ok"); }}>
                     <Download size={12} /> Unduh dokumen final
                   </button>
-                  {q.note && <button className="btn btn-line btn-sm" onClick={() => setNoteQ(q)}><FileText size={12} /> Lihat catatan</button>}
+                  {adaUtas(q) && <button className="btn btn-line btn-sm" onClick={() => setNoteQ(q)}><FileText size={12} /> {labelUtas(q)}</button>}
                 </span>}
                 {q.status === "rejected" && (
                   <button className="btn btn-red btn-sm" onClick={() => setNoteQ(q)}><FileText size={12} /> Ditolak, lihat catatan</button>
                 )}
-                {q.status === "meninjau" && q.note && (
-                  <button className="btn btn-gold btn-sm" onClick={() => setNoteQ(q)}><FileText size={12} /> Pertanyaan advokat</button>
+                {q.status === "meninjau" && adaUtas(q) && (
+                  <button className="btn btn-gold btn-sm" onClick={() => setNoteQ(q)}><FileText size={12} /> {labelUtas(q)}</button>
                 )}
               </div>
 
@@ -198,7 +208,7 @@ export default function Lawyer() {
           {premList.map((p, i) => (
             <Row key={p.id || i} b={p.t.replace(/^Penugasan Premium — /, "")} d={p.m}
               right={<>
-                {p.note && <button className="btn btn-gold btn-sm" onClick={() => setNoteQ(p)}><FileText size={12} /> {p.status === "meninjau" ? "Pertanyaan advokat" : "Lihat catatan"}</button>}
+                {adaUtas(p) && <button className="btn btn-gold btn-sm" onClick={() => setNoteQ(p)}><FileText size={12} /> {labelUtas(p)}</button>}
                 <Chip c={p.status === "verified" ? "c-ver" : p.status === "rejected" ? "c-red" : p.status === "meninjau" ? "c-gold" : p.chip}>{p.status === "verified" ? "DISETUJUI" : p.status === "rejected" ? "DITOLAK" : p.status === "meninjau" ? "DITINJAU" : p.lbl}</Chip>
               </>} />
           ))}
@@ -216,19 +226,28 @@ export default function Lawyer() {
           <Field label="Pengajuan"><input value={noteQ.t} readOnly /></Field>
           <Field label="Status"><input value={noteQ.status === "verified" ? "Disetujui / terverifikasi" : noteQ.status === "meninjau" ? "Sedang ditinjau — advokat butuh info tambahan" : "Ditolak — perlu revisi"} readOnly /></Field>
           <Field label="Riwayat percakapan"><VqThread msgs={noteQ.msgs || []} me="klien" /></Field>
-          <Field label="Balasan Anda">
-            <textarea rows={4} value={balas} placeholder="Jawab pertanyaan advokat — lampirkan dokumen susulan bila diminta." onChange={(e) => setBalas(e.target.value)} />
-          </Field>
-          <Field label="Dokumen susulan (opsional · PDF/gambar, maks 10MB)">
-            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-              <input ref={balasFileRef} type="file" accept="application/pdf,image/*" style={{ display: "none" }}
-                onChange={(e) => { const f = e.target.files?.[0] || null; if (f && f.size > 10 * 1024 * 1024) { toast("Berkas terlalu besar", "Maksimal 10MB.", "warn"); return; } setBalasFile(f); }} />
-              <button className="btn btn-line btn-sm" onClick={() => balasFileRef.current?.click()}><Paperclip size={12} /> {balasFile ? "Ganti berkas" : "Pilih berkas"}</button>
-              {balasFile && <><span style={{ fontSize: 12, color: "var(--ink)" }}>{balasFile.name}</span>
-                <button className="btn btn-line btn-sm" onClick={() => setBalasFile(null)}>Hapus</button></>}
-            </div>
-          </Field>
-          <button className="btn btn-gold" disabled={balasKirim} aria-busy={balasKirim} onClick={() => void kirimBalasan()}>Kirim Balasan ke Advokat</button>
+          {/* Pengajuan yang SUDAH DIPUTUS keluar dari antrean kerja advokat — balasan di situ tak
+            * akan pernah dibaca. Menampilkan kotak balasannya = menjanjikan sesuatu yang tak terjadi. */}
+          {terbuka(noteQ) ? <>
+            <Field label="Balasan Anda">
+              <textarea rows={4} value={balas} placeholder="Jawab pertanyaan advokat — lampirkan dokumen susulan bila diminta." onChange={(e) => setBalas(e.target.value)} />
+            </Field>
+            <Field label="Dokumen susulan (opsional · PDF/gambar, maks 10MB)">
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <input ref={balasFileRef} type="file" accept="application/pdf,image/*" style={{ display: "none" }}
+                  onChange={(e) => { const f = e.target.files?.[0] || null; if (f && f.size > 10 * 1024 * 1024) { toast("Berkas terlalu besar", "Maksimal 10MB.", "warn"); return; } setBalasFile(f); }} />
+                <button className="btn btn-line btn-sm" onClick={() => balasFileRef.current?.click()}><Paperclip size={12} /> {balasFile ? "Ganti berkas" : "Pilih berkas"}</button>
+                {balasFile && <><span style={{ fontSize: 12, color: "var(--ink)" }}>{balasFile.name}</span>
+                  <button className="btn btn-line btn-sm" onClick={() => setBalasFile(null)}>Hapus</button></>}
+              </div>
+            </Field>
+            <button className="btn btn-gold" disabled={balasKirim} aria-busy={balasKirim} onClick={() => void kirimBalasan()}>Kirim Balasan ke Advokat</button>
+          </> : (
+            <p className="note" style={{ marginTop: 4 }}>
+              Pengajuan ini sudah <b>{noteQ.status === "verified" ? "diputus dan disetujui" : "ditolak"}</b> advokat, sehingga percakapannya ditutup — balasan baru tidak akan masuk meja advokat.
+              {noteQ.status === "rejected" ? " Pakai tombol “Perbaiki & ajukan ulang” di bawah untuk melanjutkan." : " Ajukan permintaan baru bila masih ada yang perlu dibahas."}
+            </p>
+          )}
         </>}
       </Modal>
 

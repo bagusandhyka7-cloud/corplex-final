@@ -221,9 +221,29 @@ export function VqThread({ msgs, me }: { msgs: VqMsg[]; me: "advokat" | "klien" 
                 <a className="btn btn-navy btn-sm" href={m.dok_url} download={m.dok_nama || undefined}>Unduh</a>
               </div>
             )}
+            <HashChip hash={m.dok_hash} label="SHA-256 lampiran" />
           </div>
         );
       })}
+    </div>
+  );
+}
+
+/* Sidik SHA-256 isi dokumen. Sengaja mengembalikan null bila hash belum ada — dokumen lama
+ * (dan yang gagal dihitung) tak boleh menampilkan klaim integritas apa pun, sekalipun berupa
+ * placeholder. Klaim hash pernah dicabut total dari UI pada 27 Jul karena tak berdasar;
+ * ia hanya boleh kembali bersama nilainya yang nyata. */
+export function HashChip({ hash, label = "SHA-256 isi dokumen" }: { hash?: string | null; label?: string }) {
+  const [buka, setBuka] = React.useState(false);
+  if (!hash) return null;
+  return (
+    <div style={{ marginTop: 8, fontSize: 10.5, color: "var(--muted)", fontFamily: "var(--mono)", wordBreak: "break-all", lineHeight: 1.6 }}
+      title="Diverifikasi server dari isi berkas yang tersimpan — bukan dari nama berkas.">
+      <span style={{ color: "var(--gold-bright)", letterSpacing: ".08em" }}>{label}</span>{" "}
+      <button className="btn-act" style={{ padding: 0, background: "none", border: "none", color: "inherit", cursor: "pointer", fontFamily: "inherit", fontSize: "inherit" }}
+        onClick={() => setBuka(!buka)}>
+        {buka ? hash : hash.slice(0, 16) + "…"}
+      </button>
     </div>
   );
 }

@@ -349,7 +349,14 @@ ${PERATURAN.map(([p]) => `<tr><td>${p}</td><td>${v.rekam === 0 ? "Belum dapat di
   .conf{letter-spacing:.28em;font-size:9pt;color:#8C2F2F;font-weight:bold}
   .status{display:inline-block;margin-top:14px;padding:5px 18px;border:1.5px solid;font-weight:bold;letter-spacing:.1em;font-size:10.5pt}
   footer{position:running(f)}
+  /* Tombol cetak: hanya untuk layar. @media print menyembunyikannya sehingga PDF hasil
+   * "Save as PDF" berisi laporan saja — tanpa tombol, tanpa elemen aplikasi. */
+  .cetak{position:fixed;top:16px;right:16px;z-index:9;background:#14264A;color:#D9BC80;border:1px solid ${GOLDC};
+    border-radius:8px;padding:10px 18px;font-family:Georgia,serif;font-size:11pt;cursor:pointer}
+  .cetak:hover{filter:brightness(1.15)}
+  @media print{.cetak{display:none}}
 </style></head><body>
+<button class="cetak" onclick="window.print()">Cetak / Simpan PDF</button>
 
 <!-- KOP SURAT MRWP — mewah, emas di atas navy -->
 <div style="border:2.5px solid ${GOLDC};border-bottom:none;background:linear-gradient(160deg,#14264A,#0C1830);padding:26px 34px;display:flex;align-items:center;gap:22px">

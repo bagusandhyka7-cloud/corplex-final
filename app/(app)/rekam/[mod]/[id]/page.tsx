@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, Download, FileText, Scale, Upload } from "lucide-react";
 import { api } from "@/lib/api";
 import { RecRow, SPECS, stripId } from "@/lib/records";
-import { Chip, Timeline, ViewHead } from "@/components/ui";
+import { Chip, HashChip, Timeline, ViewHead } from "@/components/ui";
 import { useStore } from "@/lib/store";
 
 /* case/corp: struktur timeline jsonb — dirender kronologis, bukan grid field SPECS */
@@ -21,7 +21,7 @@ export default function DetailRekam({ params }: { params: Promise<{ mod: string;
   const { mod, id } = use(params);
   const router = useRouter();
   const { toast, pushQueue, patchTen, ten } = useStore();
-  const [rec, setRec] = useState<{ data: unknown; dok_url: string | null; dok_nama: string | null; created_at: string; source: string } | null>(null);
+  const [rec, setRec] = useState<{ data: unknown; dok_url: string | null; dok_nama: string | null; dok_hash?: string | null; created_at: string; source: string } | null>(null);
   const [err, setErr] = useState(false);
   const [view, setView] = useState<{ url: string; nama: string } | null>(null); // preview berkas terpilih (bundel)
   /* S5: CRUD perkara (tahapan/bukti/biaya) pindah ke sini — list Perkara tinggal daftar */
@@ -175,6 +175,7 @@ export default function DetailRekam({ params }: { params: Promise<{ mod: string;
             <span className="mono" style={{ fontSize: 10, letterSpacing: ".12em", color: "var(--muted)" }}>DOKUMEN ASLI — {shownNama || "VAULT"}</span>
             {shownUrl && <a className="btn btn-line btn-sm" href={shownUrl} target="_blank" rel="noreferrer"><Download size={11} /> Unduh</a>}
           </div>
+          {!view && rec?.dok_hash && <div style={{ padding: "0 15px" }}><HashChip hash={rec.dok_hash} /></div>}
           {shownUrl ? (
             isImg(shownUrl)
               ? <div style={{ flex: 1, overflow: "auto", display: "grid", placeItems: "center", background: "#0A1830" }}><img src={shownUrl} alt="Dokumen" style={{ maxWidth: "100%" }} /></div>

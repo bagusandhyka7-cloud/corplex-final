@@ -6,7 +6,8 @@
 import { NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { limited, tooMany } from "@/lib/ratelimit";
-import { sendMail } from "@/lib/mail";
+import { inviteEmail, sendMail } from "@/lib/mail";
+import { hashRow } from "@/lib/dokhash";
 
 const svc = () => createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -111,8 +112,20 @@ export async function POST(req: NextRequest) {
           : { status: "rejected", rejected_reason: reason || "Ditolak.", decided_at: new Date().toISOString() },
       ).eq("id", id);
       if (error) throw error;
-      await sb.from("audit_logs").insert({ action: approve ? "approve_tenant" : "reject_tenant", detail: { id, reason, expires_at: exp }, actor: "adminmrwp" });
-      return Response.json({ ok: true });
+      /* Dokumen pendaftaran diunggah SEBELUM akun punya sesi (calon klien belum bisa login),
+       * jadi hashnya tak bisa lewat /api/hash. Dihitung di sini — saat approval, oleh service
+       * role, dari byte yang benar-benar tersimpan. Kegagalan satu berkas tak membatalkan
+       * approval: dok_hash tetap NULL dan dokumennya tetap sah. */
+      let hashed = 0;
+      if (approve) {
+        const { data: docs } = await sb.from("company_documents").select("id").eq("tenant_id", id);
+        for (const d of docs || []) {
+          const h = await hashRow(sb, "doc", String(d.id));
+          if (h.ok) hashed += h.n;
+        }
+      }
+      await sb.from("audit_logs").insert({ action: approve ? "approve_tenant" : "reject_tenant", detail: { id, reason, expires_at: exp, dok_hash: hashed }, actor: "adminmrwp" });
+      return Response.json({ ok: true, hashed });
     }
     /* Perpanjang tenggat 1 tombol: +N jam dari max(sekarang, tenggat lama). 0/null jam = jadikan permanen. */
     if (op === "extendTenant") {
@@ -179,6 +192,9 @@ export async function POST(req: NextRequest) {
      * (email tertahan, tak sampai ke user); dikosongkan → jalur kirim sungguhan (butuh domain
      * terverifikasi di Mailtrap). */
     if (op === "sendInvite") {
+      /* Batas KHUSUS pengiriman (5/mnt) di atas batas umum 60/mnt: satu sesi admin yang bocor
+       * tak boleh bisa membakar kuota Gmail (~500/hari) dalam hitungan menit. */
+      if (limited(req, "sendInvite", 5)) return tooMany();
       const code = String(args?.code || "").trim();
       if (!code) return Response.json({ error: "code wajib" }, { status: 400 });
       const { data: inv } = await sb.from("invitations").select("code,email_target,tier,seats,expires_at,status").eq("code", code).maybeSingle();
@@ -189,29 +205,18 @@ export async function POST(req: NextRequest) {
       /* Tautan email WAJIB memakai alamat yang bisa dibuka penerima. `req.nextUrl.origin` di dev
        * menghasilkan http://localhost:3000 — tak bisa diklik siapa pun selain mesin ini, dan
        * tautan localhost di email publik juga sinyal spam. APP_URL diisi saat deploy. */
-      const base = (process.env.APP_URL || req.nextUrl.origin).replace(/\/+$/, "");
-      const url = `${base}/login?kode=${encodeURIComponent(inv.code)}`;
-      const tenggat = inv.expires_at
-        ? new Date(inv.expires_at).toLocaleString("id-ID", { dateStyle: "long", timeStyle: "short", timeZone: "Asia/Jakarta" }) + " WIB"
-        : "tanpa batas waktu";
-      const teks = `Kode undangan Corplex Anda: ${inv.code}\n\nPaket: ${inv.tier} · ${inv.seats} kursi pengguna\nBerlaku sampai: ${tenggat}\n\nBuka tautan berikut untuk mendaftarkan perusahaan Anda (kode terisi otomatis):\n${url}\n\nKode ini hanya dapat dipakai satu kali. Jangan teruskan kepada pihak lain.\n\nMRWP Law Firm — Corplex`;
-      const html = `<div style="font-family:Georgia,serif;max-width:520px;color:#0A1830">
-<p style="font-size:11px;letter-spacing:.18em;color:#B08A3E;margin:0 0 6px">MRWP LAW FIRM · CORPLEX</p>
-<h2 style="margin:0 0 14px;font-size:20px">Kode undangan Anda</h2>
-<p style="font-size:14px;line-height:1.7">Berikut kode undangan untuk mendaftarkan perusahaan Anda ke Corplex.</p>
-<p style="font-family:monospace;font-size:22px;letter-spacing:.12em;background:#F4F1E8;border:1px solid #D9BC80;border-radius:8px;padding:14px 18px;text-align:center;margin:18px 0">${inv.code}</p>
-<p style="font-size:13px;line-height:1.8;margin:0 0 18px">Paket <b>${inv.tier}</b> · ${inv.seats} kursi pengguna<br>Berlaku sampai: <b>${tenggat}</b></p>
-<p style="margin:0 0 18px"><a href="${url}" style="background:#0A1830;color:#D9BC80;text-decoration:none;padding:12px 22px;border-radius:8px;font-size:14px">Daftarkan Perusahaan</a></p>
-<p style="font-size:12px;color:#5a6472;line-height:1.7">Kode hanya dapat dipakai satu kali — jangan teruskan kepada pihak lain. Bila tautan tidak dapat diklik, salin alamat ini: ${url}</p>
-</div>`;
-
-      const sent = await sendMail({ to: inv.email_target, subject: `Kode undangan Corplex — ${inv.code}`, text: teks, html });
+      const surat = inviteEmail(inv, process.env.APP_URL || req.nextUrl.origin);
+      const sent = await sendMail({ to: inv.email_target, ...surat });
       if (!sent.ok) {
         console.error("[api/admin] sendInvite", sent.error);
         return Response.json({ error: sent.error }, { status: 502 });
       }
+      /* Penanda kirim TERAKHIR — panel memakainya untuk mengubah tombol jadi "Kirim ulang" +
+       * konfirmasi. Sengaja TIDAK memblokir kirim ulang: email hilang/masuk spam itu wajar. */
+      const kirimAt = new Date().toISOString();
+      await sb.from("invitations").update({ sent_at: kirimAt }).eq("code", inv.code);
       await sb.from("audit_logs").insert({ action: "kirim_kode_undangan", detail: { code: inv.code, to: inv.email_target, mode: sent.mode, message_id: sent.id }, actor: "adminmrwp" });
-      return Response.json({ ok: true, to: inv.email_target, mode: sent.mode, id: sent.id });
+      return Response.json({ ok: true, to: inv.email_target, mode: sent.mode, id: sent.id, sent_at: kirimAt });
     }
 
     /* Jejak audit NYATA utk Beranda panel (dulu string sesi in-memory — buatan). */

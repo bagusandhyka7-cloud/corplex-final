@@ -73,7 +73,11 @@ export default function Ldd({ embed }: { embed?: boolean } = {}) {
   };
   const unduh = async () => {
     /* html-to-docx tersedak inline-style kompleks — DOCX = salinan kerja polos (advokat memformat di Word) */
-    const html = lddHtml(buildLdd(t)).replace(/^[\s\S]*?<body[^>]*>|<\/body>[\s\S]*$/g, "").replace(/ style="[^"]*"/g, "");
+    /* Tombol "Cetak / Simpan PDF" hanya untuk tab pratinjau — ia berada tepat setelah <body>,
+     * jadi tanpa dibuang ia ikut terbawa sebagai teks di dalam DOCX. */
+    const html = lddHtml(buildLdd(t))
+      .replace(/<button class="cetak"[\s\S]*?<\/button>/g, "")
+      .replace(/^[\s\S]*?<body[^>]*>|<\/body>[\s\S]*$/g, "").replace(/ style="[^"]*"/g, "");
     const res = await fetch("/api/docx", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ html, title: `Laporan Uji Tuntas Hukum ${t.name}` }) });
     if (!res.ok) return toast("Gagal membuat DOCX", `HTTP ${res.status}`, "warn");
     const url = URL.createObjectURL(await res.blob());

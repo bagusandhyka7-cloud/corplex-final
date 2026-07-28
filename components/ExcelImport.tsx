@@ -13,6 +13,7 @@ const tid = () => localStorage.getItem("corplex_tid") || "";
 export function useExcelImport(mod: string) {
   const { ten, toast } = useStore();
   const [prev, setPrev] = useState<ParsedItem[] | null>(null);
+  const [headerWarn, setHeaderWarn] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [prog, setProg] = useState(0);
 
@@ -20,9 +21,23 @@ export function useExcelImport(mod: string) {
   const tryFile = (file: File): boolean => {
     if (!/\.(xlsx|xls)$/i.test(file.name)) return false;
     void (async () => {
-      const r = parseWorkbook(await file.arrayBuffer());
+      let r;
+      try {
+        r = parseWorkbook(await file.arrayBuffer());
+      } catch {
+        /* Berkas rusak/terenkripsi/bukan xlsx sungguhan — jangan sampai melempar ke atas dan
+         * membuat halaman blank; beri tahu apa adanya. */
+        toast("Berkas tak terbaca", "Excel ini rusak atau bukan .xlsx yang sah — coba simpan ulang dari Excel lalu unggah lagi.", "warn");
+        return;
+      }
       const items = r.items.filter((x) => x.mod === mod); // hanya sheet modul ini
-      if (!items.length) { toast("Tak ada baris valid", "Gunakan template yang sesuai (unduh di Alat Legal) — periksa header & isi.", "warn"); return; }
+      setHeaderWarn(r.peringatan);
+      if (!items.length) {
+        /* Peringatan header ditampilkan APA ADANYA — dulu semua kegagalan dijawab satu kalimat
+         * generik, jadi user tak pernah tahu kolom mana yang salah nama. */
+        toast("Tak ada baris valid", r.peringatan[0] || "Gunakan template yang sesuai (unduh di Alat Legal) — periksa header & isi.", "warn");
+        return;
+      }
       setPrev(items);
     })();
     return true;
@@ -62,6 +77,14 @@ export function useExcelImport(mod: string) {
       footer={<><button className="btn btn-line" onClick={() => setPrev(null)}>Batal</button>
         <button className="btn btn-gold" disabled={saving} aria-busy={saving} onClick={() => void simpan()}>{saving ? `Menyimpan… ${prog}%` : `Simpan ${prev?.length || 0} Baris`}</button></>}>
       <div className="note" style={{ marginBottom: 12 }}><b>{prev?.length || 0}</b> baris terbaca. Kolom di bawah hanya ringkasan — <b>seluruh kolom yang Anda isi tetap tersimpan</b> (lihat angka “kolom terisi”).</div>
+      {headerWarn.length > 0 && (
+        <div className="note" style={{ marginBottom: 12, borderLeft: "3px solid var(--gold-bright)" }}>
+          <b>Kolom yang tidak terbaca</b> — periksa sebelum menyimpan:
+          <ul style={{ margin: "8px 0 0", paddingLeft: 18, lineHeight: 1.7 }}>
+            {headerWarn.map((p, i) => <li key={i}>{p}</li>)}
+          </ul>
+        </div>
+      )}
       {peringatan.length > 0 && (
         <div className="note" style={{ marginBottom: 12, borderLeft: "3px solid var(--gold)" }}>
           <b>{peringatan.length} nilai di luar daftar pilihan</b> — tetap bisa disimpan, tetapi periksa dulu:

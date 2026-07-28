@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from "react";
 import { Lock, Plus, RadioTower, Scale } from "lucide-react";
 import { useStore } from "@/lib/store";
-import { Chip, Panel, Row, Tabs } from "@/components/ui";
+import { Chip, Field, Modal, Panel, Row, Tabs } from "@/components/ui";
 import { ModuleShell } from "@/components/ModuleShell";
 import { RecActions, RecordModal } from "@/components/RecordModal";
 import { idOf, RecRow, SPECS } from "@/lib/records";
@@ -41,7 +41,10 @@ export default function Asset() {
 
   useEffect(() => {
     void api.records.list(localStorage.getItem("corplex_tid") || "").then((r) => {
-      if (r.ok) setVaultLog(r.data.filter((x) => x.module === "vault").map((x) => ({ ...(x.data as Omit<VLog, "id">), id: x.id })));
+      if (!r.ok) return;
+      setVaultLog(r.data.filter((x) => x.module === "vault").map((x) => ({ ...(x.data as Omit<VLog, "id">), id: x.id })));
+      /* Temuan pelanggaran manual — pola sama dengan log vault (mod generik `module_records`). */
+      setTemuan(r.data.filter((x) => x.module === "watch").map((x) => ({ ...(x.data as Omit<Temuan, "id">), id: x.id })));
     });
   }, [rekamVer]); // realtime: rekam berubah di menu lain → segarkan
 
@@ -56,25 +59,43 @@ export default function Asset() {
     router.push(`/rekam/${mod2}/${id}`);
   };
 
-  /* Enforcement Strategy: rekam HKI baru bertipe penindakan + eskalasi ke advokat (CRUD nyata). */
-  const enforcement = async () => {
+  /* TEMUAN PELANGGARAN — PENCATATAN MANUAL.
+   * Panel ini dulu "Watcher Pelanggaran": mengaku mendeteksi produk serupa di marketplace
+   * dengan skor kemiripan 0,87, lengkap dengan tombol yang menyimpan rekam seolah hasil mesin.
+   * Nol mesin di belakangnya — nol scraping, nol model kemiripan. Kini yang tercatat hanya
+   * temuan yang DIISI MANUSIA, dengan sumber & tautannya sendiri. */
+  const [wOpen, setWOpen] = useState(false);
+  const [wSimpan, setWSimpan] = useState(false);
+  const kosongTemuan = { judul: "", sumber: "", url: "", tgl: new Date().toISOString().slice(0, 10), catatan: "" };
+  const [wForm, setWForm] = useState(kosongTemuan);
+  type Temuan = typeof kosongTemuan & { id: string };
+  const [temuan, setTemuan] = useState<Temuan[]>([]);
+
+  const simpanTemuan = async () => {
+    if (wSimpan) return;
+    if (!wForm.judul.trim() || !wForm.sumber.trim()) { toast("Lengkapi temuan", "Judul dan sumber wajib diisi — tanpa itu temuan tak dapat ditelusuri ulang.", "warn"); return; }
+    setWSimpan(true);
     const tid = localStorage.getItem("corplex_tid") || "";
-    const data = ["Enforcement — Desain Kemasan Seri B", "Strategi penindakan pelanggaran", "Watcher marketplace", "", 0, "Bukti berstempel waktu", ["c-red", "PELANGGARAN"], ["c-gold", "PROSES"]];
-    const r = await api.records.create(tid, "hki", data);
-    if (!r.ok) return toast("Gagal", r.error.message, "warn");
-    patchTen({ hki: [[...data, r.data.id], ...t.hki] as never });
-    pushQueue("Enforcement — Desain Kemasan Seri B", "Bundel bukti watcher terlampir · strategi penindakan HKI", "c-gold", "ESKALASI");
+    const isi = { ...wForm, judul: wForm.judul.trim(), sumber: wForm.sumber.trim() };
+    const r = await api.records.create(tid, "watch", isi);
+    setWSimpan(false);
+    if (!r.ok) return toast("Gagal menyimpan", r.error.message, "warn");
+    setTemuan((xs) => [{ ...isi, id: r.data.id }, ...xs]);
+    setWForm(kosongTemuan); setWOpen(false);
+    toast("Temuan tercatat", "Tersimpan sebagai rekam hukum — dapat diajukan ke advokat bila perlu ditindak.", "ok");
   };
 
-  /* Keputusan watcher tercatat sebagai rekam (bukan toast kosong). */
-  const catatWatcher = async (jenis: "bukti" | "bukan") => {
-    const tid = localStorage.getItem("corplex_tid") || "";
-    const data = jenis === "bukti"
-      ? ["Arsip Bukti — Desain Kemasan Seri B", "Tangkapan layar + URL + stempel waktu", "Watcher marketplace", "", 0, "Siap dipakai bundel perkara", ["c-mon", "ARSIP"], ["c-mon", "TERCATAT"]]
-      : ["Watcher — ditandai bukan pelanggaran", "Koreksi manual atas temuan kemiripan", "Watcher marketplace", "", 0, "Model kemiripan belajar dari koreksi", null, ["c-ver", "DITUTUP"]];
-    const r = await api.records.create(tid, "hki", data);
-    if (!r.ok) return toast("Gagal", r.error.message, "warn");
-    patchTen({ hki: [[...data, r.data.id], ...t.hki] as never });
+  /* Eskalasi = pengajuan nyata ke antrean advokat, membawa isi temuan apa adanya. */
+  const ajukanTemuan = (x: Temuan) => {
+    pushQueue(`Dugaan pelanggaran HKI — ${x.judul}`, `Sumber: ${x.sumber} · ditemukan ${x.tgl}`, "c-gold", "ESKALASI",
+      undefined, `Judul temuan: ${x.judul}
+Sumber: ${x.sumber}
+Tautan: ${x.url || "—"}
+Tanggal ditemukan: ${x.tgl}
+
+Catatan pelapor:
+${x.catatan || "—"}`);
+    toast("Diajukan ke advokat", "Temuan masuk antrean verifikasi — advokat menilai langkah penindakannya.", "ok");
   };
 
   /* Loader statis 5 detik untuk setiap pemrosesan Due Diligence (arahan owner) —
@@ -211,15 +232,19 @@ export default function Asset() {
             </table>
           </div>
           <div className="grid g2 mt16">
-            <Panel title="Watcher Pelanggaran — Desain Kemasan Seri B">
-              <div className="flag">
-                <b>Produk serupa terdeteksi di marketplace</b>
-                <span>Skor kemiripan 0,87 (nama + visual) · bukti otomatis diarsip: tangkapan layar + URL + stempel waktu.</span>
-              </div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <button className="btn btn-line btn-sm" onClick={() => void catatWatcher("bukti")}>Lihat Bukti</button>
-                <button className="btn btn-gold btn-sm" onClick={() => void enforcement()}><Scale size={12} /> Enforcement Strategy</button>
-                <button className="btn btn-line btn-sm" onClick={() => void catatWatcher("bukan")}>Bukan Pelanggaran</button>
+            <Panel title="Temuan Pelanggaran — Pencatatan Manual">
+              {temuan.length ? (
+                <div className="rows">
+                  {temuan.map((x) => (
+                    <Row key={x.id} b={x.judul} d={`${x.sumber} · ditemukan ${x.tgl}${x.url ? " · " + x.url : ""}`}
+                      right={<button className="btn btn-gold btn-sm" onClick={() => ajukanTemuan(x)}><Scale size={12} /> Ajukan ke advokat</button>} />
+                  ))}
+                </div>
+              ) : (
+                <p className="note" style={{ margin: 0 }}>Belum ada temuan tercatat. Corplex <b>tidak memantau marketplace secara otomatis</b> — temuan diisi manual oleh tim Anda, lalu dapat diajukan ke advokat MRWP untuk penindakan.</p>
+              )}
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
+                <button className="btn btn-gold btn-sm" onClick={() => setWOpen(true)}><Plus size={12} /> Catat Temuan</button>
               </div>
             </Panel>
             {/* NOL DUMMY: dua baris di sini dulu DIKARANG (Merek "CONTOH" 120 HARI, NDA Formula A)
@@ -261,6 +286,20 @@ export default function Asset() {
       )}
 
       <RecordModal mod={mod} open={mOpen} editRow={mEdit} tenantName={t.name} toast={toast} onClose={() => setMOpen(false)} onDone={onDone} prefill={pfill} prefillFile={pfile} />
+
+      {/* Pencatatan temuan pelanggaran — semua isian dari manusia, nol deteksi otomatis. */}
+      <Modal right open={wOpen} title="Catat Temuan Pelanggaran" onClose={() => setWOpen(false)}
+        footer={<>
+          <button className="btn btn-line" onClick={() => setWOpen(false)}>Batal</button>
+          <button className="btn btn-gold" disabled={wSimpan} aria-busy={wSimpan} onClick={() => void simpanTemuan()}>{wSimpan ? "Menyimpan…" : "Simpan Temuan"}</button>
+        </>}>
+        <Field label="Judul temuan *"><input value={wForm.judul} placeholder="mis. Kemasan mirip Seri B dijual pihak lain" onChange={(e) => setWForm({ ...wForm, judul: e.target.value })} /></Field>
+        <Field label="Sumber *"><input value={wForm.sumber} placeholder="mis. Marketplace X · laporan distributor · temuan lapangan" onChange={(e) => setWForm({ ...wForm, sumber: e.target.value })} /></Field>
+        <Field label="Tautan bukti (opsional)"><input value={wForm.url} placeholder="https://…" onChange={(e) => setWForm({ ...wForm, url: e.target.value })} /></Field>
+        <Field label="Tanggal ditemukan"><input type="date" value={wForm.tgl} onChange={(e) => setWForm({ ...wForm, tgl: e.target.value })} /></Field>
+        <Field label="Catatan"><textarea rows={4} value={wForm.catatan} placeholder="Uraian singkat: apa yang mirip, sejak kapan, dampak yang terlihat." onChange={(e) => setWForm({ ...wForm, catatan: e.target.value })} /></Field>
+        <p className="note">Corplex tidak memindai marketplace dan tidak menghitung skor kemiripan. Temuan ini murni catatan tim Anda — nilainya sebagai bukti terletak pada sumber dan tanggal yang Anda isi sendiri.</p>
+      </Modal>
       {xlsx.modal}
     </ModuleShell>
   );

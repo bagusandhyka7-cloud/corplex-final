@@ -9,7 +9,7 @@ export interface Doc { name: string; sub: string; status: string; cls: string; v
 export interface SP { t: string; tgl: string; exp: string; expISO: string; alasan: string; dok: string; ver: boolean; st?: string }
 export interface Emp {
   id?: string; foto?: string | null; n: string; j: string; jk: "L" | "P"; wn: "TKI" | "TKA"; lok: boolean; s: "PKWT" | "PKWTT"; m: string; sisa: number | null; hari?: string | null; komp: string; pat: string; rem: boolean; dok: string; sp?: SP[]; prov?: string; kota?: string; desa?: string;
-  nik?: string; kk?: string; npwp?: string; bpjsKes?: string; bpjsTk?: string; sim?: string; pend?: string; lahir?: string; dept?: string; kdNama?: string; kdTelp?: string; pengalaman?: string; dokUrl?: string;
+  nik?: string; kk?: string; npwp?: string; bpjsKes?: string; bpjsTk?: string; sim?: string; pend?: string; lahir?: string; dept?: string; kdNama?: string; kdTelp?: string; pengalaman?: string; dokUrl?: string; dokHash?: string;
   agama?: string; nikah?: string; golDarah?: string; bankNama?: string; bankRek?: string; alamatKtp?: string; pendInst?: string;
   gajiPokok?: number | null; tunjTetap?: number | null; upah?: number | null; mulaiKerja?: string; akhirKontrak?: string;
 }
@@ -496,7 +496,10 @@ export interface Tool { ic: string; t: string; s: string; kind: "drop" | "mono" 
 export const TOOLS: Tool[] = [
   { ic: "convert", t: "Konversi Dokumen", s: "PDF ↔ Word · OCR pindaian", kind: "drop", drop: ["Letakkan berkas di sini", "PDF → Word · Word → PDF · OCR dokumen hukum berbahasa Indonesia"], dropToast: ["Konversi dijalankan", "Worker LibreOffice headless — hasil masuk vault sebagai berkas turunan menunjuk berkas asal."] },
   { ic: "clip", t: "Manajemen PDF", s: "Merge · split · watermark", kind: "drop", drop: ["Letakkan PDF di sini", "Gabung · pecah per rentang halaman · watermark"], dropToast: ["PDF diproses", "Merge/split/watermark server-side — watermark kustom tenant."] },
-  { ic: "sign", t: "Keabsahan Dokumen", s: "Digital Signature · QR Verify", kind: "mono", mono: "<b>GET /verify/8fa3-…-c21 (publik)</b>\nJudul   : Addendum_PK_6_PKWT.docx\nStatus  : TERVERIFIKASI ADVOKAT ✓\nHash    : COCOK ✓ (SHA-256)\nTtd     : Adv. Ratna P., S.H. — MRWP\n\nVerifikasi publik <b>tanpa membuka isi dokumen</b>." },
+  /* Subjudul kartu ini dulu berbunyi "Digital Signature · QR Verify" dan contoh mono-nya
+   * memperagakan hasil verifikasi ber-ttd yang TIDAK PERNAH ADA mesinnya. Contoh itu memang
+   * tak pernah dirender (dead data), tapi subjudulnya tampil di kartu — klaim dicabut. */
+  { ic: "sign", t: "Keabsahan Dokumen", s: "Belum tersedia", kind: "mono" },
   { ic: "note", t: "AI Summarizer", s: "Ringkasan berlapis", kind: "mono", mono: "<b>RINGKASAN EKSEKUTIF — Perjanjian Jasa Vendor (17 pasal):</b>\nPerikatan jasa logistik 12 bulan senilai Rp 250 jt. Tiga titik perhatian: denda sepihak (Ps.7), pengakhiran tak seimbang (Ps.12), forum SIAC (Ps.15).\n\n<b>PER BAGIAN:</b> tersedia ringkasan per pasal — panjang keluaran proporsional paket." },
   { ic: "globe", t: "AI Translator", s: "ID ↔ EN · glosarium hukum", kind: "mono", mono: '<b>ID:</b> "wanprestasi" → <b>EN:</b> "breach of contract / default"\n<b>ID:</b> "somasi" → <b>EN:</b> "formal demand letter"\n\nGlosarium terkelola — koreksi advokat memperbaiki hasil berikutnya.' },
   { ic: "key", t: "AI Clause Extraction", s: "Ekstraksi klausul kunci", kind: "mono", mono: '{ "pihak": ["PT Contoh Sejahtera","CV Mitra Kirim"],\n  "nilai": 250000000, "jangka_waktu": "12 bulan",\n  "pengakhiran": "sepihak — Ps.12 ⚠",\n  "sanksi": "denda 5%/hari ⚠", "sengketa": "SIAC ⚠" }\n\nJSON terstruktur — otomatis mengisi metadata rekam kontraktual.' },

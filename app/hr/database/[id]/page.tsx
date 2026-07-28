@@ -4,7 +4,7 @@ import { ArrowLeft, Download, Briefcase, GraduationCap, HeartPulse, ShieldAlert,
 import { useStore } from "@/lib/store";
 import { downloadDoc, vaultUrl } from "@/lib/vault";
 import { api, AttRow } from "@/lib/api";
-import { Chip, Field, Panel, Row, ViewHead } from "@/components/ui";
+import { Chip, Field, Panel, Row, ViewHead, HashChip } from "@/components/ui";
 import { useRouter } from "next/navigation";
 
 /* SP karyawan = rekam module_records (module 'sp') milik nama ini — satu sumber dgn submenu Surat Peringatan. */
@@ -249,6 +249,7 @@ export default function EmployeeProfile({ params }: { params: Promise<{ id: stri
               {det.wn === "TKA" ? <Row b="Pengesahan RPTKA" d="Wajib bagi TKA · masa berlaku dipantau fungsi JAGA" right={<Chip c="c-ver">TERTAUT</Chip>} /> : null}
             </div>
             {/* Preview dropdown — tertutup = panel sepadat bagian SP */}
+            <HashChip hash={det.dokHash} />
             {dokOpen && <DocViewer url={det.dokUrl || vaultUrl(det.dok)} name={det.dok || "DOKUMEN KERJA"} />}
           </Panel>
 

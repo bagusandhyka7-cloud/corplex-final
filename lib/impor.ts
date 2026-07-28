@@ -77,6 +77,34 @@ export function buatTemplateSatu(sheetName: string) {
 }
 
 const norm = (s: unknown) => String(s ?? "").toLowerCase().replace(/[*]/g, "").trim();
+/* Kunci pencocokan header: buang SEMUA yang bukan huruf/angka. "Nama Lengkap *", "nama_lengkap",
+ * "NAMA  LENGKAP", dan "Nama-Lengkap" jadi kunci yang sama. */
+const kunci = (s: unknown) => norm(s).replace(/[^a-z0-9]+/g, "");
+
+/* Petakan header sheet → key field. Tiga tahap, berhenti pada yang pertama meyakinkan:
+ *   1. sama persis setelah normalisasi (menutup beda kapital/spasi/underscore/tanda baca)
+ *   2. header memuat label atau sebaliknya, DAN hanya satu field yang cocok (mis. "Nama" → "Nama Lengkap")
+ *   3. tak meyakinkan / ganda → null; kolomnya dilewati dan dilaporkan
+ * SENGAJA TANPA tebakan posisi kolom: menebak urutan persis cara data mendarat di kolom yang
+ * salah tanpa ada yang sadar. Header tak dikenal lebih baik dilaporkan daripada ditebak.
+ * ponytail: pencocokan sinonim (mis. "Nomor Izin" vs "No. Izin") menunggu contoh berkas nyata. */
+export function petakanHeader(headers: unknown[], fields: RecField[]): { keys: (string | null)[]; takDikenal: string[]; ganda: string[] } {
+  const takDikenal: string[] = [];
+  const ganda: string[] = [];
+  const terpakai = new Set<string>();
+  const keys = headers.map((h) => {
+    const hk = kunci(h);
+    if (!hk) return null;                                    // kolom tanpa judul
+    const persis = fields.find((f) => kunci(f.l) === hk);
+    if (persis && !terpakai.has(persis.k)) { terpakai.add(persis.k); return persis.k; }
+    const dekat = fields.filter((f) => !terpakai.has(f.k) && (kunci(f.l).startsWith(hk) || hk.startsWith(kunci(f.l))));
+    if (dekat.length === 1) { terpakai.add(dekat[0].k); return dekat[0].k; }
+    if (dekat.length > 1) ganda.push(String(h));
+    else takDikenal.push(String(h));
+    return null;
+  });
+  return { keys, takDikenal, ganda };
+}
 /* Excel menyimpan tanggal sebagai ANGKA SERI (mis. 46968). Tanpa penanganan, tenggat hukum
  * tersimpan sebagai angka omong kosong. cellDates:true → objek Date, lalu dinormalkan ke
  * YYYY-MM-DD (format yang dipakai form & <input type="date">). */
@@ -88,29 +116,39 @@ export type ParsedItem = { mod: string; label: string; vals: Record<string, stri
 
 /* Parse workbook terisi → daftar item siap simpan (per baris). Baris kosong/contoh/tanpa field wajib dilewati.
  * Pemetaan kolom deterministik: header sheet → label field → key. */
-export function parseWorkbook(buf: ArrayBuffer): { items: ParsedItem[]; skipped: number; unknownSheets: string[] } {
+export function parseWorkbook(buf: ArrayBuffer): { items: ParsedItem[]; skipped: number; unknownSheets: string[]; peringatan: string[] } {
   const wb = XLSX.read(buf, { type: "array", cellDates: true });
   const items: ParsedItem[] = [];
   let skipped = 0;
   const unknownSheets: string[] = [];
+  const peringatan: string[] = [];
   for (const name of wb.SheetNames) {
-    const cfg = SHEETS.find((s) => norm(s.sheet) === norm(name));
+    const cfg = SHEETS.find((s) => kunci(s.sheet) === kunci(name));
     if (!cfg) { unknownSheets.push(name); continue; }
     const rows = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[name], { header: 1, defval: "" });
     if (rows.length < 2) continue;
-    const colKey = (rows[0] as unknown[]).map((h) => cfg.fields.find((f) => norm(f.l) === norm(h))?.k ?? null);
+    const { keys: colKey, takDikenal, ganda } = petakanHeader(rows[0] as unknown[], cfg.fields);
+    takDikenal.forEach((h) => peringatan.push(`Sheet "${name}": kolom "${h}" tak dikenal — isinya TIDAK diimpor.`));
+    ganda.forEach((h) => peringatan.push(`Sheet "${name}": kolom "${h}" cocok ke lebih dari satu field — isinya TIDAK diimpor (ganti judul kolom agar persis seperti template).`));
+    /* Field WAJIB yang kolomnya tak ketemu = sheet ditolak. Mengimpor separuh data pada modul
+     * hukum lebih berbahaya daripada tidak mengimpor sama sekali. */
+    const wajib = cfg.fields.filter((f) => f.l.includes("*"));
+    const wajibHilang = wajib.filter((f) => !colKey.includes(f.k));
+    if (wajibHilang.length) {
+      peringatan.push(`Sheet "${name}" DILEWATI — kolom wajib tak ditemukan: ${wajibHilang.map((f) => f.l.replace(" *", "")).join(", ")}.`);
+      continue;
+    }
     for (const row of rows.slice(1)) {
       const vals: Record<string, string> = {};
       colKey.forEach((k, i) => { if (k) vals[k] = selVal((row as unknown[])[i]); });
       if (!Object.values(vals).some(Boolean)) continue; // baris kosong
-      const wajib = cfg.fields.filter((f) => f.l.includes("*"));
       if (wajib.some((f) => !vals[f.k])) { skipped++; continue; }
       // lewati baris contoh bawaan template
       if (cfg.fields.every((f) => vals[f.k] === (f.opts ? f.opts[0] : f.ph || "") || !vals[f.k])) continue;
       items.push({ mod: cfg.mod, label: vals[cfg.fields[0].k], vals });
     }
   }
-  return { items, skipped, unknownSheets };
+  return { items, skipped, unknownSheets, peringatan };
 }
 
 const angka = (s?: string) => (s ? Number(s.replace(/[^\d]/g, "")) || null : null);

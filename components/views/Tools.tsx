@@ -90,7 +90,9 @@ function Translator() {
 /* Semua alat = INPUT FILE SAJA (tanpa ketik manual); Comparison butuh 2 berkas. */
 const STUB_KEY: Record<string, { key: string; dua?: boolean; ket: string }> = {
   "Konversi Dokumen": { key: "convert", ket: "PDF · Word · pindaian dokumen hukum." },
-  "Keabsahan Dokumen": { key: "sign", ket: "Dokumen final untuk stempel & tanda tangan digital." },
+  /* Namanya menjanjikan stempel & ttd digital, tapi mesinnya BELUM ADA — ket-nya tak boleh
+   * berbunyi seolah kemampuan itu sudah tersedia. Klik tetap dijawab pesan stub yang jujur. */
+  "Keabsahan Dokumen": { key: "sign", ket: "Belum tersedia — mesin verifikasi keabsahan belum dibangun." },
   "AI Summarizer": { key: "summarize", ket: "Perjanjian/kontrak yang ingin diringkas per pasal." },
   "AI Clause Extraction": { key: "clause", ket: "Kontrak — pasal kunci diekstrak jadi metadata terstruktur." },
   "AI Comparison": { key: "compare", dua: true, ket: "Dua versi kontrak yang ingin dibandingkan." },

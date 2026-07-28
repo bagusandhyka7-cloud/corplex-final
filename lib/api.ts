@@ -15,13 +15,33 @@ export const ok = <T,>(data: T): ApiResult<T> => ({ ok: true, data });
 
 /* Satu pesan pada utas pengajuan advokat (verification_queue.msgs). `by` ditentukan SERVER
  * (is_super() di dalam vq_append_msg) — klien tak bisa mengaku sebagai advokat. */
-export type VqMsg = { at: string; by: "advokat" | "klien"; text: string; dok_url: string | null; dok_nama: string | null };
+export type VqMsg = { at: string; by: "advokat" | "klien"; text: string; dok_url: string | null; dok_nama: string | null; dok_hash?: string | null };
 
 /* Append atomik lewat RPC — hindari baca-ubah-tulis yang menimpa pesan lawan bicara
  * ketika advokat & klien menulis nyaris bersamaan. */
 async function appendMsg(id: string, text: string, dok?: { url: string; nama: string }): Promise<ApiResult<VqMsg[]>> {
   const { data, error } = await sb.rpc("vq_append_msg", { p_id: id, p_text: text, p_dok_url: dok?.url ?? null, p_dok_nama: dok?.nama ?? null });
-  return error ? err("server", "Gagal menyimpan pesan.") : ok((data || []) as VqMsg[]);
+  if (error) return err("server", "Gagal menyimpan pesan.");
+  /* NULL = nol baris cocok. Untuk klien penyebabnya selalu sama: pengajuan sudah diputus,
+   * jadi fungsi menolak menambah pesan (lihat migrasi vq_append_msg_tolak_pengajuan_tertutup). */
+  if (data == null) return err("validation", "Pengajuan ini sudah diputus advokat — percakapannya ditutup.");
+  return ok(data as VqMsg[]);
+}
+
+/* Minta server menghitung SHA-256 isi dokumen milik baris ini lalu menyimpannya.
+ * Klien TIDAK mengirim nilai hash — hanya menyebut barisnya; server yang mengunduh & menghitung.
+ * Sengaja fire-and-forget: hash adalah pelengkap integritas, bukan syarat rekam tersimpan —
+ * kalau gagal, rekam & dokumennya tetap sah dengan dok_hash NULL dan bisa dihitung ulang nanti.
+ * ponytail: hitung ulang massal (backfill) belum ada — tambahkan bila dokumen lama perlu hash. */
+export function mintaHash(kind: "rec" | "emp" | "vq" | "vqmsg" | "doc", id: string) {
+  void sb.auth.getSession().then(({ data }) => {
+    const token = data.session?.access_token;
+    if (!token) return; // jalur demo/seed tanpa sesi Supabase — lewati diam-diam
+    void fetch("/api/hash", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ kind, id, token }),
+    }).catch(() => {});
+  });
 }
 
 /* Simulated network transport: latency + abort support. Deterministic by default
@@ -151,11 +171,13 @@ export const api = {
     async create(tid: string, rec: Partial<EmpRow>): Promise<ApiResult<EmpRow>> {
       const { data, error } = await sb.from("employees").insert({ ...rec, tenant_id: tid }).select().single();
       if (error) return err("server", "Gagal menyimpan karyawan.");
+      if (rec.dok_url) mintaHash("emp", data.id); // hash isi dokumen kerja (foto tidak di-hash)
       return ok(data as EmpRow);
     },
     async update(id: string, rec: Partial<EmpRow>): Promise<ApiResult<EmpRow>> {
       const { data, error } = await sb.from("employees").update({ ...rec, updated_at: new Date().toISOString() }).eq("id", id).select().single();
       if (error) return err("server", "Gagal memperbarui karyawan.");
+      if (rec.dok_url !== undefined) mintaHash("emp", id);
       return ok(data as EmpRow);
     },
     async remove(id: string): Promise<ApiResult<null>> {
@@ -283,7 +305,9 @@ export const api = {
       const { data, error } = await sb.from("verification_queue")
         .insert({ tenant_id: tenantId, title, meta, chip, label, created_by: extra?.by || null, ref_mod: r0?.mod || null, ref_id: r0?.id || null, refs: extra?.refs || [], detail: extra?.detail || null, dok_url: extra?.dok?.url || null, dok_nama: extra?.dok?.nama || null })
         .select("id").single();
-      return error ? err("server", "Gagal mengirim ke antrean.") : ok(data);
+      if (error) return err("server", "Gagal mengirim ke antrean.");
+      if (extra?.dok?.url) mintaHash("vq", data.id); // hash lampiran pengajuan klien
+      return ok(data);
     },
     /* admin membuka detail: masuk → meninjau (tersinkron ke timeline klien via realtime) */
     async review(id: string) {
@@ -303,8 +327,8 @@ export const api = {
     async reply(id: string, text: string, dok?: { url: string; nama: string }) {
       const a = await appendMsg(id, text, dok);
       if (!a.ok) return a;
-      const { error } = await sb.from("verification_queue").update({ note: "BALASAN KLIEN: " + text }).eq("id", id);
-      return error ? err("server", "Gagal mengirim balasan.") : ok(a.data);
+      if (dok?.url) mintaHash("vqmsg", id); // hash lampiran susulan di dalam utas
+      return ok(a.data);
     },
     async decide(id: string, status: "verified" | "rejected", note: string) {
       const a = await appendMsg(id, note);
@@ -375,14 +399,15 @@ export const api = {
       if (error) return err("network", "Gagal memuat rekam modul.");
       return ok(data);
     },
-    async get(id: string): Promise<ApiResult<{ id: string; module: string; data: unknown; dok_url: string | null; dok_nama: string | null; created_at: string; source: string }>> {
-      const { data, error } = await sb.from("module_records").select("id,module,data,dok_url,dok_nama,created_at,source").eq("id", id).single();
+    async get(id: string): Promise<ApiResult<{ id: string; module: string; data: unknown; dok_url: string | null; dok_nama: string | null; dok_hash: string | null; created_at: string; source: string }>> {
+      const { data, error } = await sb.from("module_records").select("id,module,data,dok_url,dok_nama,dok_hash,created_at,source").eq("id", id).single();
       if (error) return err("network", "Rekam tidak ditemukan.");
       return ok(data);
     },
     async create(tid: string, module: string, data: unknown, source = "manual", dok?: { url: string; nama: string }): Promise<ApiResult<{ id: string }>> {
       const { data: row, error } = await sb.from("module_records").insert({ tenant_id: tid, module, data, source, dok_url: dok?.url ?? null, dok_nama: dok?.nama ?? null }).select("id").single();
       if (error) return err("server", "Gagal menyimpan rekam.");
+      if (dok?.url) mintaHash("rec", row.id); // hash isi dokumen dihitung server
       return ok(row);
     },
     /* Dokumen rekam modul → bucket module-docs. */
@@ -397,7 +422,10 @@ export const api = {
       const patch: Record<string, unknown> = { data, updated_at: new Date().toISOString() };
       if (dok !== undefined) { patch.dok_url = dok?.url ?? null; patch.dok_nama = dok?.nama ?? null; }
       const { error } = await sb.from("module_records").update(patch).eq("id", id);
-      return error ? err("server", "Gagal memperbarui rekam.") : ok(null);
+      if (error) return err("server", "Gagal memperbarui rekam.");
+      /* Berkas berganti/dihapus → hash lama tak berlaku; server menghitung ulang dari berkas baru. */
+      if (dok !== undefined) mintaHash("rec", id);
+      return ok(null);
     },
     async remove(id: string): Promise<ApiResult<null>> {
       const { error } = await sb.from("module_records").delete().eq("id", id);
@@ -411,12 +439,13 @@ export const api = {
   },
 };
 
-export type InviteRow = { code: string; email_target: string | null; tier: string; seats: number; expires_at: string | null; status: string; used_count: number; max_uses: number; created_at: string };
+export type InviteRow = { code: string; email_target: string | null; tier: string; seats: number; expires_at: string | null; status: string; used_count: number; max_uses: number; created_at: string; sent_at: string | null };
 
 export type AttRow = { id: string; tenant_id: string; employee_id: string; periode: string; hadir: number; izin: number; sakit: number; alpha: number };
 
 /* Baris tabel employees ↔ bentuk UI `Emp` (lib/data.ts). */
 export type EmpRow = {
+  dok_hash?: string | null; // SHA-256 isi dok_url — ditulis server, tak pernah dikirim klien
   id: string; tenant_id: string; nama: string; jabatan: string; jk: "L" | "P"; wn: "TKI" | "TKA";
   lok: boolean; status: "PKWT" | "PKWTT"; masa: string; sisa: number | null; komp: string; pat: string;
   rem: boolean; dok: string; prov: string | null; kota: string | null; desa: string | null;
@@ -436,7 +465,7 @@ export const empFromRow = (r: EmpRow) => ({
   bpjsKes: r.bpjs_kes || undefined, bpjsTk: r.bpjs_tk || undefined, sim: r.sim || undefined,
   pend: r.pendidikan || undefined, lahir: r.tgl_lahir || undefined, dept: r.departemen || undefined,
   kdNama: r.kontak_darurat_nama || undefined, kdTelp: r.kontak_darurat_telp || undefined,
-  pengalaman: r.pengalaman || undefined, dokUrl: r.dok_url || undefined,
+  pengalaman: r.pengalaman || undefined, dokUrl: r.dok_url || undefined, dokHash: r.dok_hash || undefined,
   agama: r.agama || undefined, nikah: r.status_nikah || undefined, golDarah: r.gol_darah || undefined,
   bankNama: r.bank_nama || undefined, bankRek: r.bank_rekening || undefined,
   alamatKtp: r.alamat_ktp || undefined, pendInst: r.pendidikan_institusi || undefined,
@@ -516,7 +545,7 @@ export const admin = {
   async removeSeat(email: string) { return adminPost<{ ok: true }>("removeSeat", { email }); },
   /* Kirim kode undangan ke email calon klien. Server membaca email/tier/tenggat dari DB — panel
    * cuma menyebut kodenya. `sandbox:true` = email tertahan di Mailtrap, belum sampai ke user. */
-  async sendInvite(code: string) { return adminPost<{ to: string; mode: "gmail" | "sandbox" | "mailtrap"; id: string }>("sendInvite", { code }); },
+  async sendInvite(code: string) { return adminPost<{ to: string; mode: "gmail" | "sandbox" | "mailtrap"; id: string; sent_at: string }>("sendInvite", { code }); },
   async logView(tenant: string) { return adminPost<{ ok: true }>("logView", { tenant }); },
   async listAudit() { return adminPost<{ action: string; detail: unknown; actor: string | null; created_at: string }[]>("listAudit"); },
   async metrics() { return adminPost<{ metrics: { tenantAktif: number; tenantPending: number; aktif30h: number; karyawan: number; dokumen: number; perModul: Record<string, number>; vqMasuk: number; vqVerified: number } }>("metrics", {}); },
