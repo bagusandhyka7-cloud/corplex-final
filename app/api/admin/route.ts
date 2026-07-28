@@ -186,7 +186,11 @@ export async function POST(req: NextRequest) {
       if (!inv.email_target) return Response.json({ error: "Kode ini generik (tanpa email tujuan) — buat kode dengan email, atau salin manual." }, { status: 400 });
       if (inv.status !== "active") return Response.json({ error: `Kode berstatus ${inv.status} — tak layak dikirim.` }, { status: 400 });
 
-      const url = `${req.nextUrl.origin}/login?kode=${encodeURIComponent(inv.code)}`;
+      /* Tautan email WAJIB memakai alamat yang bisa dibuka penerima. `req.nextUrl.origin` di dev
+       * menghasilkan http://localhost:3000 — tak bisa diklik siapa pun selain mesin ini, dan
+       * tautan localhost di email publik juga sinyal spam. APP_URL diisi saat deploy. */
+      const base = (process.env.APP_URL || req.nextUrl.origin).replace(/\/+$/, "");
+      const url = `${base}/login?kode=${encodeURIComponent(inv.code)}`;
       const tenggat = inv.expires_at
         ? new Date(inv.expires_at).toLocaleString("id-ID", { dateStyle: "long", timeStyle: "short", timeZone: "Asia/Jakarta" }) + " WIB"
         : "tanpa batas waktu";
