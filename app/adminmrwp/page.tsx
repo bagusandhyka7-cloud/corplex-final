@@ -414,10 +414,11 @@ function AdminInner() {
     const r = await admin.sendInvite(code);
     setKirimKode(null);
     if (!r.ok) { toast("Gagal mengirim", r.error.message, "warn"); return; }
-    log(`Kode ${code} dikirim ke ${r.data.to}${r.data.sandbox ? " (sandbox)" : ""}`);
-    toast(r.data.sandbox ? "Terkirim ke SANDBOX" : "Kode terkirim",
-      r.data.sandbox ? `Tertahan di Mailtrap untuk ${r.data.to} — belum sampai ke inbox sungguhan (menunggu domain).` : `${r.data.to} menerima kode ${code}.`,
-      r.data.sandbox ? "warn" : "ok");
+    const sandbox = r.data.mode === "sandbox";
+    log(`Kode ${code} dikirim ke ${r.data.to} (${r.data.mode})`);
+    toast(sandbox ? "Terkirim ke SANDBOX" : "Kode terkirim",
+      sandbox ? `Tertahan di Mailtrap untuk ${r.data.to} — belum sampai ke inbox sungguhan.` : `${r.data.to} menerima kode ${code} di inboxnya.`,
+      sandbox ? "warn" : "ok");
   };
 
   const { run: buatKode, pending: making } = useAsyncAction(async () => {

@@ -6,6 +6,7 @@
 import { NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { limited, tooMany } from "@/lib/ratelimit";
+import { sendMail } from "@/lib/mail";
 
 const svc = () => createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -178,8 +179,6 @@ export async function POST(req: NextRequest) {
      * (email tertahan, tak sampai ke user); dikosongkan → jalur kirim sungguhan (butuh domain
      * terverifikasi di Mailtrap). */
     if (op === "sendInvite") {
-      const token2 = process.env.MAILTRAP_TOKEN;
-      if (!token2) return Response.json({ error: "MAILTRAP_TOKEN belum diisi di .env.local." }, { status: 501 });
       const code = String(args?.code || "").trim();
       if (!code) return Response.json({ error: "code wajib" }, { status: 400 });
       const { data: inv } = await sb.from("invitations").select("code,email_target,tier,seats,expires_at,status").eq("code", code).maybeSingle();
@@ -202,25 +201,13 @@ export async function POST(req: NextRequest) {
 <p style="font-size:12px;color:#5a6472;line-height:1.7">Kode hanya dapat dipakai satu kali — jangan teruskan kepada pihak lain. Bila tautan tidak dapat diklik, salin alamat ini: ${url}</p>
 </div>`;
 
-      const inbox = process.env.MAILTRAP_INBOX_ID;
-      const endpoint = inbox ? `https://sandbox.api.mailtrap.io/api/send/${inbox}` : "https://send.api.mailtrap.io/api/send";
-      const r = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Api-Token": token2, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          from: { email: process.env.MAILTRAP_FROM || "no-reply@corplex.test", name: "Corplex — MRWP Law Firm" },
-          to: [{ email: inv.email_target }],
-          subject: `Kode undangan Corplex — ${inv.code}`,
-          text: teks, html, category: "invite",
-        }),
-      });
-      const body = await r.json().catch(() => ({}));
-      if (!r.ok || !body?.success) {
-        console.error("[api/admin] sendInvite mailtrap", r.status, body);
-        return Response.json({ error: `Mailtrap menolak (HTTP ${r.status}) — periksa token/domain pengirim.` }, { status: 502 });
+      const sent = await sendMail({ to: inv.email_target, subject: `Kode undangan Corplex — ${inv.code}`, text: teks, html });
+      if (!sent.ok) {
+        console.error("[api/admin] sendInvite", sent.error);
+        return Response.json({ error: sent.error }, { status: 502 });
       }
-      await sb.from("audit_logs").insert({ action: "kirim_kode_undangan", detail: { code: inv.code, to: inv.email_target, sandbox: !!inbox }, actor: "adminmrwp" });
-      return Response.json({ ok: true, to: inv.email_target, sandbox: !!inbox });
+      await sb.from("audit_logs").insert({ action: "kirim_kode_undangan", detail: { code: inv.code, to: inv.email_target, mode: sent.mode, message_id: sent.id }, actor: "adminmrwp" });
+      return Response.json({ ok: true, to: inv.email_target, mode: sent.mode, id: sent.id });
     }
 
     /* Jejak audit NYATA utk Beranda panel (dulu string sesi in-memory — buatan). */

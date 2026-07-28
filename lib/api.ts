@@ -516,7 +516,7 @@ export const admin = {
   async removeSeat(email: string) { return adminPost<{ ok: true }>("removeSeat", { email }); },
   /* Kirim kode undangan ke email calon klien. Server membaca email/tier/tenggat dari DB — panel
    * cuma menyebut kodenya. `sandbox:true` = email tertahan di Mailtrap, belum sampai ke user. */
-  async sendInvite(code: string) { return adminPost<{ to: string; sandbox: boolean }>("sendInvite", { code }); },
+  async sendInvite(code: string) { return adminPost<{ to: string; mode: "gmail" | "sandbox" | "mailtrap"; id: string }>("sendInvite", { code }); },
   async logView(tenant: string) { return adminPost<{ ok: true }>("logView", { tenant }); },
   async listAudit() { return adminPost<{ action: string; detail: unknown; actor: string | null; created_at: string }[]>("listAudit"); },
   async metrics() { return adminPost<{ metrics: { tenantAktif: number; tenantPending: number; aktif30h: number; karyawan: number; dokumen: number; perModul: Record<string, number>; vqMasuk: number; vqVerified: number } }>("metrics", {}); },
