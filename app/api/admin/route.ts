@@ -171,6 +171,58 @@ export async function POST(req: NextRequest) {
       return Response.json({ ok: true });
     }
 
+    /* KIRIM KODE UNDANGAN KE EMAIL CALON KLIEN (semi-otomatis: admin yang menekan Kirim).
+     * Klien hanya mengirim `code` — email tujuan, tier, dan tenggat DIBACA DARI DB, jadi panel
+     * tak bisa dipakai mengirim teks sembarang ke alamat sembarang.
+     * Sandbox vs produksi = beda ENV, bukan beda kode: MAILTRAP_INBOX_ID terisi → sandbox
+     * (email tertahan, tak sampai ke user); dikosongkan → jalur kirim sungguhan (butuh domain
+     * terverifikasi di Mailtrap). */
+    if (op === "sendInvite") {
+      const token2 = process.env.MAILTRAP_TOKEN;
+      if (!token2) return Response.json({ error: "MAILTRAP_TOKEN belum diisi di .env.local." }, { status: 501 });
+      const code = String(args?.code || "").trim();
+      if (!code) return Response.json({ error: "code wajib" }, { status: 400 });
+      const { data: inv } = await sb.from("invitations").select("code,email_target,tier,seats,expires_at,status").eq("code", code).maybeSingle();
+      if (!inv) return Response.json({ error: "Kode tidak ditemukan." }, { status: 404 });
+      if (!inv.email_target) return Response.json({ error: "Kode ini generik (tanpa email tujuan) — buat kode dengan email, atau salin manual." }, { status: 400 });
+      if (inv.status !== "active") return Response.json({ error: `Kode berstatus ${inv.status} — tak layak dikirim.` }, { status: 400 });
+
+      const url = `${req.nextUrl.origin}/login?kode=${encodeURIComponent(inv.code)}`;
+      const tenggat = inv.expires_at
+        ? new Date(inv.expires_at).toLocaleString("id-ID", { dateStyle: "long", timeStyle: "short", timeZone: "Asia/Jakarta" }) + " WIB"
+        : "tanpa batas waktu";
+      const teks = `Kode undangan Corplex Anda: ${inv.code}\n\nPaket: ${inv.tier} · ${inv.seats} kursi pengguna\nBerlaku sampai: ${tenggat}\n\nBuka tautan berikut untuk mendaftarkan perusahaan Anda (kode terisi otomatis):\n${url}\n\nKode ini hanya dapat dipakai satu kali. Jangan teruskan kepada pihak lain.\n\nMRWP Law Firm — Corplex`;
+      const html = `<div style="font-family:Georgia,serif;max-width:520px;color:#0A1830">
+<p style="font-size:11px;letter-spacing:.18em;color:#B08A3E;margin:0 0 6px">MRWP LAW FIRM · CORPLEX</p>
+<h2 style="margin:0 0 14px;font-size:20px">Kode undangan Anda</h2>
+<p style="font-size:14px;line-height:1.7">Berikut kode undangan untuk mendaftarkan perusahaan Anda ke Corplex.</p>
+<p style="font-family:monospace;font-size:22px;letter-spacing:.12em;background:#F4F1E8;border:1px solid #D9BC80;border-radius:8px;padding:14px 18px;text-align:center;margin:18px 0">${inv.code}</p>
+<p style="font-size:13px;line-height:1.8;margin:0 0 18px">Paket <b>${inv.tier}</b> · ${inv.seats} kursi pengguna<br>Berlaku sampai: <b>${tenggat}</b></p>
+<p style="margin:0 0 18px"><a href="${url}" style="background:#0A1830;color:#D9BC80;text-decoration:none;padding:12px 22px;border-radius:8px;font-size:14px">Daftarkan Perusahaan</a></p>
+<p style="font-size:12px;color:#5a6472;line-height:1.7">Kode hanya dapat dipakai satu kali — jangan teruskan kepada pihak lain. Bila tautan tidak dapat diklik, salin alamat ini: ${url}</p>
+</div>`;
+
+      const inbox = process.env.MAILTRAP_INBOX_ID;
+      const endpoint = inbox ? `https://sandbox.api.mailtrap.io/api/send/${inbox}` : "https://send.api.mailtrap.io/api/send";
+      const r = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Api-Token": token2, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          from: { email: process.env.MAILTRAP_FROM || "no-reply@corplex.test", name: "Corplex — MRWP Law Firm" },
+          to: [{ email: inv.email_target }],
+          subject: `Kode undangan Corplex — ${inv.code}`,
+          text: teks, html, category: "invite",
+        }),
+      });
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok || !body?.success) {
+        console.error("[api/admin] sendInvite mailtrap", r.status, body);
+        return Response.json({ error: `Mailtrap menolak (HTTP ${r.status}) — periksa token/domain pengirim.` }, { status: 502 });
+      }
+      await sb.from("audit_logs").insert({ action: "kirim_kode_undangan", detail: { code: inv.code, to: inv.email_target, sandbox: !!inbox }, actor: "adminmrwp" });
+      return Response.json({ ok: true, to: inv.email_target, sandbox: !!inbox });
+    }
+
     /* Jejak audit NYATA utk Beranda panel (dulu string sesi in-memory — buatan). */
     if (op === "listAudit") {
       const { data, error } = await sb.from("audit_logs").select("action,detail,actor,created_at").order("created_at", { ascending: false }).limit(15);

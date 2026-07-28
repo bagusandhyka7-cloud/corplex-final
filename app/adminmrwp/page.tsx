@@ -5,7 +5,7 @@
  * Slice-1: menu Autentikasi & Akses (Kode Undangan / Akun & Seat / Approval Onboarding).
  */
 import React, { useEffect, useState } from "react";
-import { BadgeCheck, ChevronDown, Copy, Download, Gavel, KeyRound, LayoutDashboard, Lock, LogOut, Mail, Plus, ShieldCheck, Ticket, Trash2, UserPlus, Users } from "lucide-react";
+import { BadgeCheck, ChevronDown, Copy, Download, Gavel, KeyRound, LayoutDashboard, Lock, LogOut, Mail, Plus, Send, ShieldCheck, Ticket, Trash2, UserPlus, Users } from "lucide-react";
 import { StoreProvider, useStore } from "@/lib/store";
 import { admin, api, InviteRow, VqMsg } from "@/lib/api";
 import { sb } from "@/lib/supabase";
@@ -403,6 +403,21 @@ function AdminInner() {
     setVqSel((s) => (s && s.id === item.id ? { ...s, status, note, msgs: r.data } : s));
     log(`Advokat ${status === "verified" ? "SETUJUI" : "TOLAK"}: ${item.title} (${item.tenant_id})`);
     toast(status === "verified" ? "TERVERIFIKASI ADVOKAT ✓" : "Ditolak dengan catatan", status === "verified" ? "Keputusan tercatat · status klien diperbarui." : "Catatan dikirim — klien dapat memperbaiki & mengajukan ulang.", status === "verified" ? "ok" : "warn");
+  };
+
+  /* Kirim kode ke email calon klien — menggantikan salin-tempel ke WhatsApp/Gmail.
+   * Admin tetap yang memutuskan kapan dikirim (semi-otomatis, bukan otomatis penuh). */
+  const [kirimKode, setKirimKode] = useState<string | null>(null);
+  const kirimInvite = async (code: string, email?: string) => {
+    if (!email) { toast("Kode generik", "Kode ini dibuat tanpa email tujuan — salin tautannya, atau buat kode baru dengan email.", "warn"); return; }
+    setKirimKode(code);
+    const r = await admin.sendInvite(code);
+    setKirimKode(null);
+    if (!r.ok) { toast("Gagal mengirim", r.error.message, "warn"); return; }
+    log(`Kode ${code} dikirim ke ${r.data.to}${r.data.sandbox ? " (sandbox)" : ""}`);
+    toast(r.data.sandbox ? "Terkirim ke SANDBOX" : "Kode terkirim",
+      r.data.sandbox ? `Tertahan di Mailtrap untuk ${r.data.to} — belum sampai ke inbox sungguhan (menunggu domain).` : `${r.data.to} menerima kode ${code}.`,
+      r.data.sandbox ? "warn" : "ok");
   };
 
   const { run: buatKode, pending: making } = useAsyncAction(async () => {
@@ -889,6 +904,13 @@ function AdminInner() {
                             <td>
                               <div className="flex items-center gap-2">
                                 <button className="btn btn-line btn-sm" title="Salin link" onClick={() => { void navigator.clipboard?.writeText(`${location.origin}/login?kode=${x.code}`); toast("Link disalin", x.code, "ok"); }}><Copy size={11} /></button>
+                                {lbl === "AKTIF" && (
+                                  <button className="btn btn-gold btn-sm" disabled={kirimKode === x.code}
+                                    title={x.email ? `Kirim kode ke ${x.email}` : "Kode generik tanpa email tujuan — salin manual"}
+                                    onClick={() => void kirimInvite(x.code, x.email)}>
+                                    <Send size={11} /> {kirimKode === x.code ? "Mengirim…" : "Kirim"}
+                                  </button>
+                                )}
                                 {lbl === "AKTIF" && <button className="btn btn-red btn-sm" onClick={() => void cabut(x.code)}>Cabut</button>}
                               </div>
                             </td>
