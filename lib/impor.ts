@@ -52,6 +52,17 @@ const TAX_FIELDS: RecField[] = [
   { k: "status", l: "Status", opts: ["TERBUKA", "DIPENUHI"] },
 ];
 
+/* Perkara disimpan sebagai OBJEK (judul/jenis di dalam string tab & head, plus tl/bukti/biaya),
+ * bukan array RecRow seperti modul SPECS — jadi fieldnya didefinisikan di sini dan diterjemahkan
+ * di toPayload(). Hanya 4 kolom: sisanya (tahapan lanjutan, bukti, biaya) diisi di halaman detail
+ * karena butuh dokumen dan nominal, bukan hal yang wajar diimpor massal. */
+const CASE_FIELDS: RecField[] = [
+  { k: "judul", l: "Judul Perkara *", ph: "Wanprestasi CV Mitra Kirim" },
+  { k: "jenis", l: "Jenis", opts: ["Perdata", "Pidana", "PHI", "Kepailitan & PKPU", "Arbitrase", "PTUN", "Pertanahan", "Persaingan Usaha", "Sengketa Pajak"] },
+  { k: "tahap", l: "Tahapan Awal", ph: "Somasi I dikirim" },
+  { k: "tgl", l: "Tanggal Tahapan", ph: "2026-07-28" },
+];
+
 /* Sheet per modul: nama sheet → {mod, fields}. mod "emp" = tabel employees. */
 export const SHEETS: { sheet: string; mod: string; fields: RecField[] }[] = [
   { sheet: "Karyawan", mod: "emp", fields: EMP_FIELDS },
@@ -61,6 +72,7 @@ export const SHEETS: { sheet: string; mod: string; fields: RecField[] }[] = [
   { sheet: "Polis Asuransi", mod: "pol", fields: SPECS.pol.fields },
   { sheet: "Perjanjian", mod: "agr", fields: SPECS.agr.fields },
   { sheet: "Pajak", mod: "tax", fields: TAX_FIELDS },
+  { sheet: "Perkara", mod: "case", fields: CASE_FIELDS },
 ];
 
 /* Template per modul — dipakai daftar "Template Form" di Alat Legal. */
@@ -157,6 +169,20 @@ const angka = (s?: string) => (s ? Number(s.replace(/[^\d]/g, "")) || null : nul
  * modul SPECS → toData (array RecRow). */
 export function toPayload(item: ParsedItem, tenantName: string): RecRow | Record<string, unknown> {
   const v = item.vals;
+  if (item.mod === "case") {
+    /* Bentuk PERSIS seperti yang ditulis modul Perkara saat menambah manual — supaya rekam
+     * hasil impor dan hasil ketik tak bisa dibedakan oleh halaman detail. */
+    const judul = (v.judul || "").trim();
+    const jenis = v.jenis || "Perdata";
+    const tgl = v.tgl
+      ? new Date(v.tgl).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" }).toUpperCase()
+      : new Date().toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" }).toUpperCase();
+    return {
+      tab: `${jenis} — ${judul.slice(0, 24)}`, head: `Perkara: ${jenis} — ${judul}`,
+      tl: [[tgl, (v.tahap || "").trim() || "Perkara dibuka", "Diimpor dari Excel", "next"]],
+      bukti: [], biaya: [], aksi: [],
+    };
+  }
   if (item.mod === "emp") {
     return {
       n: v.n, j: v.j || "—", jk: v.jk === "P" ? "P" : "L", wn: v.wn === "TKA" ? "TKA" : "TKI",

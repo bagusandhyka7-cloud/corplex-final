@@ -80,6 +80,21 @@ export function AuthScreen() {
   }, []);
 
   /* ================= actions ================= */
+  /* Lupa sandi: email diambil dari kolom yang sudah diisi user di form masuk.
+   * Jawaban server SELALU seragam (ada/tidak akunnya) — halaman ini tak boleh jadi alat
+   * memeriksa siapa saja yang terdaftar di Corplex. */
+  const { run: mintaReset, pending: kirimReset } = useAsyncAction(async () => {
+    const mail = email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) {
+      toast("Isi email dulu", "Ketik email terdaftar Anda di kolom di atas, lalu tekan “Lupa sandi”.", "warn");
+      return;
+    }
+    const r = await fetch("/api/reset", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: mail }) }).catch(() => null);
+    const b = await r?.json().catch(() => null);
+    if (!r?.ok) { toast("Gagal mengirim", b?.error || "Coba lagi sebentar lagi.", "warn"); return; }
+    toast("Periksa email Anda", b?.pesan || "Bila email itu terdaftar, tautan setel ulang sudah dikirim.", "ok");
+  });
+
   const { run: doLogin, pending: loggingIn } = useAsyncAction(async () => {
     const mail = email.trim().toLowerCase();
     if (!mail) { toast("Email wajib diisi", "Masukkan email terdaftar Anda.", "warn"); return; }
@@ -380,9 +395,11 @@ export function AuthScreen() {
                       {loggingIn ? "Memverifikasi…" : "Masuk"}
                     </button>
                     <p style={{ textAlign: "center", margin: "2px 0 0" }}>
-                      {/* ponytail: JANGAN klaim "permintaan diteruskan" — tak ada apa pun yang terkirim.
-                          Reset sungguhan = sb.auth.resetPasswordForEmail + halaman /reset, menunggu SMTP diatur. */}
-                      <button type="button" className="cx-link" onClick={() => toast("Hubungi tim MRWP", "Reset kata sandi belum otomatis. Hubungi admin MRWP lewat kanal resmi perusahaan Anda untuk penyetelan ulang.", "warn")}>Lupa sandi</button>
+                      {/* Jalur nyata: /api/reset → tautan pemulihan Supabase → email → /reset.
+                          Email diisi di kolom di atas, jadi tak perlu form kedua. */}
+                      <button type="button" className="cx-link" disabled={kirimReset} onClick={() => void mintaReset()}>
+                        {kirimReset ? "Mengirim…" : "Lupa sandi"}
+                      </button>
                     </p>
                   </div>
                 )}

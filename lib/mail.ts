@@ -59,6 +59,20 @@ export function inviteEmail(
   return { subject: `Kode undangan Corplex — ${inv.code}`, text, html };
 }
 
+/* Badan email setel ulang kata sandi. Tautannya dibuat Supabase Auth (sekali pakai,
+ * ber-kedaluwarsa) — di sini hanya dibungkus. Fungsi murni supaya bisa diuji tanpa mengirim. */
+export function resetEmail(tautan: string): { subject: string; text: string; html: string } {
+  const text = `Permintaan setel ulang kata sandi Corplex.\n\nBuka tautan berikut untuk membuat kata sandi baru:\n${tautan}\n\nTautan berlaku sekali pakai dan akan kedaluwarsa. Bila Anda tidak meminta ini, abaikan email ini — kata sandi Anda tidak berubah.\n\nMRWP Law Firm — Corplex`;
+  const html = `<div style="font-family:Georgia,serif;max-width:520px;color:#0A1830">
+<p style="font-size:11px;letter-spacing:.18em;color:#B08A3E;margin:0 0 6px">MRWP LAW FIRM · CORPLEX</p>
+<h2 style="margin:0 0 14px;font-size:20px">Setel ulang kata sandi</h2>
+<p style="font-size:14px;line-height:1.7">Kami menerima permintaan setel ulang kata sandi untuk akun Corplex Anda.</p>
+<p style="margin:18px 0"><a href="${esc(tautan)}" style="background:#0A1830;color:#D9BC80;text-decoration:none;padding:12px 22px;border-radius:8px;font-size:14px">Buat Kata Sandi Baru</a></p>
+<p style="font-size:12px;color:#5a6472;line-height:1.7">Tautan ini <b>sekali pakai</b> dan akan kedaluwarsa. Bila Anda tidak meminta setel ulang, abaikan email ini — kata sandi Anda tidak berubah. Bila tombol tidak dapat diklik, salin alamat ini: ${esc(tautan)}</p>
+</div>`;
+  return { subject: "Setel ulang kata sandi Corplex", text, html };
+}
+
 export async function sendMail(m: { to: string; subject: string; text: string; html: string }): Promise<MailResult> {
   const mode = pickMode(process.env);
   if (!mode) return { ok: false, error: "Belum ada kredensial email (GMAIL_APP_PASSWORD atau MAILTRAP_TOKEN) di .env.local." };

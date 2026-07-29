@@ -21,8 +21,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {pengawasan && (
         /* minimalis, tema gold di atas navy — tanpa nada "anda diawasi" */
         <div style={{ background: "var(--bg-1, #0B1526)", borderBottom: "1px solid var(--gold)", padding: "6px 18px", display: "flex", alignItems: "center", gap: 12, position: "sticky", top: 0, zIndex: 900, fontSize: 12 }}>
-          <span style={{ fontFamily: "var(--mono)", fontSize: 9.5, letterSpacing: ".18em", color: "var(--gold-bright)" }}>MODE ADMIN</span>
-          <span style={{ flex: 1, color: "var(--txt2)" }}>Dashboard {pengawasan}</span>
+          <span style={{ fontFamily: "var(--mono)", fontSize: 9.5, letterSpacing: ".18em", color: "var(--gold-bright)" }}>MODE PENGAWASAN · HANYA BACA</span>
+          {/* Bukan sekadar keterangan: database menolak seluruh tulisan admin atas data tenant ini. */}
+          <span style={{ flex: 1, color: "var(--txt2)" }}>Dashboard {pengawasan} — tombol ubah/tambah/hapus disembunyikan</span>
           <button onClick={tutupPengawasan} style={{ background: "transparent", color: "var(--gold-bright)", border: "1px solid var(--gold)", borderRadius: 8, padding: "4px 14px", fontSize: 11.5, fontWeight: 600, cursor: "pointer" }}>Kembali ke Panel</button>
         </div>
       )}

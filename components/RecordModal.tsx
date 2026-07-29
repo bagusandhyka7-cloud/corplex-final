@@ -4,6 +4,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
+import { useStore } from "@/lib/store";
 import { idOf, RecRow, SPECS, stripId, withId } from "@/lib/records";
 import { askConfirm, Field, Modal } from "@/components/ui";
 
@@ -102,12 +103,15 @@ export function RecordModal({ mod, open, editRow, tenantName, onClose, onDone, t
 /* Kebab generik — dipakai tabel yang BUKAN module_records (mis. karyawan). */
 export function RowActions({ onEdit, onDelete }: { onEdit: () => void; onDelete: () => void }) {
   const [open, setOpen] = useState(false);
+  const { pengawasan } = useStore(); // Mode Pengawasan = hanya baca
   useEffect(() => {
     if (!open) return;
     const h = () => setOpen(false);
     document.addEventListener("click", h);
     return () => document.removeEventListener("click", h);
   }, [open]);
+
+  if (pengawasan) return null; // hooks di atas tetap dipanggil — urutan hook aman
   return (
     <div style={{ position: "relative", display: "inline-flex" }}>
       <button className="rec-dots" title="Opsi" onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}><MoreHorizontal size={14} /></button>
@@ -131,6 +135,8 @@ export function RecActions({ mod, row, onEdit, onDeleted, toast }: {
 }) {
   const [open, setOpen] = useState(false);
   const id = idOf(mod, row);
+  /* Mode Pengawasan: Edit/Hapus tak ditampilkan — server sudah menolaknya lewat RLS. */
+  const { pengawasan } = useStore();
 
   useEffect(() => {
     if (!open) return;
@@ -139,6 +145,7 @@ export function RecActions({ mod, row, onEdit, onDeleted, toast }: {
     return () => document.removeEventListener("click", h);
   }, [open]);
 
+  if (pengawasan) return null; // Mode Pengawasan: nol aksi ubah/hapus
   if (!id) return <span className="sub mono" style={{ fontSize: 9 }} title="Data peraga — bukan rekam DB">SEED</span>;
 
   const hapus = async () => {

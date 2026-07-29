@@ -75,11 +75,39 @@ export default function Ringkasan({ onOpenWizard }: { onOpenWizard: () => void }
 
   /* Kewajiban pajak ada di module_records mod 'tax' (di luar `ten`) — satu fetch, sama seperti modul Pajak. */
   const [pajak, setPajak] = useState<{ skor: number; next: string; nextTr: string; total: number; terbuka: { nama: string; tenggat: string }[] }>({ skor: 0, next: "—", nextTr: "belum ada kewajiban tercatat", total: 0, terbuka: [] });
+  /* Riwayat skor bulanan — rekam module_records mod 'score'. Dibaca dari fetch yang SAMA dengan
+   * kewajiban pajak di bawah, jadi membuka dashboard tidak menambah satu pun permintaan. */
+  const [tren, setTren] = useState<{ periode: string; skor: number }[]>([]);
+  /* Cukup satu percobaan tulis per sesi: hidrasi tenant memicu efek beberapa kali, dan
+   * tanpa penanda ini tiap kali akan menembak insert yang sama (ditolak indeks unik, tapi bising). */
+  const snapDicoba = React.useRef(false);
   useEffect(() => {
     const tid = localStorage.getItem("corplex_tid") || "";
     if (!tid) return;
     void api.records.list(tid).then((r) => {
       if (!r.ok) return;
+
+      /* ── Snapshot skor bulanan ──
+       * Dicatat SEKALI per bulan, saat dashboard pertama dibuka pada bulan itu. Nilainya beku:
+       * snapshot lama tak pernah dihitung ulang, sehingga riwayat tetap menggambarkan keadaan
+       * pada saat itu meski rekam lamanya kemudian berubah.
+       * Tenant tanpa rekam sengaja TIDAK disnapshot — 0% di situ bukan penilaian, melainkan
+       * "belum ada yang dinilai", dan menyimpannya akan membuat tren berbohong. */
+      const snaps = r.data
+        .filter((x) => x.module === "score")
+        .map((x) => x.data as { periode?: string; skor?: number })
+        .filter((x): x is { periode: string; skor: number } => !!x.periode && typeof x.skor === "number")
+        .sort((a, b) => a.periode.localeCompare(b.periode));
+      setTren(snaps.slice(-6));
+      const periode = new Date().toISOString().slice(0, 7); // YYYY-MM
+      if (!snapDicoba.current && totalRekam > 0 && !snaps.some((x) => x.periode === periode)) {
+        snapDicoba.current = true;
+        /* Gagal = biarkan. Indeks unik menolak baris kembar bila tab lain mendahului, dan
+         * snapshot bukan syarat apa pun — ia pelengkap riwayat. */
+        void api.records.create(tid, "score", { periode, skor: skorSehat, aman: aspekAman, belum: aspekBelum, aspek: aspek.length, at: new Date().toISOString() })
+          .then((res) => { if (res.ok) setTren((xs) => [...xs, { periode, skor: skorSehat }].slice(-6)); });
+      }
+
       const rows = r.data.filter((x) => x.module === "tax").map((x) => x.data as { nama?: string; tenggat?: string; status?: string });
       if (!rows.length) return;
       const dipenuhi = rows.filter((x) => x.status === "DIPENUHI").length;
@@ -92,7 +120,7 @@ export default function Ringkasan({ onOpenWizard }: { onOpenWizard: () => void }
         terbuka: terbuka.map((x) => ({ nama: x.nama || "Kewajiban pajak", tenggat: x.tenggat || "" })),
       });
     });
-  }, [rekamVer]); // realtime: rekam berubah di menu lain → segarkan
+  }, [rekamVer, skorSehat]); // realtime + skor final setelah hidrasi (nilai yang disnapshot harus benar)
 
   const docs = useCountUp(totalRekam);
   const score = useCountUp(skorSehat, 1150);
@@ -208,7 +236,28 @@ export default function Ringkasan({ onOpenWizard }: { onOpenWizard: () => void }
               </div>
             )) : <p className="note">Belum ada rekam untuk dinilai.</p>}
           </div>
-          <p className="note mt16">Riwayat tren bulanan tampil setelah snapshot skor terkumpul.</p>
+          {tren.length >= 2 ? (
+            <div style={{ marginTop: 16 }}>
+              <div className="sub" style={{ fontSize: 11, letterSpacing: ".1em", marginBottom: 8 }}>TREN SKOR BULANAN</div>
+              <div style={{ display: "grid", gap: 6 }}>
+                {tren.map((x) => (
+                  <div key={x.periode} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11.5 }}>
+                    <span style={{ width: 62, color: "var(--muted)" }}>{x.periode}</span>
+                    <div style={{ flex: 1, height: 6, background: "var(--line2)", borderRadius: 4, overflow: "hidden" }}>
+                      <div style={{ width: `${Math.max(2, x.skor)}%`, height: "100%", background: "var(--gold-bright)" }} />
+                    </div>
+                    <b style={{ width: 34, textAlign: "right" }}>{x.skor}%</b>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <p className="note mt16">
+              {tren.length === 1
+                ? `Skor bulan ini sudah tercatat (${tren[0].periode} · ${tren[0].skor}%). Tren muncul setelah ada bulan kedua.`
+                : "Riwayat tren bulanan tampil setelah skor bulan pertama tercatat — snapshot dibuat otomatis saat dashboard dibuka."}
+            </p>
+          )}
         </Panel>
         <Panel title="Rekam per Bab">
           <div style={{ display: "grid", gap: 8, fontSize: 11.5 }}>

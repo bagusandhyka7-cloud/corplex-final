@@ -28,6 +28,12 @@ async function appendMsg(id: string, text: string, dok?: { url: string; nama: st
   return ok(data as VqMsg[]);
 }
 
+/* Mode Pengawasan (admin melihat dashboard klien). RLS di server sudah menolak setiap tulisan
+ * super admin atas data tenant lain; pagar ini hanya agar pesannya jelas — tanpa ini tombol
+ * yang terlewat akan gagal dengan galat RLS yang tak berarti bagi pemakainya. */
+const bacaSaja = () => typeof window !== "undefined" && !!localStorage.getItem("corplex_impersonate");
+const TOLAK_TULIS = () => err("auth", "Mode Pengawasan — hanya baca. Tutup mode ini di panel MRWP untuk mengubah data.");
+
 /* Minta server menghitung SHA-256 isi dokumen milik baris ini lalu menyimpannya.
  * Klien TIDAK mengirim nilai hash — hanya menyebut barisnya; server yang mengunduh & menghitung.
  * Sengaja fire-and-forget: hash adalah pelengkap integritas, bukan syarat rekam tersimpan —
@@ -169,23 +175,27 @@ export const api = {
       return ok(data as EmpRow[]);
     },
     async create(tid: string, rec: Partial<EmpRow>): Promise<ApiResult<EmpRow>> {
+      if (bacaSaja()) return TOLAK_TULIS();
       const { data, error } = await sb.from("employees").insert({ ...rec, tenant_id: tid }).select().single();
       if (error) return err("server", "Gagal menyimpan karyawan.");
       if (rec.dok_url) mintaHash("emp", data.id); // hash isi dokumen kerja (foto tidak di-hash)
       return ok(data as EmpRow);
     },
     async update(id: string, rec: Partial<EmpRow>): Promise<ApiResult<EmpRow>> {
+      if (bacaSaja()) return TOLAK_TULIS();
       const { data, error } = await sb.from("employees").update({ ...rec, updated_at: new Date().toISOString() }).eq("id", id).select().single();
       if (error) return err("server", "Gagal memperbarui karyawan.");
       if (rec.dok_url !== undefined) mintaHash("emp", id);
       return ok(data as EmpRow);
     },
     async remove(id: string): Promise<ApiResult<null>> {
+      if (bacaSaja()) return TOLAK_TULIS();
       const { error } = await sb.from("employees").delete().eq("id", id);
       return error ? err("server", "Gagal menghapus.") : ok(null);
     },
     /* Foto → Storage bucket publik employee-photos/<tid>/<ts>-<nama file>. */
     async uploadPhoto(tid: string, file: File): Promise<ApiResult<{ url: string }>> {
+      if (bacaSaja()) return TOLAK_TULIS();
       const path = `${tid}/${Date.now()}-${file.name.replace(/[^\w.\-]+/g, "_")}`;
       const { error } = await sb.storage.from("employee-photos").upload(path, file);
       if (error) return err("server", "Gagal mengunggah foto.");
@@ -193,6 +203,7 @@ export const api = {
     },
     /* Dokumen kerja (PK/KTP/dll) → bucket employee-docs; url tersimpan di kolom dok_url. */
     async uploadDoc(tid: string, file: File): Promise<ApiResult<{ url: string; name: string }>> {
+      if (bacaSaja()) return TOLAK_TULIS();
       const path = `${tid}/${Date.now()}-${file.name.replace(/[^\w.\-]+/g, "_")}`;
       const { error } = await sb.storage.from("employee-docs").upload(path, file);
       if (error) return err("server", "Gagal mengunggah dokumen.");
@@ -301,6 +312,7 @@ export const api = {
       return ok(data);
     },
     async push(tenantId: string, title: string, meta: string, chip: string, label: string, extra?: { by?: string; refs?: { mod: string; id: string; label: string }[]; detail?: string; dok?: { url: string; nama: string } }) {
+      if (bacaSaja()) return TOLAK_TULIS();
       const r0 = extra?.refs?.[0]; // kolom lama tetap diisi (kompat pengajuan sebelum smart attachment)
       const { data, error } = await sb.from("verification_queue")
         .insert({ tenant_id: tenantId, title, meta, chip, label, created_by: extra?.by || null, ref_mod: r0?.mod || null, ref_id: r0?.id || null, refs: extra?.refs || [], detail: extra?.detail || null, dok_url: extra?.dok?.url || null, dok_nama: extra?.dok?.nama || null })
@@ -325,6 +337,7 @@ export const api = {
     /* balasan KLIEN atas pertanyaan advokat (boleh berlampiran dokumen susulan).
      * Status sengaja tak diubah: bola tetap di meja advokat sampai ia memutuskan. */
     async reply(id: string, text: string, dok?: { url: string; nama: string }) {
+      if (bacaSaja()) return TOLAK_TULIS();
       const a = await appendMsg(id, text, dok);
       if (!a.ok) return a;
       if (dok?.url) mintaHash("vqmsg", id); // hash lampiran susulan di dalam utas
@@ -405,6 +418,7 @@ export const api = {
       return ok(data);
     },
     async create(tid: string, module: string, data: unknown, source = "manual", dok?: { url: string; nama: string }): Promise<ApiResult<{ id: string }>> {
+      if (bacaSaja()) return TOLAK_TULIS();
       const { data: row, error } = await sb.from("module_records").insert({ tenant_id: tid, module, data, source, dok_url: dok?.url ?? null, dok_nama: dok?.nama ?? null }).select("id").single();
       if (error) return err("server", "Gagal menyimpan rekam.");
       if (dok?.url) mintaHash("rec", row.id); // hash isi dokumen dihitung server
@@ -412,6 +426,7 @@ export const api = {
     },
     /* Dokumen rekam modul → bucket module-docs. */
     async uploadDoc(tid: string, file: File): Promise<ApiResult<{ url: string; nama: string }>> {
+      if (bacaSaja()) return TOLAK_TULIS();
       const path = `${tid}/${Date.now()}-${file.name.replace(/[^\w.\-]+/g, "_")}`;
       const { error } = await sb.storage.from("module-docs").upload(path, file);
       if (error) return err("server", "Gagal mengunggah dokumen.");
@@ -419,6 +434,7 @@ export const api = {
     },
     /* dok: {url,nama} = ganti berkas · null = hapus berkas · undefined = biarkan apa adanya */
     async update(id: string, data: unknown, dok?: { url: string; nama: string } | null): Promise<ApiResult<null>> {
+      if (bacaSaja()) return TOLAK_TULIS();
       const patch: Record<string, unknown> = { data, updated_at: new Date().toISOString() };
       if (dok !== undefined) { patch.dok_url = dok?.url ?? null; patch.dok_nama = dok?.nama ?? null; }
       const { error } = await sb.from("module_records").update(patch).eq("id", id);
@@ -428,6 +444,7 @@ export const api = {
       return ok(null);
     },
     async remove(id: string): Promise<ApiResult<null>> {
+      if (bacaSaja()) return TOLAK_TULIS();
       const { error } = await sb.from("module_records").delete().eq("id", id);
       return error ? err("server", "Gagal menghapus rekam.") : ok(null);
     },

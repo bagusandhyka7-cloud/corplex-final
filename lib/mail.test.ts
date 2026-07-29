@@ -2,7 +2,7 @@
  * escaping, dan penyusunan badan email. Jalankan: npx tsx lib/mail.test.ts
  * (pola sama dengan lib/phk.test.ts: assert bawaan Node, nol framework.) */
 import assert from "node:assert/strict";
-import { esc, inviteEmail, pickMode } from "./mail";
+import { esc, inviteEmail, pickMode, resetEmail } from "./mail";
 
 const env = (o: Record<string, string>) => o as unknown as NodeJS.ProcessEnv;
 
@@ -45,3 +45,14 @@ assert.ok(c.html.includes("&lt;script&gt;"));
 assert.ok(c.html.includes("kode=A%20B"), "kode wajib di-encode di URL");
 
 console.log("mail: 15 assert PASS");
+
+/* ── resetEmail: tautan pemulihan wajib utuh & ter-escape ── */
+const rs = resetEmail("https://app.corplex.id/reset#access_token=abc&type=recovery");
+assert.ok(rs.text.includes("https://app.corplex.id/reset#access_token=abc"), "tautan utuh di versi teks");
+assert.ok(rs.html.includes("&amp;type=recovery"), "ampersand wajib di-escape di HTML");
+assert.ok(!/<script/i.test(resetEmail('"><script>alert(1)</script>').html), "tautan berbahaya wajib di-escape");
+assert.ok(rs.subject.toLowerCase().includes("kata sandi"));
+/* Jangan pernah menjanjikan tautan permanen — ia sekali pakai. */
+assert.ok(rs.text.includes("sekali pakai"));
+
+console.log("mail(reset): 5 assert PASS");

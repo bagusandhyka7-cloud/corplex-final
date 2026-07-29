@@ -3,12 +3,13 @@
  * (Judul · Tanggal · tahapan/bukti/biaya · Buka di ujung kanan). Detail + CRUD tahapan,
  * bukti, dan biaya pindah ke /rekam/case/[id] (terbuka hanya lewat tombol Buka). */
 import React, { useMemo, useState } from "react";
-import { Lock, Plus, Trash2 } from "lucide-react";
+import { Lock, Pencil, Plus, Trash2 } from "lucide-react";
 import { Case } from "@/lib/data";
 import { useStore } from "@/lib/store";
 import { askConfirm, Chip, Field, Kpi, Modal, Panel } from "@/components/ui";
 import { ModuleShell } from "@/components/ModuleShell";
 import { api } from "@/lib/api";
+import { useExcelImport } from "@/components/ExcelImport";
 import { useRouter } from "next/navigation";
 
 const tglID = () => new Date().toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" }).toUpperCase();
@@ -19,29 +20,62 @@ const jenisOf = (c: Case) => (c.tab || "").split("—")[0].trim();
 const judulOf = (c: Case) => (c.head || c.tab || "").replace(/^Perkara:\s*/i, "").split("—").slice(1).join("—").trim() || c.tab;
 
 export default function CaseView() {
-  const { ten, toast, patchTen } = useStore();
+  const { ten, toast, patchTen, pengawasan } = useStore();
   const t = ten!;
   const router = useRouter();
   const cases = t.cases;
 
   const [addOpen, setAddOpen] = useState(false);
+  const [simpan, setSimpan] = useState(false);
   const [judul, setJudul] = useState("");
   const [jenis, setJenis] = useState("Perdata");
   const [tahap, setTahap] = useState("");
   const [f, setF] = useState("semua");
   const [q, setQ] = useState("");
+  const [urut, setUrut] = useState<"baru" | "lama" | "judul">("baru");
+  const [edit, setEdit] = useState<Case | null>(null); // null = mode tambah
+  /* Impor massal lewat dropzone — pola sama dengan modul lain (template diunduh di Alat Legal). */
+  const xlsx = useExcelImport("case");
 
   const jenisAda = useMemo(() => ["semua", ...Array.from(new Set(cases.map(jenisOf).filter(Boolean)))], [cases]);
-  const rows = cases.filter((c) => (f === "semua" || jenisOf(c) === f) && (c.tab + " " + c.head).toLowerCase().includes(q.toLowerCase()));
+  /* Daftar dari DB sudah berurut terbaru dulu; "lama" cukup dibalik, "judul" diurut abjad.
+   * Nol pagination: modul lain pun tak memakainya dan jumlah perkara per tenant kecil. */
+  const rows = useMemo(() => {
+    const f2 = cases.filter((c) => (f === "semua" || jenisOf(c) === f) && (c.tab + " " + c.head).toLowerCase().includes(q.toLowerCase()));
+    if (urut === "lama") return [...f2].reverse();
+    if (urut === "judul") return [...f2].sort((a, b) => String(judulOf(a) || "").localeCompare(String(judulOf(b) || ""), "id"));
+    return f2;
+  }, [cases, f, q, urut]);
 
-  const tambahPerkara = async () => {
+  const bukaTambah = () => { setEdit(null); setJudul(""); setJenis("Perdata"); setTahap(""); setAddOpen(true); };
+  const bukaEdit = (c: Case) => {
+    setEdit(c); setJudul(String(judulOf(c) || "")); setJenis(jenisOf(c) || "Perdata"); setTahap("");
+    setAddOpen(true);
+  };
+
+  const simpanPerkara = async () => {
     if (!judul.trim()) return toast("Judul wajib diisi", "Tulis nama perkara.", "warn");
+    if (simpan) return; // cegah klik ganda / submit dobel
+    setSimpan(true);
+    const nJudul = judul.trim();
+    if (edit?.id) {
+      /* UBAH: judul & jenis tersimpan di dalam string tab/head. Tahapan, bukti, dan biaya
+       * SENGAJA tak disentuh — mengubah nama perkara tak boleh menghapus riwayatnya. */
+      const rec: Case = { ...edit, tab: `${jenis} — ${nJudul.slice(0, 24)}`, head: `Perkara: ${jenis} — ${nJudul}` };
+      const r = await api.records.update(edit.id, rec);
+      setSimpan(false);
+      if (!r.ok) return toast("Gagal menyimpan", r.error.message, "warn");
+      patchTen({ cases: cases.map((x) => (x.id === edit.id ? rec : x)) });
+      setAddOpen(false); setEdit(null);
+      return toast("Perkara diperbarui", `${nJudul} — riwayat tahapan, bukti, dan biaya tetap utuh.`, "ok");
+    }
     const rec: Omit<Case, "id"> = {
-      tab: `${jenis} — ${judul.trim().slice(0, 24)}`, head: `Perkara: ${jenis} — ${judul.trim()}`,
+      tab: `${jenis} — ${nJudul.slice(0, 24)}`, head: `Perkara: ${jenis} — ${nJudul}`,
       tl: [[tglID(), tahap.trim() || "Perkara dibuka", "Dicatat dari modul Perkara", "next"]],
       bukti: [], biaya: [], aksi: [],
     };
     const r = await api.records.create(tid(), "case", rec);
+    setSimpan(false);
     if (!r.ok) return toast("Gagal menyimpan", r.error.message, "warn");
     patchTen({ cases: [{ ...rec, id: r.data.id }, ...cases] });
     setAddOpen(false); setJudul(""); setTahap("");
@@ -61,7 +95,9 @@ export default function CaseView() {
     <ModuleShell h1="Perkara"
       sub="Perkara tanpa rekam berpotensi jadi temuan BERMASALAH saat uji tuntas. Catat tahapan, bukti, dan biayanya di sini."
       filters={jenisAda} active={f} onFilter={setF} q={q} setQ={setQ} cariPh="Cari perkara…"
-      acts={<button className="btn btn-gold" onClick={() => setAddOpen(true)}><Plus size={14} /> Buka Perkara</button>}
+      dropNote="Letakkan berkas Excel Perkara (template diunduh di Alat Legal) untuk mencatat banyak perkara sekaligus. Ekstraksi AI dokumen perkara belum tersedia — berkas selain Excel akan ditolak dengan jelas."
+      onDrop={(file) => { if (!xlsx.tryFile(file)) toast("Bukan berkas Excel", "Modul Perkara baru menerima impor Excel. Unggah dokumen bukti lewat tombol Buka pada baris perkaranya.", "warn"); }}
+      acts={<button className="btn btn-gold" onClick={bukaTambah}><Plus size={14} /> Buka Perkara</button>}
       kpi={<div className="grid g4 mb16">
         <Kpi v={cases.length} label="Perkara aktif" />
         <Kpi v={totalBukti} label="Bukti terindeks" tr={totalBukti ? "Tersimpan di vault" : "—"} />
@@ -74,6 +110,15 @@ export default function CaseView() {
           <p style={{ fontSize: 12.5, color: "var(--muted)" }}>Rekam perkara kosong{f !== "semua" ? " pada kategori ini" : ""}. Klik <b>Buka Perkara</b> untuk mencatat perkara atau somasi pertama.</p>
         </Panel>
       ) : (
+        <div>
+        <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8, marginBottom: 10 }}>
+          <span className="sub" style={{ fontSize: 11.5 }}>Urutkan</span>
+          <select value={urut} onChange={(e) => setUrut(e.target.value as typeof urut)} style={{ width: "auto", minWidth: 150 }}>
+            <option value="baru">Terbaru dicatat</option>
+            <option value="lama">Terlama dicatat</option>
+            <option value="judul">Judul A–Z</option>
+          </select>
+        </div>
         <div className="tblwrap">
           <table>
             <thead><tr><th>Judul Perkara</th><th>Jenis</th><th>Tahapan Terakhir</th><th>Tanggal</th><th>Tahapan</th><th>Bukti</th><th>Biaya</th><th>Aksi</th></tr></thead>
@@ -89,9 +134,13 @@ export default function CaseView() {
                     <td>{c.tl.length}</td>
                     <td>{c.bukti.length}</td>
                     <td>{c.biaya.length}</td>
-                    <td><div>
+                    <td><div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
                       <button className="btn-act" onClick={() => c.id && router.push(`/rekam/case/${c.id}`)}><Lock size={10} style={{ display: "inline", marginRight: 4 }} />Buka</button>
-                      <button className="btn btn-red btn-sm" onClick={() => void hapusPerkara(c)}><Trash2 size={11} /></button>
+                      {/* Mode Pengawasan = hanya baca; server pun menolak tulisannya. */}
+                      {!pengawasan && <>
+                        <button className="btn btn-line btn-sm" title="Ubah judul/jenis" onClick={() => bukaEdit(c)}><Pencil size={11} /></button>
+                        <button className="btn btn-red btn-sm" title="Hapus perkara" onClick={() => void hapusPerkara(c)}><Trash2 size={11} /></button>
+                      </>}
                     </div></td>
                   </tr>
                 );
@@ -99,18 +148,22 @@ export default function CaseView() {
             </tbody>
           </table>
         </div>
+        </div>
       )}
 
       <p className="note mt16">Jenis perkara didukung: {JENIS.join(" · ")}. Kelola tahapan, bukti, dan biaya lewat tombol <b>Buka</b> pada tiap baris.</p>
 
-      <Modal open={addOpen} title="Buka Perkara Baru" right onClose={() => setAddOpen(false)}
+      <Modal open={addOpen} title={edit ? "Ubah Perkara" : "Buka Perkara Baru"} right onClose={() => setAddOpen(false)}
         footer={<><button className="btn btn-line" onClick={() => setAddOpen(false)}>Batal</button>
-          <button className="btn btn-gold" onClick={() => void tambahPerkara()}>Simpan</button></>}>
+          <button className="btn btn-gold" disabled={simpan} aria-busy={simpan} onClick={() => void simpanPerkara()}>{simpan ? "Menyimpan…" : "Simpan"}</button></>}>
         <Field label="Judul perkara *"><input value={judul} placeholder="mis. Wanprestasi CV X" onChange={(e) => setJudul(e.target.value)} /></Field>
         <Field label="Jenis"><select value={jenis} onChange={(e) => setJenis(e.target.value)}>{JENIS.map((j) => <option key={j}>{j}</option>)}</select></Field>
-        <Field label="Tahapan awal"><input value={tahap} placeholder="mis. Somasi I dikirim" onChange={(e) => setTahap(e.target.value)} /></Field>
-        <div className="note">Setelah tersimpan, kelola tahapan, unggah bukti, dan catat biaya lewat tombol Buka pada baris perkara.</div>
+        {!edit && <Field label="Tahapan awal"><input value={tahap} placeholder="mis. Somasi I dikirim" onChange={(e) => setTahap(e.target.value)} /></Field>}
+        <div className="note">{edit
+          ? "Mengubah judul atau jenis TIDAK menyentuh tahapan, bukti, maupun biaya yang sudah tercatat."
+          : "Setelah tersimpan, kelola tahapan, unggah bukti, dan catat biaya lewat tombol Buka pada baris perkara."}</div>
       </Modal>
+      {xlsx.modal}
     </ModuleShell>
   );
 }

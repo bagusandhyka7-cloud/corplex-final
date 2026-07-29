@@ -5,6 +5,7 @@
 import React, { useRef } from "react";
 import { Upload } from "lucide-react";
 import { ViewHead } from "@/components/ui";
+import { useStore } from "@/lib/store";
 
 /* Singkatan resmi boleh kapital semua; label lain jadi Title Case (aturan hierarki owner). */
 const ABBR = new Set(["TKI", "TKA", "PKWT", "PKWTT", "PTUN", "KBLI", "HKI", "SP1", "SP2", "SP3", "LKPM", "NIB", "SPT", "PPN", "PPH"]);
@@ -24,13 +25,16 @@ export function ModuleShell({
   children: React.ReactNode;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
+  /* Mode Pengawasan = hanya baca. Tombol daftar/tambah dan dropzone unggah disembunyikan
+   * karena server sudah menolaknya — tombol yang pasti gagal itu jebakan, bukan fitur. */
+  const { pengawasan } = useStore();
   return (
     <div>
-      <ViewHead h1={h1} sub={sub} acts={acts} />
+      <ViewHead h1={h1} sub={sub} acts={pengawasan ? undefined : acts} />
 
       {kpi}
 
-      {onDrop && (
+      {onDrop && !pengawasan && (
         <>
           <input ref={fileRef} type="file" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.xlsx,.xls" style={{ display: "none" }}
             onChange={(e) => { const f = e.target.files?.[0]; if (f) onDrop(f); e.target.value = ""; }} />

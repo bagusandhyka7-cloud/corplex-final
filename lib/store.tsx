@@ -39,6 +39,9 @@ interface Store {
   setLang: (l: "id" | "en") => void;
   /* Naik tiap rekam berubah (realtime). Menu yang fetch sendiri memasukkannya ke deps useEffect. */
   rekamVer: number;
+  /* true = admin MRWP sedang melihat dashboard klien (Mode Pengawasan). Server sudah menolak
+   * seluruh tulisannya lewat RLS; flag ini hanya agar UI tak menampilkan tombol yang pasti gagal. */
+  pengawasan: boolean;
 }
 
 const Ctx = createContext<Store | null>(null);
@@ -63,6 +66,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => { tenUserRef.current = ten?.user || ""; }, [ten]);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [queue, setQueue] = useState<QItem[]>([]);
+  const [pengawasan, setPengawasan] = useState(false);
+  useEffect(() => { setPengawasan(!!localStorage.getItem("corplex_impersonate")); }, []);
   const [quota, setQuota] = useState(0);
   const [quotaMax, setQuotaMax] = useState(10);
   const [verified, setVerified] = useState(0);
@@ -266,8 +271,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     });
   }, [ten?.id, rekamVer]); // rekamVer: realtime memicu hidrasi ulang
 
-  const value = useMemo(() => ({ isHydrated, ten, go, login, logout, toast, queue, setQueue, pushQueue, quota, quotaMax, verified, setQuota, setVerified, queueCount, patchTen, activeTab, setActiveTab, lang, setLang, rekamVer }),
-    [isHydrated, ten, go, router, login, logout, toast, queue, pushQueue, quota, quotaMax, verified, queueCount, patchTen, activeTab, setActiveTab, lang, setLang, rekamVer]);
+  const value = useMemo(() => ({ isHydrated, ten, go, login, logout, toast, queue, setQueue, pushQueue, quota, quotaMax, verified, setQuota, setVerified, queueCount, patchTen, activeTab, setActiveTab, lang, setLang, rekamVer, pengawasan }),
+    [isHydrated, ten, go, router, login, logout, toast, queue, pushQueue, quota, quotaMax, verified, queueCount, patchTen, activeTab, setActiveTab, lang, setLang, rekamVer, pengawasan]);
 
   return <Ctx.Provider value={value}><ToastCtx.Provider value={toasts}>{children}</ToastCtx.Provider></Ctx.Provider>;
 }

@@ -3,7 +3,7 @@
  * Jalankan: npx tsx lib/impor.test.ts */
 import assert from "node:assert/strict";
 import * as XLSX from "xlsx";
-import { parseWorkbook, petakanHeader, SHEETS } from "./impor";
+import { parseWorkbook, petakanHeader, SHEETS, toPayload } from "./impor";
 
 const pajak = SHEETS.find((s) => s.sheet === "Pajak")!;
 const F = pajak.fields; // Nama Kewajiban * · Jenis · Tenggat · Status
@@ -87,3 +87,24 @@ assert.ok(acak.unknownSheets.length > 0, "berkas asing dilaporkan sebagai sheet 
 assert.throws(() => parseWorkbook(new Uint8Array([0x50, 0x4b, 3, 4, 1, 2, 3, 4, 5]).buffer), "zip rusak melempar — pemanggil harus menangkap");
 
 console.log("impor: 21 assert PASS");
+
+/* ── Sheet Perkara: bentuk objek Case, bukan array RecRow ── */
+const perkara = parseWorkbook(wbOf("Perkara", [
+  ["Judul Perkara", "Jenis", "Tahapan Awal", "Tanggal Tahapan"],
+  ["Wanprestasi CV Mitra", "Perdata", "Somasi I dikirim", "2026-07-28"],
+]));
+assert.equal(perkara.items.length, 1, "sheet Perkara terbaca");
+const cs = toPayload(perkara.items[0], "PT Uji") as { tab: string; head: string; tl: string[][]; bukti: unknown[]; biaya: unknown[] };
+assert.ok(cs.head.includes("Wanprestasi CV Mitra"), "judul masuk head");
+assert.ok(cs.tab.startsWith("Perdata —"), "jenis masuk tab");
+assert.equal(cs.tl.length, 1, "satu tahapan awal");
+assert.ok(cs.tl[0][0].includes("2026") || cs.tl[0][0].includes("Jul"), `tanggal terbaca: ${cs.tl[0][0]}`);
+assert.equal(cs.tl[0][2], "Diimpor dari Excel", "asal rekam jujur ditulis");
+assert.deepEqual(cs.bukti, [], "bukti tetap kosong — tak boleh dikarang");
+assert.deepEqual(cs.biaya, [], "biaya tetap kosong");
+
+/* Tanpa judul = baris dilewati (judul kolom wajib). */
+const tanpaJudul = parseWorkbook(wbOf("Perkara", [["Judul Perkara", "Jenis"], ["", "Perdata"]]));
+assert.equal(tanpaJudul.items.length, 0, "perkara tanpa judul tak boleh tersimpan");
+
+console.log("impor(perkara): 9 assert PASS");
