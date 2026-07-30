@@ -105,6 +105,19 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     });
   }, [ten, toast]);
 
+  /* Tarik antrean advokat setiap kali tenant aktif berganti (hidrasi ULANG maupun login baru). */
+  useEffect(() => {
+    const tid = localStorage.getItem("corplex_tid");
+    if (!ten || !tid) return;
+    void api.verifq.list(tid).then((r) => {
+      if (!r.ok) return;
+      const rows: QItem[] = r.data.map((x) => ({ id: x.id, t: x.title, m: x.meta, chip: x.chip, lbl: x.label, sla: x.sla, status: x.status as QItem["status"], note: x.note || undefined, msgs: x.msgs || [] }));
+      setQueue(rows);
+      setQuota(rows.length);
+      setVerified(rows.filter((x) => x.status === "verified").length);
+    });
+  }, [ten?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Hydrate session from localStorage — seed (t1/t2/t3) atau tenant nyata (corplex_ten).
   useEffect(() => {
     const storedTid = localStorage.getItem("corplex_tid");
@@ -115,13 +128,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
        * Kuota terpakai = jumlah pengajuan nyata; terverifikasi = jumlah status verified. */
       setQueue([]);
       setQuota(0); setQuotaMax(T.quota.max); setVerified(0);
-      void api.verifq.list(storedTid).then((r) => {
-        if (!r.ok) return;
-        const rows: QItem[] = r.data.map((x) => ({ id: x.id, t: x.title, m: x.meta, chip: x.chip, lbl: x.label, sla: x.sla, status: x.status as QItem["status"], note: x.note || undefined, msgs: x.msgs || [] }));
-        setQueue(rows);
-        setQuota(rows.length);
-        setVerified(rows.filter((x) => x.status === "verified").length);
-      });
+      /* Antrean advokat ditarik oleh efek ber-deps `ten?.id` di bawah — dulu hanya di sini
+       * (efek sekali-jalan), sehingga pengguna yang BARU login melihat "Belum ada pengajuan"
+       * padahal antreannya berisi: login menyetel tenant tanpa me-mount ulang provider,
+       * jadi pemuatan tak pernah terjadi sampai halaman di-reload manual. */
       /* PINTU KEDUA (sesi berjalan): tiap rehidrasi cek whoami — demo kedaluwarsa langsung ditendang.
        * RLS (jwt_tenant → NULL) sudah membutakan data detik itu juga; ini merapikan UX-nya. */
       if (!TENANTS[storedTid] && !localStorage.getItem("corplex_impersonate")) {
