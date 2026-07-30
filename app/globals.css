@@ -248,7 +248,10 @@ html,body{overflow-x:clip} /* S1: nol scroll horizontal — clip (bukan hidden) 
 @media(max-width:760px){.jaga-live span{display:none}.search{display:none}}
 
 /* toast */
-#toasts{position:fixed;bottom:22px;right:22px;display:grid;gap:10px;z-index:2800;max-width:364px}
+/* z-index 4000: DI ATAS layar kunci/auth (3000) dan modal (2700). Sebelumnya 2800, sehingga
+ * SELURUH notifikasi di halaman login & pendaftaran tertutup layar auth — pengguna melihat
+ * tombol "Selesaikan" seolah tak melakukan apa pun, padahal alasan gagalnya sudah dikirim. */
+#toasts{position:fixed;bottom:22px;right:22px;display:grid;gap:10px;z-index:4000;max-width:364px}
 .toast{background:linear-gradient(150deg,#10203C,#0C1A33);border:1px solid var(--line2);color:#fff;border-radius:13px;padding:14px 17px;font-size:12.5px;box-shadow:var(--shadow-lg);display:flex;gap:10px;align-items:flex-start;animation:tIn .32s cubic-bezier(.2,.9,.3,1.2);border-left:4px solid var(--gold-bright)}
 .toast.ok{border-left-color:var(--ok)}
 .toast.warn{border-left-color:var(--warn)}
