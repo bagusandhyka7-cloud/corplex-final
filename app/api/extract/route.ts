@@ -5,6 +5,7 @@
  * ponytail: 1 model (flash) — cukup untuk OCR field; naikkan ke pro bila akurasi kurang & kuota ada.
  */
 import { NextRequest, NextResponse } from "next/server";
+import { limited, tooMany } from "@/lib/ratelimit";
 
 export const runtime = "nodejs";
 const KEY = process.env.GEMINI_API_KEY;
@@ -13,8 +14,15 @@ const MODEL = "gemini-flash-latest";
 type Field = { k: string; l: string; opts?: string[] };
 
 export async function POST(req: NextRequest) {
+  /* Satu-satunya route AI yang dulu TANPA pembatas laju: siapa pun di internet bisa
+   * memanggilnya berulang kali dan menghabiskan kuota Gemini proyek. Batas 8/menit
+   * sama dengan /api/analyze — cukup longgar untuk unggahan dokumen manusia. */
+  if (limited(req, "extract", 8)) return tooMany();
   if (!KEY) return NextResponse.json({ ok: false, error: "AI belum dikonfigurasi (GEMINI_API_KEY kosong)." }, { status: 501 });
   const { mime, data, fields } = (await req.json()) as { mime?: string; data?: string; fields?: Field[] };
+  /* Batas ukuran: base64 8MB (~6MB berkas asli) — tanpa ini satu permintaan raksasa
+   * bisa menahan memori server sampai Gemini menolaknya. */
+  if (data && data.length > 8 * 1024 * 1024) return NextResponse.json({ ok: false, error: "Dokumen terlalu besar — maksimal sekitar 6MB." }, { status: 413 });
   if (!data || !fields?.length) return NextResponse.json({ ok: false, error: "Dokumen atau daftar field kosong." }, { status: 400 });
 
   const daftar = fields.map((f) => `- "${f.k}": ${f.l}${f.opts ? ` (nilai sah HANYA: ${f.opts.join(" | ")})` : ""}`).join("\n");
