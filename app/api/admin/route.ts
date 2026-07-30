@@ -6,7 +6,7 @@
 import { NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { limited, tooMany } from "@/lib/ratelimit";
-import { inviteEmail, sendMail } from "@/lib/mail";
+import { approvalEmail, inviteEmail, sendMail } from "@/lib/mail";
 import { hashRow } from "@/lib/dokhash";
 
 const svc = () => createClient(
@@ -124,8 +124,26 @@ export async function POST(req: NextRequest) {
           if (h.ok) hashed += h.n;
         }
       }
-      await sb.from("audit_logs").insert({ action: approve ? "approve_tenant" : "reject_tenant", detail: { id, reason, expires_at: exp, dok_hash: hashed }, actor: "adminmrwp" });
-      return Response.json({ ok: true, hashed });
+      /* Kabari pendaftar. Layar "Pendaftaran Terkirim" menjanjikan email saat akses disetujui,
+       * dan halaman masuk menyuruh yang ditolak "periksa email Anda" — dua janji yang sampai
+       * kini tak pernah ditepati. Kegagalan kirim TIDAK membatalkan keputusan: statusnya sudah
+       * tersimpan, dan admin diberi tahu lewat nilai `email` agar bisa menghubungi manual. */
+      let emailKe: string | null = null;
+      let emailStatus: "terkirim" | "sandbox" | "gagal" | "tanpa-email" = "tanpa-email";
+      const { data: t2 } = await sb.from("tenants").select("name").eq("id", id).maybeSingle();
+      const { data: seat } = await sb.from("app_users").select("email").eq("tenant_id", id).not("email", "is", null).limit(1).maybeSingle();
+      if (seat?.email) {
+        emailKe = seat.email;
+        const surat = approvalEmail({
+          perusahaan: t2?.name || "Perusahaan Anda", disetujui: approve, alasan: reason,
+          url: process.env.APP_URL || req.nextUrl.origin,
+        });
+        const kirim = await sendMail({ to: seat.email, ...surat });
+        emailStatus = kirim.ok ? (kirim.mode === "sandbox" ? "sandbox" : "terkirim") : "gagal";
+        if (!kirim.ok) console.error("[api/admin] decideTenant email", kirim.error);
+      }
+      await sb.from("audit_logs").insert({ action: approve ? "approve_tenant" : "reject_tenant", detail: { id, reason, expires_at: exp, dok_hash: hashed, email: emailStatus, email_ke: emailKe }, actor: "adminmrwp" });
+      return Response.json({ ok: true, hashed, email: emailStatus, email_ke: emailKe });
     }
     /* Perpanjang tenggat 1 tombol: +N jam dari max(sekarang, tenggat lama). 0/null jam = jadikan permanen. */
     if (op === "extendTenant") {

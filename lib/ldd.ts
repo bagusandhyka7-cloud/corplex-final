@@ -27,6 +27,13 @@ const hash8 = (s: string) => {
   return h.toString(16).padStart(8, "0").slice(0, 8).toUpperCase();
 };
 
+/* Rekam tata kelola = SELURUH catatan Sekretaris Perusahaan, bukan hanya berkas terunggah.
+ * Dulu hanya `docs` yang dihitung, sehingga perusahaan dengan riwayat RUPS, susunan organ,
+ * cap table, dan kewajiban statutori lengkap tetap tampil "BELUM DINILAI" dan "Tata Kelola 0"
+ * di Ringkasan — angka yang menyesatkan pemilik data. */
+export const corpRekam = (t: Tenant) =>
+  t.corp.docs.length + t.corp.rups.length + t.corp.dirs.length + t.corp.meetings.length + t.corp.cap.length + t.corp.stat.length;
+
 export function buildLdd(t: Tenant): LddReport {
   const f: Finding[] = [];
   const examined: string[] = [];
@@ -34,7 +41,7 @@ export function buildLdd(t: Tenant): LddReport {
   const counts: LddReport["counts"] = {};
 
   /* 1. Legalitas badan hukum */
-  const corpEmpty = !t.corp.id && !t.corp.docs.length;
+  const corpEmpty = !t.corp.id && !corpRekam(t);
   if (corpEmpty) {
     missing.push("Akta pendirian, anggaran dasar, dan risalah RUPS");
     f.push({
@@ -45,7 +52,7 @@ export function buildLdd(t: Tenant): LddReport {
       action: "Unggah akta pendirian, anggaran dasar terakhir, dan risalah RUPS terkini melalui modul Sekretaris Perusahaan.",
     });
   } else {
-    examined.push(`${t.corp.docs.length} dokumen tata kelola perseroan`);
+    examined.push(`${corpRekam(t)} rekam tata kelola perseroan (${t.corp.docs.length} dokumen, ${t.corp.rups.length} tahapan RUPS, ${t.corp.cap.length} baris cap table)`);
     const pend = t.corp.stat.filter((s) => s[2] === "c-draft");
     if (pend.length) f.push({
       aspect: "Legalitas Badan Hukum", title: `${pend.length} kewajiban statutori belum dipenuhi`,
@@ -55,7 +62,8 @@ export function buildLdd(t: Tenant): LddReport {
       action: "Selesaikan pelaporan statutori sebelum tenggat dan simpan buktinya pada vault.",
     });
   }
-  counts["Legalitas Badan Hukum"] = { rekam: t.corp.docs.length, temuan: f.filter((x) => x.aspect === "Legalitas Badan Hukum").length, status: corpEmpty ? "BERISIKO" : "AMAN" };
+  const temuanCorp = f.filter((x) => x.aspect === "Legalitas Badan Hukum").length;
+  counts["Legalitas Badan Hukum"] = { rekam: corpRekam(t), temuan: temuanCorp, status: corpEmpty || temuanCorp ? "BERISIKO" : "AMAN" };
 
   /* 2. Perizinan */
   const urgentLic = t.lic.filter((r) => r.some((c) => c === "SEGERA" || c === "KEDALUWARSA"));

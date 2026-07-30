@@ -73,6 +73,34 @@ export function resetEmail(tautan: string): { subject: string; text: string; htm
   return { subject: "Setel ulang kata sandi Corplex", text, html };
 }
 
+/* Badan email hasil verifikasi pendaftaran. Layar "Pendaftaran Terkirim" sudah lama menjanjikan
+ * "kami kirim email begitu akses disetujui", dan halaman masuk menyuruh pendaftar yang ditolak
+ * "periksa email Anda untuk alasannya" — dua janji yang sebelumnya tak pernah ditepati. */
+export function approvalEmail(p: { perusahaan: string; disetujui: boolean; alasan?: string; url: string }): { subject: string; text: string; html: string } {
+  const masuk = `${p.url.replace(/\/+$/, "")}/login`;
+  if (p.disetujui) {
+    const text = `Selamat — pendaftaran ${p.perusahaan} disetujui.\n\nAkses portal Corplex Anda sudah aktif. Masuk memakai email dan kata sandi yang Anda buat saat mendaftar:\n${masuk}\n\nMRWP Law Firm — Corplex`;
+    const html = `<div style="font-family:Georgia,serif;max-width:520px;color:#0A1830">
+<p style="font-size:11px;letter-spacing:.18em;color:#B08A3E;margin:0 0 6px">MRWP LAW FIRM · CORPLEX</p>
+<h2 style="margin:0 0 14px;font-size:20px">Pendaftaran disetujui</h2>
+<p style="font-size:14px;line-height:1.7">Pendaftaran <b>${esc(p.perusahaan)}</b> telah kami tinjau dan <b>disetujui</b>. Portal Corplex perusahaan Anda sudah aktif.</p>
+<p style="margin:18px 0"><a href="${esc(masuk)}" style="background:#0A1830;color:#D9BC80;text-decoration:none;padding:12px 22px;border-radius:8px;font-size:14px">Masuk ke Corplex</a></p>
+<p style="font-size:12px;color:#5a6472;line-height:1.7">Gunakan email dan kata sandi yang Anda buat saat mendaftar. Bila tombol tidak dapat diklik, salin alamat ini: ${esc(masuk)}</p>
+</div>`;
+    return { subject: `Pendaftaran Corplex disetujui — ${p.perusahaan}`, text, html };
+  }
+  const alasan = (p.alasan || "").trim() || "Tidak ada alasan yang dicantumkan.";
+  const text = `Pendaftaran ${p.perusahaan} belum dapat kami setujui.\n\nAlasan:\n${alasan}\n\nAnda dapat memperbaiki data lalu mendaftar ulang memakai kode undangan baru dari tim MRWP.\n\nMRWP Law Firm — Corplex`;
+  const html = `<div style="font-family:Georgia,serif;max-width:520px;color:#0A1830">
+<p style="font-size:11px;letter-spacing:.18em;color:#B08A3E;margin:0 0 6px">MRWP LAW FIRM · CORPLEX</p>
+<h2 style="margin:0 0 14px;font-size:20px">Pendaftaran belum disetujui</h2>
+<p style="font-size:14px;line-height:1.7">Pendaftaran <b>${esc(p.perusahaan)}</b> telah kami tinjau, namun belum dapat disetujui.</p>
+<p style="font-size:13px;line-height:1.8;background:#F4F1E8;border-left:3px solid #B08A3E;padding:12px 16px;margin:16px 0"><b>Alasan:</b><br>${esc(alasan)}</p>
+<p style="font-size:12px;color:#5a6472;line-height:1.7">Anda dapat memperbaiki data lalu mendaftar ulang memakai kode undangan baru dari tim MRWP.</p>
+</div>`;
+  return { subject: `Pendaftaran Corplex belum disetujui — ${p.perusahaan}`, text, html };
+}
+
 export async function sendMail(m: { to: string; subject: string; text: string; html: string }): Promise<MailResult> {
   const mode = pickMode(process.env);
   if (!mode) return { ok: false, error: "Belum ada kredensial email (GMAIL_APP_PASSWORD atau MAILTRAP_TOKEN) di .env.local." };

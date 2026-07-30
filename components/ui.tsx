@@ -95,12 +95,15 @@ export function Field({ label, children }: { label: React.ReactNode; children: R
   return <div className="field"><label>{label}</label>{children}</div>;
 }
 
-export function Timeline({ items }: { items: string[][] }) {
+/* onHapus opsional: dipakai modul yang barisnya boleh dikoreksi pemakai (mis. tahapan RUPS).
+ * Tanpa prop ini perilaku lama tak berubah — nol tombol baru di pemanggil yang tak meminta. */
+export function Timeline({ items, onHapus }: { items: string[][]; onHapus?: (i: number) => void }) {
   return (
     <div className="tl">
       {items.map((t, i) => (
         <div key={i} className={`tl-it ${t[3]}`}>
           <span className="dt">{t[0]}</span><b>{t[1]}</b><span>{t[2]}</span>
+          {onHapus && <button className="btn-act" style={{ marginTop: 6 }} onClick={() => onHapus(i)}>Hapus</button>}
         </div>
       ))}
     </div>

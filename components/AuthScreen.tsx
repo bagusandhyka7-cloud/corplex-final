@@ -66,12 +66,18 @@ export function AuthScreen() {
   const [pt, setPt] = useState({ nama: "", bidang: "", nib: "", npwp: "", alamat: "", provinsi: "", kota: "", email: "" });
   const [docs, setDocs] = useState<Record<string, File | null>>({ nib: null, akta: null, npwp: null });
   const [submitted, setSubmitted] = useState(false);
+  /* Kegagalan pendaftaran dulu hanya toast 4,5 detik, sementara panel kanan tetap menampilkan
+   * form unggah — pengguna menyangka pendaftaran berhasil padahal ditolak (mis. email sudah
+   * terdaftar). Galat kini MENETAP di panel sampai pengguna memilih langkah berikutnya. */
+  const [gagalDaftar, setGagalDaftar] = useState<string | null>(null);
+  /* Bentrok email tampil MELEKAT di bawah kolomnya, bukan toast yang lewat. */
+  const [emailBentrok, setEmailBentrok] = useState<string | null>(null);
 
   /* ---- demo ---- */
   const [demo, setDemo] = useState({ nama: "", perusahaan: "", email: "", kebutuhan: "" });
   const [demoSent, setDemoSent] = useState(false);
 
-  const goMode = (m: Mode) => { setMode(m); setStep(0); setSubmitted(false); setDemoSent(false); };
+  const goMode = (m: Mode) => { setMode(m); setStep(0); setSubmitted(false); setDemoSent(false); setGagalDaftar(null); };
 
   /* Tautan undangan admin: /login?kode=MRWP-XXXXXX → langsung mode daftar + kode terisi. */
   useEffect(() => {
@@ -123,12 +129,22 @@ export function AuthScreen() {
     toast("Kode undangan sah", `Paket ${res.data.tier} · berlaku ${res.data.expiresIn} · ${res.data.seats} kursi.`, "ok");
   });
 
-  const nextFromAkun = () => {
+  /* Email diperiksa DI SINI, bukan di akhir. Dulu bentrok email baru ketahuan setelah tiga
+   * dokumen terunggah: pendaftar mengulang dari nol dan Storage menyimpan berkas yatim. */
+  const { run: nextFromAkun, pending: cekingEmail } = useAsyncAction(async () => {
     if (!akun.nama.trim()) { toast("Nama wajib diisi", "Lengkapi nama lengkap Anda.", "warn"); return; }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(akun.email)) { toast("Email tidak valid", "Periksa kembali format email.", "warn"); return; }
     if (akun.pw.length < 8) { toast("Kata sandi terlalu pendek", "Minimal 8 karakter.", "warn"); return; }
+    const cek = await api.auth.cekEmail(kode, akun.email);
+    if (!cek.ok) {
+      if (cek.error.code === "validation") { setEmailBentrok(cek.error.message); return; }
+      if (cek.error.code === "auth") { toast("Kode undangan bermasalah", cek.error.message, "warn"); return; }
+      /* Galat jaringan tak boleh mengunci pendaftaran — register_tenant tetap penjaga terakhir. */
+      toast("Pemeriksaan email dilewati", "Koneksi bermasalah; pendaftaran tetap dapat dilanjutkan.", "warn");
+    }
+    setEmailBentrok(null);
     setStep(2);
-  };
+  });
 
   const nextFromPt = () => {
     if (!pt.nama.trim()) { toast("Nama perusahaan wajib diisi", "Lengkapi data perusahaan.", "warn"); return; }
@@ -147,17 +163,18 @@ export function AuthScreen() {
 
   const { run: selesaikan, pending: submitting } = useAsyncAction(async () => {
     if (!docsReady) { toast("Dokumen belum lengkap", "Ketiga dokumen wajib harus diunggah.", "warn"); return; }
+    setGagalDaftar(null);
     /* Berkas asli diunggah ke Storage (bucket company-docs) — admin mempreview saat Approval. */
     const dokumen: { jenis: string; nama: string; ukuran: number; url?: string }[] = [];
     for (const d of DOKUMEN) {
       const f = docs[d.key]!;
       const path = `daftar/${Date.now()}-${d.key}-${f.name.replace(/[^\w.\-]+/g, "_")}`;
       const up = await sb.storage.from("company-docs").upload(path, f);
-      if (up.error) { toast("Unggah dokumen gagal", `${f.name} — ${up.error.message}`, "warn"); return; }
+      if (up.error) { setGagalDaftar(`Berkas "${f.name}" gagal diunggah — ${up.error.message}`); toast("Unggah dokumen gagal", f.name, "warn"); return; }
       dokumen.push({ jenis: d.key, nama: f.name, ukuran: f.size, url: sb.storage.from("company-docs").getPublicUrl(path).data.publicUrl });
     }
     const res = await withRetry(() => api.auth.register({ kode, akun, perusahaan: pt, dokumen }));
-    if (!res.ok) { toast("Pendaftaran gagal", res.error.message, "warn"); return; }
+    if (!res.ok) { setGagalDaftar(res.error.message); toast("Pendaftaran gagal", res.error.message, "warn"); return; }
     setSubmitted(true);
     toast("Pendaftaran terkirim", "Tim MRWP akan meninjau dokumen Anda.", "ok");
   });
@@ -343,8 +360,22 @@ export function AuthScreen() {
           )}
           <div className="cx-form">
 
-            {/* --- sukses: pendaftaran terkirim --- */}
-            {mode === "daftar" && submitted ? (
+            {/* --- gagal: pendaftaran DITOLAK (menetap sampai pengguna memutuskan) --- */}
+            {mode === "daftar" && gagalDaftar ? (
+              <div className="cx-ok">
+                <div className="ico" style={{ background: "rgba(120,32,32,.35)", borderColor: "rgba(201,64,64,.5)" }}><ShieldCheck size={28} /></div>
+                <h2 style={{ fontFamily: "var(--serif)", fontSize: 24, fontWeight: 700, color: "#fff", margin: 0 }}>Pendaftaran Belum Berhasil</h2>
+                <p style={{ fontSize: 13, color: "rgba(214,223,238,.78)", marginTop: 10, lineHeight: 1.65 }}>{gagalDaftar}</p>
+                <p style={{ fontSize: 12, color: "rgba(214,223,238,.5)", marginTop: 8, lineHeight: 1.6 }}>
+                  Perusahaan Anda <b>belum</b> masuk antrean verifikasi MRWP. Perbaiki data lalu kirim ulang,
+                  atau masuk memakai akun yang sudah ada.
+                </p>
+                <div style={{ display: "flex", gap: 9, justifyContent: "center", marginTop: 20, flexWrap: "wrap" }}>
+                  <button className="cx-btn ghost" onClick={() => setGagalDaftar(null)}>Perbaiki Data</button>
+                  <button className="cx-btn" onClick={() => goMode("login")}>Masuk ke Akun</button>
+                </div>
+              </div>
+            ) : mode === "daftar" && submitted ? (
               <div className="cx-ok">
                 <div className="ico"><ShieldCheck size={28} /></div>
                 <h2 style={{ fontFamily: "var(--serif)", fontSize: 24, fontWeight: 700, color: "#fff", margin: 0 }}>Pendaftaran Terkirim</h2>
@@ -442,9 +473,16 @@ export function AuthScreen() {
                     <div>
                       <label className="cx-lbl">Email <i>*</i></label>
                       <div style={{ position: "relative" }}>
-                        <input className="cx-in" style={{ paddingLeft: 40 }} type="email" value={akun.email} onChange={(e) => setAkun({ ...akun, email: e.target.value })} placeholder="nama@perusahaan.com" />
+                        <input className="cx-in" style={{ paddingLeft: 40, borderColor: emailBentrok ? "rgba(201,64,64,.65)" : undefined }} type="email" value={akun.email}
+                          onChange={(e) => { setAkun({ ...akun, email: e.target.value }); if (emailBentrok) setEmailBentrok(null); }} placeholder="nama@perusahaan.com" />
                         <Mail size={15} style={{ position: "absolute", left: 13, top: "50%", transform: "translateY(-50%)", color: "rgba(206,218,238,.5)" }} />
                       </div>
+                      {emailBentrok && (
+                        <p style={{ fontSize: 11.5, color: "#E39B9B", marginTop: 6, lineHeight: 1.55 }}>
+                          {emailBentrok}{" "}
+                          <button type="button" className="cx-link" style={{ padding: 0 }} onClick={() => goMode("login")}>Masuk ke akun itu</button>
+                        </p>
+                      )}
                     </div>
                     <div>
                       <label className="cx-lbl">Password <em>(min 8 karakter)</em></label>
@@ -456,7 +494,7 @@ export function AuthScreen() {
                     </div>
                     <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
                       <button className="cx-btn ghost" style={{ flex: "0 0 40%" }} onClick={() => setStep(0)}>← Kembali</button>
-                      <button className="cx-btn" onClick={nextFromAkun}>Lanjut</button>
+                      <button className="cx-btn" disabled={cekingEmail} aria-busy={cekingEmail} onClick={() => void nextFromAkun()}>{cekingEmail ? "Memeriksa…" : "Lanjut"}</button>
                     </div>
                   </div>
                 )}

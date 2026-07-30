@@ -222,7 +222,14 @@ export function Topbar({ onBurger, collapsed }: { onBurger: () => void; collapse
     ten.hki.forEach((r) => { const a = r as unknown[]; out.push({ t: String(a[0]), s: `HKI · ${String(a[1] || "")}`, v: "asset" }); });
     ten.asr.pol.forEach((r) => { const a = r as unknown[]; out.push({ t: String(a[0]), s: `Polis · ${String(a[1] || "")}`, v: "asuransi" }); });
     ten.agr.forEach((a) => { const x = a as { n?: string; p2?: string }; out.push({ t: x.n || "Perjanjian", s: `Perjanjian · dengan ${x.p2 || "—"}`, v: "agreement" }); });
-    ten.cases.forEach((c) => { const x = c as { judul?: string; n?: string }; out.push({ t: x.judul || x.n || "Perkara", s: "Perkara", v: "case" }); });
+    /* Rekam perkara disimpan dengan kunci `tab`/`head` (lihat toPayload di lib/impor.ts dan modul
+     * Perkara), BUKAN `judul`/`n` — sebelum ini seluruh perkara terindeks dengan judul literal
+     * "Perkara", jadi mencari nama perkara mustahil sekalipun rekamnya ada. */
+    ten.cases.forEach((c) => {
+      const x = c as { judul?: string; n?: string; tab?: string; head?: string };
+      const nama = x.judul || x.n || x.tab || String(x.head || "").replace(/^Perkara:\s*/i, "");
+      out.push({ t: nama || "Perkara", s: "Perkara", v: "case" });
+    });
     return out;
   }, [ten]);
   const hits = q.trim() ? idx.filter((x) => (x.t + " " + x.s).toLowerCase().includes(q.toLowerCase())).slice(0, 5) : [];
@@ -259,7 +266,11 @@ export function Topbar({ onBurger, collapsed }: { onBurger: () => void; collapse
               <b>{h.t}</b><span>{h.s}</span>
             </button>
           )) : q.trim() ? (
-            <button><b>Tidak ditemukan</b><span>Coba kata kunci lain — pencarian FTS lintas {ten.kpiDocs} dokumen rekam</span></button>
+            /* Dulu "pencarian FTS lintas {ten.kpiDocs} dokumen": dua klaim keliru sekaligus —
+             * kpiDocs field statis tenant yang tak pernah dihitung ulang (selalu 0 untuk tenant
+             * nyata), dan ini bukan full-text search melainkan pencocokan teks atas rekam yang
+             * sudah dimuat. Sebut apa adanya, pakai jumlah indeks hidup. */
+            <button><b>Tidak ditemukan</b><span>Coba kata kunci lain — mencari nama dan keterangan pada {idx.length} rekam</span></button>
           ) : null}
         </div>
       </div>

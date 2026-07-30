@@ -5,13 +5,17 @@ import { useStore, ViewId } from "@/lib/store";
 import { Chip, Kpi, Panel, Row } from "@/components/ui";
 import Ldd from "@/components/views/Ldd";
 import HRDashboard from "@/components/views/HRDashboard";
-import { buildLdd } from "@/lib/ldd";
+import { buildLdd, corpRekam } from "@/lib/ldd";
 import { chipJaga, lblJaga, sisaHari, tenggatJaga } from "@/lib/jaga";
 import { api } from "@/lib/api";
 
 function useCountUp(target: number, dur = 1000) {
   const [v, setV] = useState(0);
   useEffect(() => {
+    /* requestAnimationFrame TIDAK berjalan di tab latar. Tanpa pagar ini, halaman yang dimuat
+     * saat tab tersembunyi (buka di tab baru, atau pindah tab selagi memuat) membekukan KPI di 0 —
+     * "Skor Kesehatan Hukum 0%" untuk perusahaan yang datanya lengkap. Angka dulu, animasi belakangan. */
+    if (typeof document !== "undefined" && document.hidden) { setV(target); return; }
     let raf = 0;
     const t0 = performance.now();
     const step = (now: number) => {
@@ -69,7 +73,7 @@ export default function Ringkasan({ onOpenWizard }: { onOpenWizard: () => void }
   const aspekBelum = aspek.filter((a) => a.rekam === 0).length;
   const aspekAman = aspek.filter((a) => a.rekam > 0 && a.status === "AMAN").length;
   const skorSehat = aspek.length ? Math.round((aspekAman / aspek.length) * 100) : 0;
-  const totalRekam = t.corp.docs.length + t.lic.length + t.assets.length + t.hki.length + t.asr.pol.length + t.agr.length + t.emp.length;
+  const totalRekam = corpRekam(t) + t.lic.length + t.assets.length + t.hki.length + t.asr.pol.length + t.agr.length + t.emp.length;
   const izinAktif = t.lic.filter((r) => (r as unknown[])[7] === "AKTIF").length;
   const asetPerhatian = t.assets.filter((r) => (r as unknown[])[6] !== "AMAN").length;
 
@@ -153,7 +157,7 @@ export default function Ringkasan({ onOpenWizard }: { onOpenWizard: () => void }
     const items: [string, number][] = [
       ["Perizinan", t.lic.length], ["Aset & HKI", t.assets.length + t.hki.length],
       ["Perjanjian", t.agr.length], ["Ketenagakerjaan", t.emp.length],
-      ["Asuransi", t.asr.pol.length], ["Tata Kelola", t.corp.docs.length],
+      ["Asuransi", t.asr.pol.length], ["Tata Kelola", corpRekam(t)],
     ];
     const max = Math.max(1, ...items.map((i) => i[1]));
     return items.map(([l, n]) => [l, n, Math.round((n / max) * 100)]);

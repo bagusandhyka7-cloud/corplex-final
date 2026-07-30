@@ -291,16 +291,27 @@ function AdminInner() {
   /* approval — antrean pending nyata dari DB (service-role) */
   const [pend, setPend] = useState<Pending[]>([]);
   const [docPrev, setDocPrev] = useState<{ url: string; nama: string } | null>(null); // viewer dokumen approval
+  const [muatPend, setMuatPend] = useState(false);
+  const muatPending = React.useCallback(async (diam = true) => {
+    if (!diam) setMuatPend(true);
+    const r = await admin.listPending();
+    if (!diam) setMuatPend(false);
+    if (r.ok) setPend(r.data.map((t) => ({
+      id: t.id, nama: t.name, pendaftar: t.nama, email: t.email,
+      masuk: new Date(t.created_at).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" }),
+      docs: t.docs,
+    })));
+    else if (!diam) toast("Gagal memuat approval", r.error.message, "warn");
+  }, [toast]);
+  useEffect(() => { void muatPending(); }, [muatPending, menu]); // disegarkan tiap pindah menu
+  /* Admin yang DIAM di menu Approval dulu tak pernah melihat pendaftar baru sampai ia berpindah
+   * menu. Selama menu ini terbuka, daftar disegarkan tiap 30 detik — cukup untuk onboarding,
+   * jauh lebih murah daripada langganan realtime untuk satu tabel yang jarang berubah. */
   useEffect(() => {
-    void admin.listPending().then((r) => {
-      if (r.ok) setPend(r.data.map((t) => ({
-        id: t.id, nama: t.name, pendaftar: t.nama, email: t.email,
-        masuk: new Date(t.created_at).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" }),
-        docs: t.docs,
-      })));
-      else toast("Gagal memuat approval", r.error.message, "warn");
-    });
-  }, [toast, menu]); // + menu: daftar disegarkan tiap pindah menu (dulu hanya sekali seumur sesi)
+    if (menu !== "approval") return;
+    const h = setInterval(() => { void muatPending(); }, 30_000);
+    return () => clearInterval(h);
+  }, [menu, muatPending]);
 
   /* permintaan demo — nyata dari DB (bug lama: form menulis, panel tak pernah membaca) */
   type DemoReq = { id: string; nama: string | null; perusahaan: string | null; email: string | null; kebutuhan: string | null; status: string | null; created_at: string };
@@ -470,8 +481,15 @@ function AdminInner() {
     if (!res.ok) return toast("Gagal", res.error.message, "warn");
     setPend((xs) => xs.filter((x) => x.id !== p.id));
     if (ok) setTens((xs) => [...xs, { id: p.id, nama: p.nama, sector: "—", entity: "—", tier: "Demo", sejak: p.masuk, exp: new Date(Date.now() + 24 * 3600_000).toISOString(), seats: [{ nama: p.pendaftar, email: p.email, peran: "Pendaftar", status: "aktif" }] }]);
-    log(`${p.nama} ${ok ? "DISETUJUI — tenant aktif" : "DITOLAK: " + alasan}`);
-    toast(ok ? "Disetujui — tenant aktif" : "Ditolak", ok ? `${p.nama} kini bisa login. Email selamat datang terkirim.` : `Alasan dikirim ke ${p.email}.`, ok ? "ok" : "warn");
+    /* Status email dilaporkan APA ADANYA — dulu toast selalu mengklaim "email terkirim"
+     * padahal keputusan approval tak pernah mengirim email sama sekali. */
+    const em = res.data.email;
+    const kabarEmail = em === "terkirim" ? `Email pemberitahuan terkirim ke ${res.data.email_ke}.`
+      : em === "sandbox" ? `Email tertahan di sandbox — belum sampai ke ${res.data.email_ke}.`
+        : em === "gagal" ? `Email GAGAL terkirim ke ${res.data.email_ke} — hubungi pendaftar manual.`
+          : "Pendaftar tak punya alamat email — hubungi manual.";
+    log(`${p.nama} ${ok ? "DISETUJUI — tenant aktif" : "DITOLAK: " + alasan} · email: ${em}`);
+    toast(ok ? "Disetujui — tenant aktif" : "Ditolak", `${ok ? p.nama + " kini bisa login. " : ""}${kabarEmail}`, em === "gagal" ? "warn" : ok ? "ok" : "warn");
   };
 
   const selTen = tens.find((x) => x.id === sel);
@@ -974,6 +992,12 @@ function AdminInner() {
             {/* approval */}
             {menu === "approval" && (
               <div className="panel">
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
+                  <span className="sub" style={{ fontSize: 11.5 }}>
+                    {pend.length ? `${pend.length} pendaftaran menunggu keputusan` : "Tidak ada pendaftaran menunggu"} · daftar menyegar otomatis tiap 30 detik
+                  </span>
+                  <button className="btn btn-line btn-sm" disabled={muatPend} onClick={() => void muatPending(false)}>{muatPend ? "Memuat…" : "Muat Ulang"}</button>
+                </div>
                 <div className="tblwrap">
                   <table>
                     <thead><tr><th>Perusahaan</th><th>Pendaftar</th><th>Masuk</th><th>Dokumen</th><th>Aksi</th></tr></thead>
@@ -1115,7 +1139,17 @@ function AdminInner() {
 function AdminGate() {
   const [authed, setAuthed] = useState(false);
   const [checked, setChecked] = useState(false);
-  useEffect(() => { setAuthed(!!sessionStorage.getItem(SESSION_KEY)); setChecked(true); }, []);
+  /* Password tersimpan saja TIDAK cukup: JWT di browser bisa sudah berganti — mis. staf
+   * membuka akun klien di browser yang sama. Operasi verifq berjalan dengan JWT itu, dan
+   * update yang ditolak RLS "sukses diam-diam" (0 baris, nol galat). Panel hanya boleh
+   * berdiri di atas JWT super_admin; selain itu, paksa login ulang. */
+  useEffect(() => {
+    if (!sessionStorage.getItem(SESSION_KEY)) { setChecked(true); return; }
+    void sb.rpc("whoami").then(({ data }) => {
+      if (data?.ok && data.role === "super_admin") setAuthed(true);
+      else sessionStorage.removeItem(SESSION_KEY);
+    }).then(() => setChecked(true), () => setChecked(true));
+  }, []);
   if (!checked) return null; // hindari flash saat cek sesi
   return authed ? <AdminInner /> : <AdminLogin onOk={() => setAuthed(true)} />;
 }

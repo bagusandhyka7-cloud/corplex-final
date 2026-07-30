@@ -18,7 +18,9 @@ import { Chip, Field, Modal, Panel, Row, ViewHead } from "@/components/ui";
 
 /* ── Model peristiwa (bentuk yang diusulkan; di sini sebagai data peraga) ───────────── */
 type Status = "berlaku" | "proses" | "telat-akta" | "telat-lapor";
-type Jalur = "persetujuan" | "pemberitahuan";
+/* "internal" = peristiwa yang rantainya berhenti di tahap keputusan (mis. RUPS tahunan
+ * penerimaan laporan keuangan) — tak ada kewajiban akta/pelaporan, dicatat sebagai riwayat. */
+type Jalur = "persetujuan" | "pemberitahuan" | "internal";
 type Ubah = { hal: string; dari: string; jadi: string };
 type Peristiwa = {
   id: string;
@@ -26,6 +28,10 @@ type Peristiwa = {
   tanggalBerlaku?: string;      // tanggal pengesahan terbit
   status: Status;
   jalur: Jalur;
+  /* Riwayat lama yang dicatat mundur: tenggat & alarm TIDAK berlaku — status dihitung dari
+   * kelengkapan rantai, bukan keterlambatan. Tanpa ini, akta 2019 yang baru dicatat hari ini
+   * akan berteriak "TERLAMBAT 2.700 HARI" — alarm palsu, dosa yang sama dengan dummy. */
+  historis?: boolean;
   dasar: { bentuk: string; tanggal: string; agenda: string };
   akta?: { nomor: string; tanggal: string; notaris: string; berkas: string };
   sah?: { bentuk: string; nomor: string; tanggal: string; berkas: string };
@@ -49,7 +55,12 @@ const PERISTIWA: Peristiwa[] = [
     ubah: [{ hal: "Komisaris Independen", dari: "—", jadi: "Dewi Anggraini" }],
   },
   {
-    id: "p3", jenis: "Peningkatan Modal Dasar", tanggalBerlaku: "2 Okt 2023", status: "berlaku", jalur: "persetujuan",
+    id: "p6", jenis: "RUPS Tahunan — Laporan Keuangan 2024", tanggalBerlaku: "12 Mei 2025", status: "berlaku", jalur: "internal", historis: true,
+    dasar: { bentuk: "RUPS Tahunan", tanggal: "12 Mei 2025", agenda: "Penerimaan laporan keuangan & pelunasan tanggung jawab (acquit et de charge) tahun buku 2024" },
+    ubah: [{ hal: "Laporan keuangan tahun buku 2024", dari: "Belum diterima RUPS", jadi: "Diterima & disahkan" }],
+  },
+  {
+    id: "p3", jenis: "Peningkatan Modal Dasar", tanggalBerlaku: "2 Okt 2023", status: "berlaku", jalur: "persetujuan", historis: true,
     dasar: { bentuk: "RUPS Luar Biasa", tanggal: "10 Sep 2023", agenda: "Peningkatan modal dasar untuk rencana ekspansi" },
     akta: { nomor: "41/2023", tanggal: "17 Sep 2023", notaris: "Ny. Siti Rahmawati, S.H., M.Kn.", berkas: "Akta_Perubahan_41_2023.pdf" },
     sah: { bentuk: "Keputusan Menteri", nomor: "AHU-0056789.AH.01.02.TAHUN 2023", tanggal: "2 Okt 2023", berkas: "SK_Menkumham_2023.pdf" },
@@ -59,14 +70,14 @@ const PERISTIWA: Peristiwa[] = [
     ],
   },
   {
-    id: "p2", jenis: "Perubahan Susunan Direksi", tanggalBerlaku: "19 Feb 2021", status: "berlaku", jalur: "pemberitahuan",
+    id: "p2", jenis: "Perubahan Susunan Direksi", tanggalBerlaku: "19 Feb 2021", status: "berlaku", jalur: "pemberitahuan", historis: true,
     dasar: { bentuk: "Keputusan Sirkuler Pemegang Saham", tanggal: "28 Jan 2021", agenda: "Pergantian Direktur Utama" },
     akta: { nomor: "9/2021", tanggal: "4 Feb 2021", notaris: "Andi Prasetyo, S.H., M.Kn.", berkas: "Akta_Perubahan_9_2021.pdf" },
     sah: { bentuk: "Surat Penerimaan Pemberitahuan", nomor: "AHU-AH.01.03-0089123", tanggal: "19 Feb 2021", berkas: "Surat_Penerimaan_2021.pdf" },
     ubah: [{ hal: "Direktur Utama", dari: "Hendra Wijaya", jadi: "Budi Santoso" }],
   },
   {
-    id: "p1", jenis: "Pendirian Perseroan", tanggalBerlaku: "28 Mar 2019", status: "berlaku", jalur: "persetujuan",
+    id: "p1", jenis: "Pendirian Perseroan", tanggalBerlaku: "28 Mar 2019", status: "berlaku", jalur: "persetujuan", historis: true,
     dasar: { bentuk: "Akta Pendirian", tanggal: "12 Mar 2019", agenda: "Pendirian PT Uji Coba Sejahtera" },
     akta: { nomor: "27/2019", tanggal: "12 Mar 2019", notaris: "Ny. Siti Rahmawati, S.H., M.Kn.", berkas: "Akta_Pendirian_27_2019.pdf" },
     sah: { bentuk: "Keputusan Menteri (pengesahan badan hukum)", nomor: "AHU-0012345.AH.01.01.TAHUN 2019", tanggal: "28 Mar 2019", berkas: "SK_Pengesahan_2019.pdf" },
@@ -90,6 +101,9 @@ const PERIKSA: { hal: string; ok: boolean; ket: string }[] = [
   { hal: "Setiap akta memperoleh pengesahan", ok: false, ket: "Akta 14/2026 menunggu Surat Penerimaan" },
   { hal: "Tenggat 30 hari dipenuhi", ok: false, ket: "1 tenggat terlampaui 27 hari" },
   { hal: "Susunan organ sesuai pengesahan terakhir", ok: true, ket: "Sinkron per 2 Okt 2023" },
+  /* RUPS bukan hanya pemicu perubahan — RUPS tahunan wajib digelar maks 6 bulan
+   * setelah tutup buku (Pasal 78 UU PT), meski tak melahirkan akta apa pun. */
+  { hal: "RUPS tahunan tahun berjalan", ok: false, ket: "Tahun buku 2025 — batas 30 Jun 2026 terlampaui, belum tercatat" },
 ];
 
 const CHIP: Record<Status, { c: string; label: string }> = {
@@ -109,6 +123,7 @@ const JENIS: { nama: string; jalur: Jalur }[] = [
   { nama: "Perubahan Susunan Direksi", jalur: "pemberitahuan" },
   { nama: "Perubahan Susunan Komisaris", jalur: "pemberitahuan" },
   { nama: "Perubahan Pemegang Saham", jalur: "pemberitahuan" },
+  { nama: "RUPS Tahunan (penerimaan laporan keuangan)", jalur: "internal" },
 ];
 
 export default function CorpsecBaru() {
@@ -116,6 +131,7 @@ export default function CorpsecBaru() {
   const [buka, setBuka] = useState<Peristiwa | null>(null);
   const [tambah, setTambah] = useState(false);
   const [jenisBaru, setJenisBaru] = useState(JENIS[4].nama);
+  const [historisBaru, setHistorisBaru] = useState(false);
 
   const rows = useMemo(() => PERISTIWA.filter((p) =>
     filter === "Semua" ? true
@@ -160,29 +176,31 @@ export default function CorpsecBaru() {
         sub="Riwayat hukum badan usaha — pendirian, setiap perubahan, dan pengesahannya, dalam satu alur."
         acts={<button className="btn btn-gold" onClick={() => setTambah(true)}><Plus size={14} /> Catat Peristiwa</button>} />
 
-      {/* ── LAPIS 1 · Ikhtisar: tiga fakta + satu peringatan ───────────────────────── */}
+      {/* ── LAPIS 1 · Ikhtisar: PENYIMPANGAN DULU, identitas belakangan ─────────────────
+        * Layar pantau menjawab "ada masalah tidak hari ini?" sebelum hal lain — alarm di
+        * puncak, fakta statis (tanggal berdiri) di ekor. Maks 2 peringatan tetap dijaga. */}
       <Panel className="mb16">
-        <div className="grid g4" style={{ gap: 14 }}>
-          <div className="cs-fakta"><b>12 Mar 2019</b><span>Berdiri · Akta 27/2019</span></div>
-          <div className="cs-fakta"><b>4</b><span>Perubahan tercatat</span></div>
-          <div className="cs-fakta"><b>2 Okt 2023</b><span>Perubahan berlaku terakhir</span></div>
-          <div className="cs-fakta">
-            <b style={{ color: perluTindakan ? "var(--danger)" : "var(--ok)" }}>{perluTindakan || "—"}</b>
-            <span>{perluTindakan ? "Perlu tindakan segera" : "Seluruh perubahan sah"}</span>
-          </div>
-        </div>
         {perluTindakan > 0 && (
-          <div className="flag mt16" style={{ marginBottom: 0 }}>
+          <div className="flag" style={{ marginTop: 0 }}>
             <b>Keputusan RUPS 2 Juni 2026 belum dituangkan ke akta notaris</b>
             <span>Batas 30 hari terlampaui 27 hari. Perubahan alamat kedudukan belum sah dan tak dapat lagi diajukan ke Menkumham tanpa RUPS ulang.</span>
           </div>
         )}
         {dalamProses > 0 && (
-          <div className="flag w" style={{ marginBottom: 0, marginTop: 9 }}>
+          <div className="flag w" style={{ marginTop: 0 }}>
             <b>Akta 14/2026 menunggu pemberitahuan ke Menkumham</b>
             <span>Sisa 16 hari dari batas 30 hari sejak tanggal akta (14 Agustus 2026).</span>
           </div>
         )}
+        <div className="grid g4" style={{ gap: 14 }}>
+          <div className="cs-fakta">
+            <b style={{ color: perluTindakan ? "var(--danger)" : "var(--ok)" }}>{perluTindakan || "—"}</b>
+            <span>{perluTindakan ? "Perlu tindakan segera" : "Tak ada tenggat terlampaui"}</span>
+          </div>
+          <div className="cs-fakta"><b>{dalamProses}</b><span>Dalam proses pengesahan</span></div>
+          <div className="cs-fakta"><b>2 Okt 2023</b><span>Perubahan berlaku terakhir</span></div>
+          <div className="cs-fakta"><b>12 Mar 2019</b><span>Berdiri · Akta 27/2019</span></div>
+        </div>
       </Panel>
 
       <div className="grid g-wide">
@@ -205,14 +223,18 @@ export default function CorpsecBaru() {
                         <b>{p.jenis}</b>
                         <span className="d">
                           {p.tanggalBerlaku ? `Berlaku ${p.tanggalBerlaku}` : `${p.dasar.bentuk} ${p.dasar.tanggal}`}
-                          {" · "}jalur {p.jalur}
+                          {" · "}{p.jalur === "internal" ? "tanpa kewajiban lapor" : `jalur ${p.jalur}`}
                         </span>
                         <div className="cs-chain">
                           <span className="cs-step done">{p.dasar.bentuk.startsWith("Akta") ? "AKTA PENDIRIAN" : "KEPUTUSAN"}</span>
-                          <span className="cs-sep">›</span>
-                          <span className={`cs-step ${p.akta ? "done" : p.status === "telat-akta" ? "miss" : "now"}`}>AKTA</span>
-                          <span className="cs-sep">›</span>
-                          <span className={`cs-step ${p.sah ? "done" : p.akta ? "now" : ""}`}>PENGESAHAN</span>
+                          {p.jalur === "internal" ? (
+                            <span className="cs-step" style={{ borderStyle: "dashed" }}>TANPA KEWAJIBAN AKTA</span>
+                          ) : (<>
+                            <span className="cs-sep">›</span>
+                            <span className={`cs-step ${p.akta ? "done" : p.status === "telat-akta" ? "miss" : "now"}`}>AKTA</span>
+                            <span className="cs-sep">›</span>
+                            <span className={`cs-step ${p.sah ? "done" : p.akta ? "now" : ""}`}>PENGESAHAN</span>
+                          </>)}
                         </div>
                       </div>
                       <div className="right" style={{ flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
@@ -263,13 +285,14 @@ export default function CorpsecBaru() {
       <Modal right open={!!buka} title={buka?.jenis || ""} onClose={() => setBuka(null)}
         footer={<>
           <button className="btn btn-line" onClick={() => setBuka(null)}>Tutup</button>
-          {buka && !buka.akta && <button className="btn btn-gold"><FileText size={12} /> Unggah Akta</button>}
-          {buka && buka.akta && !buka.sah && <button className="btn btn-gold"><Landmark size={12} /> Unggah Pengesahan</button>}
+          {buka && buka.jalur !== "internal" && !buka.akta && <button className="btn btn-gold"><FileText size={12} /> Unggah Akta</button>}
+          {buka && buka.jalur !== "internal" && buka.akta && !buka.sah && <button className="btn btn-gold"><Landmark size={12} /> Unggah Pengesahan</button>}
         </>}>
         {buka && <>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 14 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 14, flexWrap: "wrap" }}>
             <Chip c={CHIP[buka.status].c}>{CHIP[buka.status].label}</Chip>
-            <Chip c="c-mon">JALUR {buka.jalur.toUpperCase()}</Chip>
+            <Chip c="c-mon">{buka.jalur === "internal" ? "TANPA KEWAJIBAN LAPOR" : `JALUR ${buka.jalur.toUpperCase()}`}</Chip>
+            {buka.historis && <Chip c="c-mon">RIWAYAT — TANPA ALARM</Chip>}
           </div>
 
           <Field label="1 · Dasar keputusan">
@@ -279,6 +302,14 @@ export default function CorpsecBaru() {
             </div>
           </Field>
 
+          {buka.jalur === "internal" ? (
+            <Field label="2 · Kewajiban lanjutan">
+              <p className="note" style={{ margin: 0 }}>
+                Jenis peristiwa ini selesai pada tahap keputusan — tidak menimbulkan kewajiban akta
+                maupun pelaporan ke Menkumham. Dicatat sebagai bukti kepatuhan RUPS tahunan (Pasal 78 UU PT).
+              </p>
+            </Field>
+          ) : (<>
           <Field label="2 · Akta notaris">
             {buka.akta ? (
               <div className="row" style={{ alignItems: "flex-start" }}>
@@ -309,6 +340,7 @@ export default function CorpsecBaru() {
               </div>
             )}
           </Field>
+          </>)}
 
           <Field label="Yang berubah">
             <div style={{ display: "grid", gap: 9 }}>
@@ -332,6 +364,18 @@ export default function CorpsecBaru() {
           <button className="btn btn-line" onClick={() => setTambah(false)}>Batal</button>
           <button className="btn btn-gold" onClick={() => setTambah(false)}>Simpan Peristiwa</button>
         </>}>
+        {/* Pilihan pertama & paling menentukan: riwayat lama TIDAK boleh melahirkan alarm. */}
+        <Field label="Peristiwa ini *">
+          <div style={{ display: "grid", gap: 8 }}>
+            {([["Sedang berjalan", "dipantau — dua tenggat 30 hari dipasang otomatis", false],
+               ["Riwayat lama", "sudah selesai di masa lalu — dicatat tanpa alarm keterlambatan", true]] as const).map(([b, d, v]) => (
+              <label key={b} className="row clickable" style={{ alignItems: "flex-start", gap: 10, cursor: "pointer" }}>
+                <input type="radio" name="cs-mode" checked={historisBaru === v} onChange={() => setHistorisBaru(v)} style={{ marginTop: 3 }} />
+                <div><b>{b}</b><span className="d">{d}</span></div>
+              </label>
+            ))}
+          </div>
+        </Field>
         <Field label="Jenis peristiwa *">
           <select value={jenisBaru} onChange={(e) => setJenisBaru(e.target.value)}>
             {JENIS.map((j) => <option key={j.nama}>{j.nama}</option>)}
@@ -347,11 +391,20 @@ export default function CorpsecBaru() {
           <div style={{ display: "flex", gap: 9, alignItems: "flex-start" }}>
             <AlertTriangle size={15} style={{ color: "var(--warn)", flex: "0 0 auto", marginTop: 2 }} />
             <div style={{ fontSize: 12, lineHeight: 1.7, color: "var(--txt2)" }}>
-              Sistem menetapkan jalur <b style={{ color: "var(--warn)" }}>{jalurBaru}</b> untuk jenis ini
-              {jalurBaru === "persetujuan"
-                ? " — wajib memperoleh Keputusan Menteri sebelum berlaku."
-                : " — cukup Surat Penerimaan Pemberitahuan."}
-              <br />Dua tenggat otomatis dipasang: <b>akta paling lambat 30 hari</b> sejak keputusan, dan <b>pengajuan ke Menkumham 30 hari</b> sejak tanggal akta.
+              {jalurBaru === "internal" ? (<>
+                Jenis ini <b style={{ color: "var(--warn)" }}>selesai pada tahap keputusan</b> — tanpa kewajiban akta
+                maupun pelaporan ke Menkumham. Dicatat sebagai bukti kepatuhan RUPS tahunan
+                (wajib digelar maks 6 bulan setelah tutup buku, Pasal 78 UU PT).
+              </>) : (<>
+                Sistem menetapkan jalur <b style={{ color: "var(--warn)" }}>{jalurBaru}</b> untuk jenis ini
+                {jalurBaru === "persetujuan"
+                  ? " — wajib memperoleh Keputusan Menteri sebelum berlaku."
+                  : " — cukup Surat Penerimaan Pemberitahuan."}
+                <br />
+                {historisBaru
+                  ? <>Riwayat lama: <b>tenggat & alarm tidak diberlakukan</b> — lengkapi akta dan pengesahannya dari halaman detail; status dihitung dari kelengkapan rantai.</>
+                  : <>Dua tenggat otomatis dipasang: <b>akta paling lambat 30 hari</b> sejak keputusan, dan <b>pengajuan ke Menkumham 30 hari</b> sejak tanggal akta.</>}
+              </>)}
             </div>
           </div>
         </div>

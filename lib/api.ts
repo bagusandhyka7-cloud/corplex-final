@@ -34,6 +34,12 @@ async function appendMsg(id: string, text: string, dok?: { url: string; nama: st
 const bacaSaja = () => typeof window !== "undefined" && !!localStorage.getItem("corplex_impersonate");
 const TOLAK_TULIS = () => err("auth", "Mode Pengawasan — hanya baca. Tutup mode ini di panel MRWP untuk mengubah data.");
 
+/* Update/delete yang ditolak RLS kembali TANPA galat, hanya 0 baris — Postgres memang begitu.
+ * Tanpa memeriksa jumlah baris, UI menghapus/mengubah barisnya di layar sementara database
+ * tak berubah: pengguna melihat "berhasil" yang bohong dan datanya muncul lagi saat muat ulang.
+ * Sumber tersering: JWT di tab ini milik akun lain (mis. staf sempat masuk panel MRWP). */
+const TOLAK_RLS = () => err("auth", "Perubahan ditolak server — sesi ini tak berwenang atas data tersebut. Muat ulang halaman lalu masuk kembali.");
+
 /* Minta server menghitung SHA-256 isi dokumen milik baris ini lalu menyimpannya.
  * Klien TIDAK mengirim nilai hash — hanya menyebut barisnya; server yang mengunduh & menghitung.
  * Sengaja fire-and-forget: hash adalah pelengkap integritas, bukan syarat rekam tersimpan —
@@ -99,6 +105,16 @@ export const api = {
       if (error) return err("network", "Gagal menghubungi server — coba lagi.");
       if (!data?.ok) return err("auth", data?.error || "Kode ditolak.");
       return ok({ tier: data.tier, expiresIn: data.expires_in, seats: data.seats });
+    },
+
+    /* Cek email SEBELUM pendaftar mengunggah dokumen. Digerbangi kode undangan di sisi DB,
+     * jadi bukan alat enumerasi terbuka. Gagal jaringan TIDAK memblokir — pendaftaran tetap
+     * boleh lanjut dan register_tenant tetap jadi penjaga terakhir. */
+    async cekEmail(kode: string, email: string): Promise<ApiResult<{ terpakai: boolean }>> {
+      const { data, error } = await sb.rpc("cek_email_daftar", { p_kode: kode, p_email: email });
+      if (error) return err("network", "Gagal memeriksa email — coba lagi.");
+      if (!data?.ok) return err(data?.terpakai ? "validation" : "auth", data?.error || "Email tidak dapat dipakai.");
+      return ok({ terpakai: false });
     },
 
     /* NYATA: RPC register_tenant — transaksi tunggal (validasi kode, tenant pending,
@@ -190,8 +206,9 @@ export const api = {
     },
     async remove(id: string): Promise<ApiResult<null>> {
       if (bacaSaja()) return TOLAK_TULIS();
-      const { error } = await sb.from("employees").delete().eq("id", id);
-      return error ? err("server", "Gagal menghapus.") : ok(null);
+      const { data: rows, error } = await sb.from("employees").delete().eq("id", id).select("id");
+      if (error) return err("server", "Gagal menghapus.");
+      return rows?.length ? ok(null) : TOLAK_RLS();
     },
     /* Foto → Storage bucket publik employee-photos/<tid>/<ts>-<nama file>. */
     async uploadPhoto(tid: string, file: File): Promise<ApiResult<{ url: string }>> {
@@ -281,7 +298,8 @@ export const api = {
       return error ? err("server", "Gagal mengganti nama.") : ok(null);
     },
     async deleteSession(id: string) {
-      const { error } = await sb.from("chat_sessions").delete().eq("id", id);
+      const { data: rows, error } = await sb.from("chat_sessions").delete().eq("id", id).select("id");
+      if (!error && !rows?.length) return TOLAK_RLS();
       return error ? err("server", "Gagal menghapus.") : ok(null);
     },
     async listMessages(sessionId: string): Promise<ApiResult<{ role: "user" | "assistant"; content: string; citations: number }[]>> {
@@ -328,11 +346,14 @@ export const api = {
     },
     /* advokat bertanya tanpa menolak — catatan tampil di portal klien, status tetap ditinjau */
     async askInfo(id: string, note: string) {
+      /* Pola sama dengan decide: tulis status dulu + cek baris (RLS menolak = 0 baris tanpa
+       * galat), baru pesan — pertanyaan tak boleh sempat tercatat atas nama klien. */
+      const { data: rows, error } = await sb.from("verification_queue").update({ status: "meninjau", note: "PERTANYAAN ADVOKAT: " + note }).eq("id", id).select("id");
+      if (error || !rows?.length) return err("auth", "Pertanyaan ditolak server — sesi ini bukan advokat. Muat ulang panel dan masuk kembali.");
       const a = await appendMsg(id, "PERTANYAAN ADVOKAT: " + note);
       if (!a.ok) return a;
-      const { error } = await sb.from("verification_queue").update({ status: "meninjau", note: "PERTANYAAN ADVOKAT: " + note }).eq("id", id);
       void sb.from("audit_logs").insert({ action: "advokat_minta_info", detail: { id, note }, actor: "adminmrwp" }).then(() => {});
-      return error ? err("server", "Gagal mengirim pertanyaan.") : ok(a.data);
+      return ok(a.data);
     },
     /* balasan KLIEN atas pertanyaan advokat (boleh berlampiran dokumen susulan).
      * Status sengaja tak diubah: bola tetap di meja advokat sampai ia memutuskan. */
@@ -344,11 +365,14 @@ export const api = {
       return ok(a.data);
     },
     async decide(id: string, status: "verified" | "rejected", note: string) {
+      /* Keputusan DULU, pesan belakangan — dan periksa jumlah baris: update yang ditolak RLS
+       * kembali TANPA galat (0 baris). Tanpa cek ini, sesi non-advokat mengira sukses dan
+       * pesan keputusan sempat tercatat atas nama klien. */
+      const { data: rows, error } = await sb.from("verification_queue").update({ status, note, decided_by: "Adv. MRWP", decided_at: new Date().toISOString() }).eq("id", id).select("id");
+      if (error || !rows?.length) return err("auth", "Keputusan ditolak server — sesi ini bukan advokat. Muat ulang panel dan masuk kembali.");
       const a = await appendMsg(id, note);
-      if (!a.ok) return a;
-      const { error } = await sb.from("verification_queue").update({ status, note, decided_by: "Adv. MRWP", decided_at: new Date().toISOString() }).eq("id", id);
       void sb.from("audit_logs").insert({ action: "advokat_" + status, detail: { id, note }, actor: "adminmrwp" }).then(() => {});
-      return error ? err("server", "Gagal menyimpan keputusan.") : ok(a.data);
+      return ok(a.ok ? a.data : []);
     },
   },
 
@@ -374,8 +398,9 @@ export const api = {
       return error ? err("server", "Gagal mengganti nama.") : ok(null);
     },
     async remove(id: string) {
-      const { error } = await sb.from("draft_projects").delete().eq("id", id);
-      return error ? err("server", "Gagal menghapus.") : ok(null);
+      const { data: rows, error } = await sb.from("draft_projects").delete().eq("id", id).select("id");
+      if (error) return err("server", "Gagal menghapus.");
+      return rows?.length ? ok(null) : TOLAK_RLS();
     },
     async updateBody(id: string, body: string) {
       const { error } = await sb.from("draft_projects").update({ body, updated_at: new Date().toISOString() }).eq("id", id);
@@ -400,8 +425,9 @@ export const api = {
       return ok(data as AttRow);
     },
     async remove(id: string): Promise<ApiResult<null>> {
-      const { error } = await sb.from("attendance").delete().eq("id", id);
-      return error ? err("server", "Gagal menghapus absensi.") : ok(null);
+      const { data: rows, error } = await sb.from("attendance").delete().eq("id", id).select("id");
+      if (error) return err("server", "Gagal menghapus absensi.");
+      return rows?.length ? ok(null) : TOLAK_RLS();
     },
   },
 
@@ -437,16 +463,18 @@ export const api = {
       if (bacaSaja()) return TOLAK_TULIS();
       const patch: Record<string, unknown> = { data, updated_at: new Date().toISOString() };
       if (dok !== undefined) { patch.dok_url = dok?.url ?? null; patch.dok_nama = dok?.nama ?? null; }
-      const { error } = await sb.from("module_records").update(patch).eq("id", id);
+      const { data: rows, error } = await sb.from("module_records").update(patch).eq("id", id).select("id");
       if (error) return err("server", "Gagal memperbarui rekam.");
+      if (!rows?.length) return TOLAK_RLS();
       /* Berkas berganti/dihapus → hash lama tak berlaku; server menghitung ulang dari berkas baru. */
       if (dok !== undefined) mintaHash("rec", id);
       return ok(null);
     },
     async remove(id: string): Promise<ApiResult<null>> {
       if (bacaSaja()) return TOLAK_TULIS();
-      const { error } = await sb.from("module_records").delete().eq("id", id);
-      return error ? err("server", "Gagal menghapus rekam.") : ok(null);
+      const { data: rows, error } = await sb.from("module_records").delete().eq("id", id).select("id");
+      if (error) return err("server", "Gagal menghapus rekam.");
+      return rows?.length ? ok(null) : TOLAK_RLS();
     },
   },
 
@@ -554,7 +582,7 @@ export const admin = {
   /* +N jam dari max(now, tenggat lama); 0 = permanen */
   async extendTenant(id: string, hours: number) { return adminPost<{ expires_at: string | null }>("extendTenant", { id, hours }); },
   async decideTenant(id: string, approve: boolean, reason?: string) {
-    return adminPost<{ ok: true }>("decideTenant", { id, approve, reason });
+    return adminPost<{ hashed?: number; email: "terkirim" | "sandbox" | "gagal" | "tanpa-email"; email_ke: string | null }>("decideTenant", { id, approve, reason });
   },
   /* Seat NYATA — lewat server (Auth Admin API butuh service role). */
   async inviteSeat(tenant: string, email: string) { return adminPost<{ link: string | null }>("inviteSeat", { tenant, email }); },

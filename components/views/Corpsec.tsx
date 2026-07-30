@@ -5,12 +5,17 @@
 import React, { useState } from "react";
 import { Check, Lock, Plus } from "lucide-react";
 import { useStore } from "@/lib/store";
-import { Chip, Field, Jargon, Modal, Panel, Row, Timeline } from "@/components/ui";
+import { askConfirm, Chip, Field, Jargon, Modal, Panel, Row, Timeline } from "@/components/ui";
 import { ModuleShell } from "@/components/ModuleShell";
 import { api } from "@/lib/api";
 import { useRouter } from "next/navigation";
 
 const tid = () => localStorage.getItem("corplex_tid") || "";
+
+/* Tombol hapus baris — seragam dengan gaya btn-act yang sudah dipakai modul lain. */
+const BtnHapus = ({ onClick }: { onClick: () => void }) => (
+  <button className="btn-act" title="Hapus baris" onClick={onClick}>Hapus</button>
+);
 const tglID = () => new Date().toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" }).toUpperCase();
 
 /* satu definisi form per panel — baris baru masuk array jsonb terkait */
@@ -69,9 +74,20 @@ export default function Corpsec() {
     }
   };
 
+  /* Hapus satu baris panel. Sebelumnya modul ini SATU-SATUNYA yang datanya tak bisa dikoreksi:
+   * salah ketik atau baris kembar menetap selamanya (modul lain punya RecActions Edit/Hapus).
+   * Menumpang simpan() yang sudah ada — array jsonb ditulis ulang tanpa indeks tsb. */
+  const hapusBaris = async (key: keyof typeof ADD, i: number, label: string) => {
+    if (!(await askConfirm(`Hapus "${label}" dari rekam tata kelola?`))) return;
+    const sisa = (c[key as "rups"] || []).filter((_, j) => j !== i);
+    if (await simpan({ [key]: sisa } as Partial<typeof c>)) toast("Baris dihapus", "Rekam tata kelola diperbarui.", "ok");
+  };
+
   const setuju = async (i: number) => {
     const dirs = c.dirs.map((d, j) => (j === i ? [d[0], d[1], "ok", tglID()] : d));
-    if (await simpan({ dirs })) toast(dirs.every((d) => d[2] === "ok") ? "Keputusan sirkuler SAH — 100% setuju" : "Persetujuan tercatat", "Hash tanda tangan tercatat pada rekam.", "ok");
+    /* Dulu berbunyi "Hash tanda tangan tercatat pada rekam" — nol hash, nol tanda tangan digital
+     * di jalur ini. Yang benar-benar tersimpan hanya nama, jabatan, dan tanggal persetujuan. */
+    if (await simpan({ dirs })) toast(dirs.every((d) => d[2] === "ok") ? "Keputusan sirkuler SAH — 100% setuju" : "Persetujuan tercatat", `Persetujuan atas nama ${c.dirs[i]?.[0] || "pihak ini"} tercatat pada rekam beserta tanggalnya (${tglID()}).`, "ok");
   };
 
   const dropDok = async (file: File) => {
@@ -96,22 +112,23 @@ export default function Corpsec() {
       <div className="grid g-wide">
         <div style={{ display: "grid", gap: 16, alignContent: "start" }}>
           <Panel title={<>{c.entity} · RUPS</>}>
-            {c.rups.length ? <Timeline items={c.rups} /> : <p style={{ fontSize: 12, color: "var(--muted)" }}>Belum ada tahapan RUPS tercatat — lewat tombol Tambah Data di atas.</p>}
+            {c.rups.length ? <Timeline items={c.rups} onHapus={(i) => void hapusBaris("rups", i, c.rups[i][1] || c.rups[i][0])} /> :<p style={{ fontSize: 12, color: "var(--muted)" }}>Belum ada tahapan RUPS tercatat — lewat tombol Tambah Data di atas.</p>}
           </Panel>
           <Panel title={<><Jargon k="keputusan sirkuler">Keputusan Sirkuler</Jargon> — Persetujuan Elektronik <Chip c={allOk ? "c-ver" : "c-draft"}>{allOk ? `SAH — ${done}/${c.dirs.length} (100%)` : `${done} / ${c.dirs.length || 0} SETUJU`}</Chip></>}>
             <div className="rows">
               {c.dirs.map((d, i) => d[2] === "ok" ? (
-                <Row key={i} b={`${d[0]} — ${d[1]}`} d={`Disetujui · tercatat ${d[3]}`} right={<Chip c="c-ver"><Check size={9} style={{ display: "inline" }} /></Chip>} />
+                <Row key={i} b={`${d[0]} — ${d[1]}`} d={`Disetujui · tercatat ${d[3]}`}
+                  right={<><Chip c="c-ver"><Check size={9} style={{ display: "inline" }} /></Chip><BtnHapus onClick={() => void hapusBaris("dirs", i, d[0])} /></>} />
               ) : (
                 <Row key={i} b={`${d[0]} — ${d[1]}`} d="Menunggu persetujuan (constraint: sirkuler butuh 100%)"
-                  right={<><Chip c="c-draft">MENUNGGU</Chip><button className="btn btn-navy btn-sm" disabled={busy} onClick={() => void setuju(i)}>Setujui</button></>} />
+                  right={<><Chip c="c-draft">MENUNGGU</Chip><button className="btn btn-navy btn-sm" disabled={busy} onClick={() => void setuju(i)}>Setujui</button><BtnHapus onClick={() => void hapusBaris("dirs", i, d[0])} /></>} />
               ))}
               {!c.dirs.length && <Row b="Belum ada pihak sirkuler" d="Tambahkan direksi/pemegang saham yang wajib menyetujui." right={<Chip c="c-mon">KOSONG</Chip>} />}
             </div>
           </Panel>
           <Panel title={<>Rapat Organ Perseroan</>}>
             <div className="rows">
-              {c.meetings.map((m, i) => <Row key={i} b={m[0]} d={m[1]} right={<Chip c="c-mon">TERJADWAL</Chip>} />)}
+              {c.meetings.map((m, i) => <Row key={i} b={m[0]} d={m[1]} right={<><Chip c="c-mon">TERJADWAL</Chip><BtnHapus onClick={() => void hapusBaris("meetings", i, m[0])} /></>} />)}
               {!c.meetings.length && <Row b="Belum ada rapat terjadwal" d="Catat rapat direksi/komisaris lewat tombol Tambah Data di atas." right={<Chip c="c-mon">KOSONG</Chip>} />}
             </div>
           </Panel>
@@ -119,13 +136,15 @@ export default function Corpsec() {
         <div style={{ display: "grid", gap: 16, alignContent: "start" }}>
           <Panel title={<>Cap Table</>}>
             <div className="rows">
-              {c.cap.map((x, i) => <Row key={i} b={x[0]} d={x[1]} right={<b style={{ color: "var(--ink)" }}>{x[2]}</b>} />)}
-              {!c.cap.length && <Row b="Belum ada struktur kepemilikan" d="Isi pemegang saham + persentase — validasi Σ=100% menyusul saat lengkap." right={<Chip c="c-mon">KOSONG</Chip>} />}
+              {c.cap.map((x, i) => <Row key={i} b={x[0]} d={x[1]} right={<><b style={{ color: "var(--ink)" }}>{x[2]}</b><BtnHapus onClick={() => void hapusBaris("cap", i, x[0])} /></>} />)}
+              {/* Janji "validasi Σ=100% menyusul" dicabut — tak ada validasi jumlah persentase
+                  di kode mana pun, dan menjanjikan pemeriksaan yang tak ada = klaim palsu. */}
+              {!c.cap.length && <Row b="Belum ada struktur kepemilikan" d="Isi pemegang saham berikut persentasenya — jumlah persentase dihitung sendiri oleh pengguna, Corplex belum memeriksanya." right={<Chip c="c-mon">KOSONG</Chip>} />}
             </div>
           </Panel>
           <Panel title={<>Kewajiban Statutori</>}>
             <div className="rows">
-              {c.stat.map((s, i) => <Row key={i} b={s[0]} d={s[1]} right={<Chip c={s[2]}>{s[3]}</Chip>} />)}
+              {c.stat.map((s, i) => <Row key={i} b={s[0]} d={s[1]} right={<><Chip c={s[2]}>{s[3]}</Chip><BtnHapus onClick={() => void hapusBaris("stat", i, s[0])} /></>} />)}
               {!c.stat.length && <Row b="Tidak ada kewajiban tercatat" d="Tenggat statutori (Menkumham, laporan tahunan) dicatat di sini." right={<Chip c="c-ver">BERSIH</Chip>} />}
             </div>
           </Panel>

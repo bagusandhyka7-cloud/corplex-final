@@ -18,12 +18,32 @@ export const lblJaga = (d: number | null) => (d === null ? "SEGERA" : d < 0 ? `T
 /* null (SEGERA tanpa tanggal) paling mendesak → paling atas. */
 export const urutJaga = (a: Jaga, b: Jaga) => (a.hari ?? -9999) - (b.hari ?? -9999);
 
+/* "Masa berlaku" izin adalah teks bebas ("Berlaku s.d. 2027-12-31", "s.d. 31 Des 2027").
+ * Modul Perizinan menjanjikan tenggat "diingatkan otomatis", tetapi pengingat dulu HANYA
+ * terbit bila seseorang menandai status SEGERA dengan tangan — izin yang tanggalnya lewat
+ * sementara statusnya masih AKTIF lolos tanpa suara. Baca tanggalnya supaya janji itu benar. */
+const BLN_ID: Record<string, number> = { jan: 1, feb: 2, mar: 3, apr: 4, mei: 5, may: 5, jun: 6, jul: 7, agu: 8, aug: 8, sep: 9, okt: 10, oct: 10, nov: 11, des: 12, dec: 12 };
+export function tanggalDari(teks?: string | null): string | null {
+  if (!teks) return null;
+  const iso = teks.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return iso[0];
+  const id = teks.match(/(\d{1,2})\s+([A-Za-z]{3,})\s+(\d{4})/);
+  const b = id && BLN_ID[id[2].slice(0, 3).toLowerCase()];
+  return b ? `${id![3]}-${String(b).padStart(2, "0")}-${id![1].padStart(2, "0")}` : null;
+}
+
 export function tenggatJaga(t: Tenant, extra: Jaga[] = []): Jaga[] {
   const out: Jaga[] = [...extra];
 
-  // Izin bertanda SEGERA pada rekam perizinan
+  /* Izin: tanggal dulu (otomatis), status SEGERA sebagai jaring pengaman untuk masa berlaku
+   * yang tak memuat tanggal terbaca. */
   t.lic.forEach((r) => {
     const a = r as unknown[];
+    const h = sisaHari(tanggalDari(String(a[6] ?? "")));
+    if (h !== null) {
+      if (h <= 90) out.push({ b: String(a[0]), d: `Masa berlaku berakhir ${tanggalDari(String(a[6]))} — ajukan perpanjangan`, hari: h, v: "licensing" });
+      return;
+    }
     if (a[7] === "SEGERA") out.push({ b: String(a[0]), d: `Masa berlaku segera berakhir — ${String(a[6] || "periksa rekam izin")}`, hari: null, v: "licensing" });
   });
   // Perjanjian dengan tanggal berakhir terbaca

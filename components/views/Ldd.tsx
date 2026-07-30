@@ -10,7 +10,7 @@ import React from "react";
 import { Download, FileSearch, Gavel, Gem, Landmark, Scale as ScaleIcon, FileBadge, FileSignature, Users } from "lucide-react";
 import { useStore, ViewId } from "@/lib/store";
 import { Chip, Panel, Row, ViewHead } from "@/components/ui";
-import { buildLdd, lddHtml } from "@/lib/ldd";
+import { buildLdd, corpRekam, lddHtml } from "@/lib/ldd";
 
 type Status = "AMAN" | "BERISIKO" | "BERMASALAH";
 const chipOf: Record<Status, string> = { AMAN: "c-ver", BERISIKO: "c-draft", BERMASALAH: "c-red" };
@@ -19,41 +19,55 @@ export default function Ldd({ embed }: { embed?: boolean } = {}) {
   const { ten, toast, pushQueue, go } = useStore();
   const t = ten!;
 
-  /* Penilaian per aspek — aturan sederhana atas data rekam tenant (dummy sadar-diri). */
+  /* SATU SUMBER STATUS: buildLdd (lib/ldd.ts) — mesin yang sama yang dipakai kartu Skor Kesehatan,
+   * grid aspek di Ringkasan, dan laporan yang diunduh. Sebelumnya berkas ini menilai ulang dengan
+   * aturannya sendiri, sehingga satu halaman bisa menyebut aspek yang sama AMAN di panel ini dan
+   * BERISIKO di grid Ringkasan (terbukti pada Ketenagakerjaan: `e.pat` vs kelengkapan PK/BPJS).
+   * Di produk hukum, dua nilai untuk satu aspek = laporan yang tak bisa dipertanggungjawabkan. */
+  const counts = React.useMemo(() => buildLdd(t).counts, [t]);
+  const statusAspek = (namaLdd: string, fallback: Status): Status => {
+    const c = counts[namaLdd];
+    return c ? (c.status as Status) : fallback;
+  };
+
+  /* Teks temuan tetap milik berkas ini (narasi untuk pembaca laporan); statusnya bukan. */
   const aspek: { key: ViewId; ikon: React.ReactNode; nama: string; status: Status; temuan: string }[] = [
     {
       key: "corpsec", ikon: <Landmark size={16} />, nama: "Legalitas Badan Hukum",
       /* dari rekam corp DB: kewajiban statutori tertunda (c-draft) = berisiko; belum ada rekam = berisiko (dokumen dasar belum tercatat) */
-      status: !t.corp.id && !t.corp.docs.length ? "BERISIKO" : t.corp.stat.some((s) => s[2] === "c-draft") ? "BERISIKO" : "AMAN",
-      temuan: !t.corp.id && !t.corp.docs.length ? "Belum ada rekam legalitas (akta/AD/RUPS) — lengkapi lewat modul Sekretaris Perusahaan."
+      status: statusAspek("Legalitas Badan Hukum", "BERISIKO"),
+      temuan: !t.corp.id && !corpRekam(t) ? "Belum ada rekam legalitas (akta/AD/RUPS) — lengkapi lewat modul Sekretaris Perusahaan."
         : t.corp.stat.some((s) => s[2] === "c-draft") ? `${t.corp.stat.filter((s) => s[2] === "c-draft").length} kewajiban statutori menunggu tenggat — periksa Sekretaris Perusahaan.`
-        : `${t.corp.docs.length} dokumen tata kelola tercatat · kewajiban statutori terkendali.`,
+        : `${corpRekam(t)} rekam tata kelola tercatat · kewajiban statutori terkendali.`,
     },
     {
       key: "licensing", ikon: <FileBadge size={16} />, nama: "Perizinan",
       /* dihitung dari baris rekam nyata (module_records lic), bukan string KPI seed */
-      status: t.lic.some((r) => r.some((c) => c === "SEGERA" || c === "KEDALUWARSA")) ? "BERISIKO" : "AMAN",
+      status: statusAspek("Perizinan", "BERISIKO"),
       temuan: t.lic.some((r) => r.some((c) => c === "SEGERA" || c === "KEDALUWARSA")) ? "Sebagian izin mendekati/melewati tenggat — perpanjangan perlu segera dimulai." : t.lic.length ? "Seluruh izin usaha aktif dan dipantau otomatis." : "Belum ada izin terekam — daftarkan lewat modul Perizinan.",
     },
     {
       key: "asset", ikon: <Gem size={16} />, nama: "Aset & HAKI",
-      status: t.hki.some((h) => Array.isArray(h[7]) && String(h[7][1]).includes("PANTAU")) ? "BERISIKO" : "AMAN",
+      status: statusAspek("Aset dan Kekayaan Intelektual", "BERISIKO"),
       temuan: "Bukti kepemilikan aset inti tersimpan di vault; sebagian portofolio merek dalam pemantauan perpanjangan.",
     },
     {
       key: "agreement", ikon: <FileSignature size={16} />, nama: "Perjanjian Pihak Ketiga",
-      status: t.agr.some((a) => a.st === "SEGERA") ? "BERISIKO" : "AMAN",
+      status: statusAspek("Perjanjian Pihak Ketiga", "BERISIKO"),
       temuan: t.agr.some((a) => a.st === "SEGERA") ? "Ada perjanjian mendekati berakhir — tinjau perpanjangan/negosiasi ulang." : "Seluruh perjanjian aktif terpantau; tidak ada yang mendekati berakhir.",
     },
     {
       key: "hr-database", ikon: <Users size={16} />, nama: "Ketenagakerjaan",
-      status: t.emp.some((e) => e.pat !== "PATUH") ? "BERISIKO" : "AMAN",
-      temuan: t.emp.some((e) => e.pat !== "PATUH") ? "Ada item kepatuhan tenaga kerja berstatus reminder — PK/kompensasi perlu ditindak." : "PK, SP, dan kepatuhan upah dalam batas — rekap LKPM tersedia.",
+      status: statusAspek("Ketenagakerjaan", "BERISIKO"),
+      temuan: !t.emp.length ? "Belum ada rekam karyawan — lengkapi lewat Database Karyawan."
+        : t.emp.filter((e) => !e.dokUrl).length || t.emp.filter((e) => !e.bpjsKes || !e.bpjsTk).length
+          ? `${t.emp.filter((e) => !e.dokUrl).length} karyawan tanpa perjanjian kerja pada arsip · ${t.emp.filter((e) => !e.bpjsKes || !e.bpjsTk).length} kepesertaan BPJS belum lengkap.`
+          : "PK, SP, dan kepatuhan upah dalam batas — rekap LKPM tersedia.",
     },
     {
       key: "case", ikon: <ScaleIcon size={16} />, nama: "Sengketa / Perkara",
       /* dari rekam case DB (module_records) — jumlah perkara + bukti akurat dgn modul Perkara */
-      status: t.cases.length > 0 ? "BERISIKO" : "AMAN",
+      status: statusAspek("Sengketa dan Perkara", "BERISIKO"),
       temuan: t.cases.length > 0 ? `${t.cases.length} perkara berjalan · ${t.cases.reduce((s, x) => s + x.bukti.length, 0)} bukti terindeks — tahapan terpantau di modul Perkara.` : "Tidak ada perkara berjalan pada rekam.",
     },
   ];

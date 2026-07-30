@@ -125,13 +125,31 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       /* PINTU KEDUA (sesi berjalan): tiap rehidrasi cek whoami — demo kedaluwarsa langsung ditendang.
        * RLS (jwt_tenant → NULL) sudah membutakan data detik itu juga; ini merapikan UX-nya. */
       if (!TENANTS[storedTid] && !localStorage.getItem("corplex_impersonate")) {
-        void sb.rpc("whoami").then(({ data }) => {
-          if (data?.ok && data.tenant?.status === "expired") {
+        void sb.rpc("whoami").then(({ data, error }) => {
+          const keluar = (t: string, d: string) => {
             setTen(null); setQueue([]);
             localStorage.removeItem("corplex_tid"); localStorage.removeItem("corplex_ten");
             void sb.auth.signOut();
-            toast("Masa demo berakhir", "Akses demo Anda telah usai — hubungi tim MRWP untuk perpanjangan.", "warn");
+            toast(t, d, "warn");
             router.replace("/login");
+          };
+          /* Akun/kursi sudah tidak sah (dihapus admin, tenant dibubarkan) tetapi JWT-nya belum
+           * kedaluwarsa. RLS memang sudah membutakan datanya — layar tampil kosong — namun
+           * pengguna dibiarkan duduk di dashboard hampa tanpa penjelasan. Galat jaringan
+           * SENGAJA tidak menendang: hanya jawaban tegas dari server yang boleh mengakhiri sesi. */
+          if (!error && data && !data.ok) {
+            keluar("Akses tidak lagi berlaku", "Akun ini sudah tidak terdaftar pada Corplex — hubungi tim MRWP bila ini keliru.");
+            return;
+          }
+          if (data?.ok && data.tenant?.status === "expired") {
+            keluar("Masa demo berakhir", "Akses demo Anda telah usai — hubungi tim MRWP untuk perpanjangan.");
+            return;
+          }
+          /* JWT di tab ini milik akun LAIN (mis. staf sempat masuk panel MRWP di tab yang sama).
+           * Layar tetap menampilkan tenant dari localStorage, tetapi setiap tulisan ditolak RLS —
+           * dulu diam-diam, jadi pengguna melihat "berhasil" yang bohong. Tendang sejak awal. */
+          if (data?.ok && data.tenant?.id && data.tenant.id !== storedTid) {
+            keluar("Sesi berganti akun", "Tab ini kini masuk sebagai akun lain. Masuk kembali untuk melanjutkan.");
           }
         });
       }

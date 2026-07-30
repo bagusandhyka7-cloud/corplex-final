@@ -18,6 +18,10 @@ export const EMP_FIELDS: RecField[] = [
   { k: "s", l: "Status Hubungan Kerja", opts: ["PKWT", "PKWTT"] },
   { k: "m", l: "Masa Kerja / Kontrak", ph: "Sep 2026 – Agu 2028" },
   { k: "mulaiKerja", l: "Tanggal Mulai Kerja", ph: "2026-01-15" },
+  /* Tanpa kolom ini, karyawan PKWT hasil impor massal TIDAK punya tanggal habis kontrak —
+   * pengingat "kontrak berakhir" (lib/jaga) dan penanda kontrak lewat di Database Karyawan
+   * diam-diam tak pernah menyala untuk mereka. Formnya sudah punya kolom ini sejak awal. */
+  { k: "akhirKontrak", l: "Tanggal Habis Kontrak", ph: "2027-06-30" },
   { k: "gajiPokok", l: "Gaji Pokok / Bulan", ph: "5000000" },
   { k: "tunjTetap", l: "Tunjangan Tetap / Bulan", ph: "1000000" },
   { k: "dept", l: "Departemen", ph: "Operasional / Finance" },
@@ -189,7 +193,7 @@ export function toPayload(item: ParsedItem, tenantName: string): RecRow | Record
       // "Tidak" bisa ditulis macam-macam (no/n/0/false). Salah baca = TKA terhitung lokal di rekap LKPM.
       lok: !["tidak", "no", "n", "0", "false", "-"].includes(norm(v.lok)), s: v.s === "PKWTT" ? "PKWTT" : "PKWT",
       m: v.m || (v.s === "PKWTT" ? "Sejak 2026" : "2026 – 2027"), sisa: v.s === "PKWTT" ? null : 60,
-      mulaiKerja: v.mulaiKerja, gajiPokok: angka(v.gajiPokok), tunjTetap: angka(v.tunjTetap),
+      mulaiKerja: v.mulaiKerja, akhirKontrak: v.akhirKontrak, gajiPokok: angka(v.gajiPokok), tunjTetap: angka(v.tunjTetap),
       dept: v.dept, prov: v.prov, kota: v.kota, desa: v.desa, alamatKtp: v.alamatKtp, lahir: v.lahir,
       pend: v.pend, pendInst: v.pendInst, agama: v.agama, nikah: v.nikah, nik: v.nik, kk: v.kk,
       npwp: v.npwp, sim: v.sim, bpjsKes: v.bpjsKes, bpjsTk: v.bpjsTk, bankNama: v.bankNama,
