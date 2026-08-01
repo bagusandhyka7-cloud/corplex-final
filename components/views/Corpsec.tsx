@@ -1,11 +1,11 @@
-"use client";
+﻿"use client";
 /* Sekretaris Perusahaan — DB murni: SATU rekam module_records mod 'corp' per tenant
  * (jsonb: rups/dirs/meetings/cap/stat/docs). CRUD nyata per panel, persetujuan sirkuler
  * menulis DB, dokumen via dropzone ke Storage. Buka = split-panel /rekam/corp/[id]. */
 import React, { useState } from "react";
 import { Check, Lock, Plus } from "lucide-react";
 import { useStore } from "@/lib/store";
-import { askConfirm, Chip, Field, Jargon, Modal, Panel, Row, Timeline } from "@/components/ui";
+import { askConfirm, Batas, Chip, Field, Modal, Panel, Row } from "@/components/ui";
 import { ModuleShell } from "@/components/ModuleShell";
 import CorpsecPeristiwa, { FILTER_PERISTIWA, IkhtisarKorporasi } from "@/components/views/CorpsecPeristiwa";
 import { api } from "@/lib/api";
@@ -116,39 +116,36 @@ export default function Corpsec() {
         {c.id && <button className="btn-act" onClick={() => router.push(`/rekam/corp/${c.id}`)}><Lock size={10} style={{ display: "inline", marginRight: 4 }} />Buka Rekam</button>}
       </>}>
 
-      {/* PUSAT PEMANTAUAN — objek utama modul ini sejak redesign: peristiwa korporasi. */}
-      <CorpsecPeristiwa filter={fEv} q={qEv} />
-
-      {/* Arsip enam panel DIBUBARKAN atas keputusan owner. Tiga yang benar-benar dipakai naik
-        * jadi panel tetap di modul ini (struktur kepemilikan, kewajiban statutori, dokumen);
-        * RUPS/sirkuler/rapat tidak lagi ditampilkan karena perannya sudah diambil peristiwa
-        * korporasi — barisnya TIDAK dihapus dari database, hanya tak lagi punya layar. */}
-      <div className="grid g-wide">
-        <div style={{ display: "grid", gap: 16, alignContent: "start" }}>
+      {/* PUSAT PEMANTAUAN — objek utama modul ini sejak redesign: peristiwa korporasi.
+        * Tiga panel tata kelola dititipkan ke dalam dua kolomnya (kiri: kepemilikan & kewajiban,
+        * kanan: dokumen) supaya tak ada kolom yang menganggur sepanjang layar. */}
+      <CorpsecPeristiwa filter={fEv} q={qEv}
+        kiriBawah={<>
           <Panel title={<>Struktur Kepemilikan (Cap Table)</>}>
-            <div className="rows">
+            <Batas className="rows">
               {c.cap.map((x, i) => <Row key={i} b={x[0]} d={x[1]} right={<><b style={{ color: "var(--ink)" }}>{x[2]}</b><BtnHapus onClick={() => void hapusBaris("cap", i, x[0])} /></>} />)}
               {/* Janji "validasi Σ=100% menyusul" dicabut — tak ada validasi jumlah persentase
                   di kode mana pun, dan menjanjikan pemeriksaan yang tak ada = klaim palsu. */}
               {!c.cap.length && <Row b="Belum ada struktur kepemilikan" d="Isi pemegang saham berikut persentasenya — jumlah persentase dihitung sendiri oleh pengguna, Corplex belum memeriksanya." right={<Chip c="c-mon">KOSONG</Chip>} />}
-            </div>
+            </Batas>
           </Panel>
+        </>}
+        kananBawah={<>
+          {/* Kewajiban statutori ditaruh di kolom kanan supaya tinggi kedua kolom seimbang —
+            * kolom kiri sudah memuat garis waktu yang jauh lebih tinggi. */}
           <Panel title={<>Kewajiban Statutori</>}>
-            <div className="rows">
+            <Batas className="rows">
               {c.stat.map((s, i) => <Row key={i} b={s[0]} d={s[1]} right={<><Chip c={s[2]}>{s[3]}</Chip><BtnHapus onClick={() => void hapusBaris("stat", i, s[0])} /></>} />)}
               {!c.stat.length && <Row b="Tidak ada kewajiban tercatat" d="Tenggat statutori (Menkumham, laporan tahunan) dicatat di sini." right={<Chip c="c-ver">BERSIH</Chip>} />}
-            </div>
+            </Batas>
           </Panel>
-        </div>
-        <div style={{ display: "grid", gap: 16, alignContent: "start" }}>
           <Panel title="Dokumen Tata Kelola">
-            <div className="rows">
+            <Batas className="rows">
               {c.docs.map((d, i) => <Row key={i} b={d[0]} right={<><Chip c={d[1]}>{d[2]}</Chip>{d[3] && c.id ? <button className="btn-act" onClick={() => router.push(`/rekam/corp/${c.id}`)}><Lock size={10} style={{ display: "inline", marginRight: 4 }} />Buka</button> : null}</>} />)}
               {!c.docs.length && <Row b="Belum ada dokumen" d="Seret akta/risalah ke dropzone di atas — dokumen asli masuk vault." right={<Chip c="c-mon">KOSONG</Chip>} />}
-            </div>
+            </Batas>
           </Panel>
-        </div>
-      </div>
+        </>} />
 
       {/* Satu pintu masuk: pilih jenis data → form. Dokumen asli lewat dropzone di atas. */}
       <Modal right open={pickOpen} title="Tambah Data Perseroan" onClose={() => setPickOpen(false)}>

@@ -11,7 +11,7 @@ import React, { useMemo, useState } from "react";
 import { AlertTriangle, ArrowRight, Building2, FileText, Landmark, Plus, Scale, ScrollText, Users } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { api } from "@/lib/api";
-import { Chip, Field, Kpi, Modal, Panel, Row } from "@/components/ui";
+import { Batas, Chip, Field, Kpi, Modal, Panel, Row } from "@/components/ui";
 import { askConfirm } from "@/components/ui";
 import {
   BENTUK_DASAR, JENIS_PERISTIWA, bentukPengesahan, jalurJenis, keadaanTerkini,
@@ -63,7 +63,13 @@ export function IkhtisarKorporasi() {
   );
 }
 
-export default function CorpsecPeristiwa({ filter = "semua", q = "" }: { filter?: string; q?: string }) {
+export default function CorpsecPeristiwa({ filter = "semua", q = "", kiriBawah, kananBawah }: {
+  filter?: string; q?: string;
+  /* Panel milik modul induk (cap table, kewajiban statutori, dokumen) dititipkan ke sini agar
+   * ikut mengisi dua kolom yang sama — bila dirender terpisah di bawah, kolom kiri menyisakan
+   * ruang kosong sepanjang layar seperti yang terlihat pada tenant dengan sedikit peristiwa. */
+  kiriBawah?: React.ReactNode; kananBawah?: React.ReactNode;
+}) {
   const { ten, toast, pushQueue, pengawasan } = useStore();
   const t = ten!;
   const hariIni = hariIniISO();
@@ -189,6 +195,12 @@ export default function CorpsecPeristiwa({ filter = "semua", q = "" }: { filter?
         .cs-step.now{color:var(--warn)}
         .cs-step.miss{color:var(--danger)}
         .cs-sep{color:var(--line2);font-size:11px}
+        /* Daftar dibatasi 5 baris lalu menggulir di dalam panelnya sendiri — halaman tetap
+         * satu layar berapa pun banyak rekamnya, dan tinggi kedua kolom tak lagi timpang.
+         * ponytail: tinggi dipatok dari tinggi baris saat ini; sesuaikan bila baris berubah. */
+        /* Batang gulir tipis, sewarna garis — komponen <Batas> yang menentukan tingginya. */
+        .cs-rail::-webkit-scrollbar,.rows::-webkit-scrollbar{width:6px}
+        .cs-rail::-webkit-scrollbar-thumb,.rows::-webkit-scrollbar-thumb{background:var(--line2);border-radius:6px}
         .cs-delta{display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:center;
           background:rgba(16,33,61,.55);border:1px solid rgba(28,48,84,.8);border-radius:11px;padding:11px 14px}
         @media(max-width:640px){.cs-delta{grid-template-columns:1fr}}
@@ -197,9 +209,10 @@ export default function CorpsecPeristiwa({ filter = "semua", q = "" }: { filter?
       {/* Peringatan & KPI kini dirender lewat prop `kpi` ModuleShell (lihat IkhtisarKorporasi)
         * supaya urutannya sama dengan seluruh modul lain. */}
 
-      {/* Garis waktu melebar penuh saat peristiwa masih sedikit — dua kolom pada isi yang
-        * timpang meninggalkan setengah layar kosong (terlihat jelas pada tenant baru). */}
-      <div className={list.length > 3 ? "grid g-wide" : ""} style={list.length > 3 ? undefined : { display: "grid", gap: 16 }}>
+      {/* Dua kolom tetap: kolom kiri (garis waktu + kepemilikan + kewajiban) dan kolom kanan
+        * (keadaan terkini + kesiapan uji tuntas + dokumen) kini sama-sama berisi, jadi tak ada
+        * lagi separuh layar yang menganggur meski peristiwanya baru sedikit. */}
+      <div className="grid g-wide">
         <div style={{ display: "grid", gap: 16, alignContent: "start" }}>
           <Panel title={<>Riwayat Hukum Perusahaan <Chip c="c-mon">{rows.length} DARI {list.length} PERISTIWA</Chip></>}>
             {/* Identitas perseroan: fakta tetap, bukan angka pantauan — jadi baris tipis, bukan KPI. */}
@@ -210,7 +223,7 @@ export default function CorpsecPeristiwa({ filter = "semua", q = "" }: { filter?
               </span>
               {!pengawasan && <button className="btn btn-gold btn-sm" style={{ marginLeft: "auto" }} onClick={() => setTambah(true)}><Plus size={13} /> Catat Peristiwa</button>}
             </div>
-            <div className="cs-rail">
+            <Batas className="cs-rail">
               {rows.map(({ p, s }) => {
                 return (
                   <div key={p.id} className="cs-node">
@@ -250,25 +263,27 @@ export default function CorpsecPeristiwa({ filter = "semua", q = "" }: { filter?
                     : "Belum ada peristiwa tercatat. Mulai dari pendirian perseroan — pilih “Riwayat lama” agar akta lama tidak dihitung terlambat."}
                 </p>
               )}
-            </div>
+            </Batas>
           </Panel>
+          {kiriBawah}
         </div>
 
         <div style={{ display: "grid", gap: 16, alignContent: "start" }}>
           <Panel title={<><Users size={12} /> Keadaan Terkini</>}>
-            <div className="rows">
+            <Batas className="rows">
               {organ.map((o) => <Row key={o.hal} b={o.hal} d={`Berlaku sejak ${o.perTanggal}`} right={<b style={{ color: "var(--ink)" }}>{o.nilai}</b>} />)}
               {!organ.length && <Row b="Belum ada keadaan yang dapat diturunkan" d="Isi kotak “Yang berubah” pada peristiwa — nilainya otomatis menjadi keadaan terkini setelah peristiwa berlaku." right={<Chip c="c-mon">KOSONG</Chip>} />}
-            </div>
+            </Batas>
             {!!organ.length && <p className="note mt16">Diturunkan dari peristiwa yang sudah <b>berlaku</b> — bukan diketik terpisah, jadi tak bisa berbeda dengan riwayatnya.</p>}
           </Panel>
 
           <Panel title={<><ScrollText size={12} /> Aspek Korporasi — Kesiapan Uji Tuntas</>}>
-            <div className="rows">
+            <Batas className="rows">
               {periksa.map((x) => <Row key={x.hal} b={x.hal} d={x.ket} right={<Chip c={x.ok ? "c-ver" : "c-red"}>{x.ok ? "TERPENUHI" : "TEMUAN"}</Chip>} />)}
-            </div>
+            </Batas>
             <p className="note mt16">Bab <b>Legalitas Badan Hukum</b> pada Laporan Uji Tuntas membaca pemeriksaan ini — bukan jumlah berkas yang diunggah.</p>
           </Panel>
+          {kananBawah}
         </div>
       </div>
 

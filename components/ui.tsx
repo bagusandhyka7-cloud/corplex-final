@@ -25,6 +25,35 @@ export function Panel({ title, className, style, children }: { title?: React.Rea
   );
 }
 
+/* Batasi daftar pada N baris pertama lalu gulir di dalam wadahnya sendiri.
+ * Tingginya DIUKUR dari baris ke-N yang benar-benar tergambar, bukan ditebak lewat angka px:
+ * tinggi baris di modul ini berkisar 65–248px (teks membungkus berbeda-beda), sehingga
+ * max-height tetap pasti memotong di tengah baris atau menyisakan ruang kosong. */
+export function Batas({ n = 5, className, children }: { n?: number; className?: string; children: React.ReactNode }) {
+  const ref = React.useRef<HTMLDivElement>(null);
+  const [h, setH] = React.useState<number>();
+  const jml = React.Children.count(children);
+  React.useLayoutEffect(() => {
+    const ukur = () => {
+      const el = ref.current;
+      if (!el) return;
+      const anak = [...el.children] as HTMLElement[];
+      if (anak.length <= n) return setH(undefined);
+      const a = anak[0], b = anak[n - 1];
+      setH(b.offsetTop + b.offsetHeight - a.offsetTop + 6); // +6: sisakan sedikit agar baris ke-6 terlihat terpotong (isyarat masih ada lanjutannya)
+    };
+    ukur();
+    window.addEventListener("resize", ukur);
+    return () => window.removeEventListener("resize", ukur);
+  }, [jml, n, children]);
+  return (
+    <div ref={ref} className={className}
+      style={h ? { maxHeight: h, overflowY: "auto", paddingRight: 6 } : undefined}>
+      {children}
+    </div>
+  );
+}
+
 export function Kpi({ v, label, tr, trCls, ico, onClick }: { v: React.ReactNode; label: React.ReactNode; tr?: React.ReactNode; trCls?: string; ico?: React.ReactNode; onClick?: () => void }) {
   return (
     <div className={`kpi${onClick ? " clickable" : ""}`} onClick={onClick}>
