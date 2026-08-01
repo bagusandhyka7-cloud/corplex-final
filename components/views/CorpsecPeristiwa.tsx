@@ -63,12 +63,13 @@ export function IkhtisarKorporasi() {
   );
 }
 
-export default function CorpsecPeristiwa({ filter = "semua", q = "", kiriBawah, kananBawah }: {
+export default function CorpsecPeristiwa({ filter = "semua", q = "", kananBawah, bawah }: {
   filter?: string; q?: string;
-  /* Panel milik modul induk (cap table, kewajiban statutori, dokumen) dititipkan ke sini agar
-   * ikut mengisi dua kolom yang sama — bila dirender terpisah di bawah, kolom kiri menyisakan
-   * ruang kosong sepanjang layar seperti yang terlihat pada tenant dengan sedikit peristiwa. */
-  kiriBawah?: React.ReactNode; kananBawah?: React.ReactNode;
+  /* Panel milik modul induk dititipkan ke sini agar ikut mengisi kerangka yang sama:
+   *   kananBawah = menyambung kolom kanan (dokumen) — mengisi ruang di sisi garis waktu
+   *   bawah      = baris penuh di bawah dua kolom (cap table, lalu kewajiban statutori)
+   * Dirender terpisah di modul induk membuat kolom kiri menyisakan ruang kosong sepanjang layar. */
+  kananBawah?: React.ReactNode; bawah?: React.ReactNode;
 }) {
   const { ten, toast, pushQueue, pengawasan } = useStore();
   const t = ten!;
@@ -265,7 +266,6 @@ export default function CorpsecPeristiwa({ filter = "semua", q = "", kiriBawah, 
               )}
             </Batas>
           </Panel>
-          {kiriBawah}
         </div>
 
         <div style={{ display: "grid", gap: 16, alignContent: "start" }}>
@@ -286,6 +286,10 @@ export default function CorpsecPeristiwa({ filter = "semua", q = "", kiriBawah, 
           {kananBawah}
         </div>
       </div>
+
+      {/* Baris penuh: struktur kepemilikan lalu kewajiban statutori — keduanya tabel pendek yang
+        * terlihat sesak di kolom sempit (judul kewajiban sempat membungkus jadi empat baris). */}
+      {bawah && <div style={{ display: "grid", gap: 16, marginTop: 16 }}>{bawah}</div>}
 
       {/* LAPIS 3 · detail satu peristiwa */}
       <Modal right open={!!buka} title={buka?.jenis || ""} onClose={() => setBuka(null)}

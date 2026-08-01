@@ -117,10 +117,19 @@ export default function Corpsec() {
       </>}>
 
       {/* PUSAT PEMANTAUAN — objek utama modul ini sejak redesign: peristiwa korporasi.
-        * Tiga panel tata kelola dititipkan ke dalam dua kolomnya (kiri: kepemilikan & kewajiban,
-        * kanan: dokumen) supaya tak ada kolom yang menganggur sepanjang layar. */}
+        * Dokumen Tata Kelola menyambung kolom kanan (mengisi ruang di sisi garis waktu),
+        * sedangkan kepemilikan & kewajiban statutori memanjang penuh di bawah dua kolom —
+        * keduanya tabel pendek yang sesak bila dipaksa masuk kolom sempit. */}
       <CorpsecPeristiwa filter={fEv} q={qEv}
-        kiriBawah={<>
+        kananBawah={
+          <Panel title="Dokumen Tata Kelola">
+            <Batas className="rows">
+              {c.docs.map((d, i) => <Row key={i} b={d[0]} right={<><Chip c={d[1]}>{d[2]}</Chip>{d[3] && c.id ? <button className="btn-act" onClick={() => router.push(`/rekam/corp/${c.id}`)}><Lock size={10} style={{ display: "inline", marginRight: 4 }} />Buka</button> : null}</>} />)}
+              {!c.docs.length && <Row b="Belum ada dokumen" d="Seret akta/risalah ke dropzone di atas — dokumen asli masuk vault." right={<Chip c="c-mon">KOSONG</Chip>} />}
+            </Batas>
+          </Panel>
+        }
+        bawah={<>
           <Panel title={<>Struktur Kepemilikan (Cap Table)</>}>
             <Batas className="rows">
               {c.cap.map((x, i) => <Row key={i} b={x[0]} d={x[1]} right={<><b style={{ color: "var(--ink)" }}>{x[2]}</b><BtnHapus onClick={() => void hapusBaris("cap", i, x[0])} /></>} />)}
@@ -129,20 +138,10 @@ export default function Corpsec() {
               {!c.cap.length && <Row b="Belum ada struktur kepemilikan" d="Isi pemegang saham berikut persentasenya — jumlah persentase dihitung sendiri oleh pengguna, Corplex belum memeriksanya." right={<Chip c="c-mon">KOSONG</Chip>} />}
             </Batas>
           </Panel>
-        </>}
-        kananBawah={<>
-          {/* Kewajiban statutori ditaruh di kolom kanan supaya tinggi kedua kolom seimbang —
-            * kolom kiri sudah memuat garis waktu yang jauh lebih tinggi. */}
           <Panel title={<>Kewajiban Statutori</>}>
             <Batas className="rows">
               {c.stat.map((s, i) => <Row key={i} b={s[0]} d={s[1]} right={<><Chip c={s[2]}>{s[3]}</Chip><BtnHapus onClick={() => void hapusBaris("stat", i, s[0])} /></>} />)}
               {!c.stat.length && <Row b="Tidak ada kewajiban tercatat" d="Tenggat statutori (Menkumham, laporan tahunan) dicatat di sini." right={<Chip c="c-ver">BERSIH</Chip>} />}
-            </Batas>
-          </Panel>
-          <Panel title="Dokumen Tata Kelola">
-            <Batas className="rows">
-              {c.docs.map((d, i) => <Row key={i} b={d[0]} right={<><Chip c={d[1]}>{d[2]}</Chip>{d[3] && c.id ? <button className="btn-act" onClick={() => router.push(`/rekam/corp/${c.id}`)}><Lock size={10} style={{ display: "inline", marginRight: 4 }} />Buka</button> : null}</>} />)}
-              {!c.docs.length && <Row b="Belum ada dokumen" d="Seret akta/risalah ke dropzone di atas — dokumen asli masuk vault." right={<Chip c="c-mon">KOSONG</Chip>} />}
             </Batas>
           </Panel>
         </>} />
