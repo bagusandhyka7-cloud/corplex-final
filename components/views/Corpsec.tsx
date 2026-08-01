@@ -7,7 +7,7 @@ import { Check, Lock, Plus } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { askConfirm, Chip, Field, Jargon, Modal, Panel, Row, Timeline } from "@/components/ui";
 import { ModuleShell } from "@/components/ModuleShell";
-import CorpsecPeristiwa from "@/components/views/CorpsecPeristiwa";
+import CorpsecPeristiwa, { FILTER_PERISTIWA, IkhtisarKorporasi } from "@/components/views/CorpsecPeristiwa";
 import { api } from "@/lib/api";
 import { useRouter } from "next/navigation";
 
@@ -35,6 +35,9 @@ export default function Corpsec() {
   const c = t.corp;
   const [addKey, setAddKey] = useState<string | null>(null);
   const [pickOpen, setPickOpen] = useState(false); // satu pintu masuk manual (ganti 5 tombol + bertebaran)
+  /* Tapis & cari peristiwa dipegang di sini karena UI-nya milik ModuleShell (seragam semua modul). */
+  const [fEv, setFEv] = useState("semua");
+  const [qEv, setQEv] = useState("");
   const [vals, setVals] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
 
@@ -105,13 +108,16 @@ export default function Corpsec() {
       sub="RUPS, keputusan pemegang saham, dan dokumen perseroan — tercatat rapi dan siap diaudit."
       dropNote="Akta, risalah RUPS, atau keputusan sirkuler — dokumen asli tersimpan di vault dan tercatat pada rekam tata kelola."
       onDrop={(f) => void dropDok(f)}
+      kpi={<IkhtisarKorporasi />}
+      filters={FILTER_PERISTIWA} active={fEv} onFilter={setFEv}
+      q={qEv} setQ={setQEv} cariPh="Cari peristiwa / nomor akta / nomor pengesahan…"
       acts={<>
         <button className="btn btn-gold" onClick={() => setPickOpen(true)}><Plus size={14} /> Tambah Data</button>
         {c.id && <button className="btn-act" onClick={() => router.push(`/rekam/corp/${c.id}`)}><Lock size={10} style={{ display: "inline", marginRight: 4 }} />Buka Rekam</button>}
       </>}>
 
       {/* PUSAT PEMANTAUAN — objek utama modul ini sejak redesign: peristiwa korporasi. */}
-      <CorpsecPeristiwa />
+      <CorpsecPeristiwa filter={fEv} q={qEv} />
 
       {/* ARSIP — enam panel lama dipertahankan apa adanya untuk tenant yang sudah mengisinya.
         * Sengaja TIDAK dimigrasikan: isinya teks bebas yang tak dapat dipetakan otomatis ke

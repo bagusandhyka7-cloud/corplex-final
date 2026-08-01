@@ -11,7 +11,7 @@ import React, { useMemo, useState } from "react";
 import { AlertTriangle, ArrowRight, Building2, FileText, Landmark, Plus, Scale, ScrollText, Users } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { api } from "@/lib/api";
-import { Chip, Field, Modal, Panel, Row } from "@/components/ui";
+import { Chip, Field, Kpi, Modal, Panel, Row } from "@/components/ui";
 import { askConfirm } from "@/components/ui";
 import {
   BENTUK_DASAR, JENIS_PERISTIWA, bentukPengesahan, jalurJenis, keadaanTerkini,
@@ -26,15 +26,49 @@ const CHIP: Record<StatusPeristiwa, { c: string; label: string }> = {
   "telat-akta": { c: "c-red", label: "TERLAMBAT AKTA" },
   "telat-lapor": { c: "c-red", label: "TERLAMBAT LAPOR" },
 };
-const FILTER = ["Semua", "Perlu tindakan", "Dalam proses", "Berlaku"];
+export const FILTER_PERISTIWA = ["semua", "perlu tindakan", "dalam proses", "berlaku"];
 
-export default function CorpsecPeristiwa() {
+/* IKHTISAR — dipasang lewat prop `kpi` milik ModuleShell agar mengikuti hierarki baku
+ * seluruh modul (Judul → KPI → Ekstrak → Cari+Kategori → Isi). Peringatan sengaja berada
+ * DI ATAS angka: layar pantau menjawab "ada masalah tidak hari ini?" sebelum hal lain. */
+export function IkhtisarKorporasi() {
+  const { ten } = useStore();
+  const hariIni = hariIniISO();
+  const list = ten?.corpev || [];
+  const dengan = list.map((p) => ({ p, s: statusPeristiwa(p, hariIni) }));
+  const perluTindakan = dengan.filter((x) => x.s.perluTindakan);
+  const menunggu = dengan.filter((x) => x.s.status === "proses" && x.p.akta && !x.p.sah);
+  const berlaku = dengan.filter((x) => x.s.status === "berlaku");
+  const periksa = periksaKorporasi(list, hariIni);
+  const terpenuhi = periksa.filter((x) => x.ok).length;
+
+  return (
+    <>
+      {perluTindakan.slice(0, 2).map(({ p, s }) => (
+        <div key={p.id} className={`flag${s.status === "telat-lapor" ? " w" : ""}`}>
+          <b>{s.status === "telat-akta" ? "Keputusan belum dituangkan ke akta notaris" : "Akta belum memperoleh pengesahan Menkumham"} — {p.jenis}</b>
+          <span>{ringkasPeristiwa(p)} · batas {s.tenggat?.tanggal} terlampaui {Math.abs(s.tenggat!.sisaHari)} hari.
+            {s.status === "telat-akta"
+              ? " Perubahan belum sah dan tak dapat diajukan ke Menkumham tanpa keputusan ulang."
+              : " Perubahan belum berlaku terhadap pihak ketiga."}</span>
+        </div>
+      ))}
+      <div className="grid g4 mb16">
+        <Kpi v={list.length} label="Peristiwa tercatat" tr={list.length ? `${berlaku.length} berlaku · ${dengan.length - berlaku.length} dalam proses` : "belum ada peristiwa korporasi"} />
+        <Kpi v={perluTindakan.length} label="Perlu tindakan segera" tr={perluTindakan.length ? "batas 30 hari terlampaui" : "tak ada tenggat terlampaui"} trCls={perluTindakan.length ? "dn" : undefined} />
+        <Kpi v={menunggu.length} label="Menunggu Menkumham" tr={menunggu.length ? "akta sudah terbit, masih dalam tenggat" : "tidak ada akta tertunggak"} />
+        <Kpi v={terpenuhi} label="Kesiapan uji tuntas" tr={`dari ${periksa.length} pemeriksaan aspek korporasi`} trCls={terpenuhi === periksa.length ? "up" : "md"} />
+      </div>
+    </>
+  );
+}
+
+export default function CorpsecPeristiwa({ filter = "semua", q = "" }: { filter?: string; q?: string }) {
   const { ten, toast, pushQueue, pengawasan } = useStore();
   const t = ten!;
   const hariIni = hariIniISO();
   const list = t.corpev || [];
 
-  const [filter, setFilter] = useState("Semua");
   const [buka, setBuka] = useState<Peristiwa | null>(null);
   const [tambah, setTambah] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -45,14 +79,21 @@ export default function CorpsecPeristiwa() {
   const [tf, setTf] = useState({ nomor: "", tanggal: hariIni, notaris: "" });
 
   const dengan = useMemo(() => list.map((p) => ({ p, s: statusPeristiwa(p, hariIni) })), [list, hariIni]);
-  const perluTindakan = dengan.filter((x) => x.s.perluTindakan);
-  const dalamProses = dengan.filter((x) => x.s.status === "proses" && !x.p.historis);
   const berlaku = dengan.filter((x) => x.s.status === "berlaku");
-  const rows = dengan.filter(({ s }) =>
-    filter === "Semua" ? true
-      : filter === "Perlu tindakan" ? s.perluTindakan
-        : filter === "Dalam proses" ? s.status === "proses"
-          : s.status === "berlaku");
+  /* Tapis + cari mengikuti pola modul lain (ModuleShell): kategori di kanan, cari di kiri.
+   * Pencarian menyapu jenis, dasar, agenda, nomor akta, dan nomor pengesahan — nomor akta
+   * justru yang paling sering dipakai advokat untuk menelusuri satu perubahan. */
+  const cocokQ = (p: Peristiwa) => {
+    const s = q.trim().toLowerCase();
+    if (!s) return true;
+    return [p.jenis, p.dasar.bentuk, p.dasar.tanggal, p.dasar.agenda, p.akta?.nomor, p.akta?.notaris, p.sah?.nomor, ...(p.ubah || []).flatMap((u) => [u.hal, u.dari, u.jadi])]
+      .filter(Boolean).join(" ").toLowerCase().includes(s);
+  };
+  const rows = dengan.filter(({ p, s }) => cocokQ(p) && (
+    filter === "semua" ? true
+      : filter === "perlu tindakan" ? s.perluTindakan
+        : filter === "dalam proses" ? s.status === "proses"
+          : s.status === "berlaku"));
 
   const organ = useMemo(() => keadaanTerkini(list, hariIni), [list, hariIni]);
   const periksa = useMemo(() => periksaKorporasi(list, hariIni), [list, hariIni]);
@@ -145,38 +186,25 @@ export default function CorpsecPeristiwa() {
         .cs-step.now{border-color:var(--warn-line);color:var(--warn);background:var(--warn-bg)}
         .cs-step.miss{border-color:var(--danger-line);color:var(--danger);background:var(--danger-bg)}
         .cs-sep{color:var(--line2);font-size:11px}
-        .cs-fakta b{font-family:var(--serif);font-size:22px;color:#fff;display:block;line-height:1.2}
-        .cs-fakta span{font-size:11px;color:var(--muted)}
         .cs-delta{display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:center;
           background:rgba(16,33,61,.55);border:1px solid rgba(28,48,84,.8);border-radius:11px;padding:11px 14px}
         @media(max-width:640px){.cs-delta{grid-template-columns:1fr}}
       `}</style>
 
-      {/* LAPIS 1 · penyimpangan dulu, identitas belakangan */}
-      <Panel className="mb16">
-        {perluTindakan.slice(0, 2).map(({ p, s }) => (
-          <div key={p.id} className={`flag${s.status === "telat-lapor" ? " w" : ""}`} style={{ marginTop: 0 }}>
-            <b>{s.status === "telat-akta" ? "Keputusan belum dituangkan ke akta notaris" : "Akta belum memperoleh pengesahan Menkumham"} — {p.jenis}</b>
-            <span>{ringkasPeristiwa(p)} · batas {s.tenggat?.tanggal} terlampaui {Math.abs(s.tenggat!.sisaHari)} hari.
-              {s.status === "telat-akta" ? " Perubahan belum sah dan tak dapat diajukan ke Menkumham tanpa keputusan ulang." : " Perubahan belum berlaku terhadap pihak ketiga."}</span>
-          </div>
-        ))}
-        <div className="grid g4" style={{ gap: 14 }}>
-          <div className="cs-fakta">
-            <b style={{ color: perluTindakan.length ? "var(--danger)" : list.length ? "var(--ok)" : "var(--muted)" }}>{perluTindakan.length || (list.length ? "—" : "0")}</b>
-            <span>{perluTindakan.length ? "Perlu tindakan segera" : list.length ? "Tak ada tenggat terlampaui" : "Belum ada peristiwa tercatat"}</span>
-          </div>
-          <div className="cs-fakta"><b>{dalamProses.length}</b><span>Dalam proses pengesahan</span></div>
-          <div className="cs-fakta"><b>{berlakuTerakhir || "—"}</b><span>Perubahan berlaku terakhir</span></div>
-          <div className="cs-fakta"><b>{pendirian?.dasar.tanggal || "—"}</b><span>{pendirian ? `Berdiri · Akta ${pendirian.akta?.nomor || "—"}` : "Pendirian belum tercatat"}</span></div>
-        </div>
-      </Panel>
+      {/* Peringatan & KPI kini dirender lewat prop `kpi` ModuleShell (lihat IkhtisarKorporasi)
+        * supaya urutannya sama dengan seluruh modul lain. */}
 
-      <div className="grid g-wide">
+      {/* Garis waktu melebar penuh saat peristiwa masih sedikit — dua kolom pada isi yang
+        * timpang meninggalkan setengah layar kosong (terlihat jelas pada tenant baru). */}
+      <div className={list.length > 3 ? "grid g-wide" : ""} style={list.length > 3 ? undefined : { display: "grid", gap: 16 }}>
         <div style={{ display: "grid", gap: 16, alignContent: "start" }}>
-          <Panel title={<>Riwayat Hukum Perusahaan <Chip c="c-mon">{list.length} PERISTIWA</Chip></>}>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14, alignItems: "center" }}>
-              {FILTER.map((x) => <button key={x} className={`fchip${filter === x ? " on" : ""}`} onClick={() => setFilter(x)}>{x}</button>)}
+          <Panel title={<>Riwayat Hukum Perusahaan <Chip c="c-mon">{rows.length} DARI {list.length} PERISTIWA</Chip></>}>
+            {/* Identitas perseroan: fakta tetap, bukan angka pantauan — jadi baris tipis, bukan KPI. */}
+            <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center", marginBottom: 14 }}>
+              <span className="sub mono" style={{ fontSize: 9.5 }}>
+                {pendirian ? `BERDIRI ${pendirian.dasar.tanggal}${pendirian.akta?.nomor ? ` · AKTA ${pendirian.akta.nomor}` : ""}` : "PENDIRIAN BELUM TERCATAT"}
+                {berlakuTerakhir ? ` · PERUBAHAN BERLAKU TERAKHIR ${berlakuTerakhir}` : ""}
+              </span>
               {!pengawasan && <button className="btn btn-gold btn-sm" style={{ marginLeft: "auto" }} onClick={() => setTambah(true)}><Plus size={13} /> Catat Peristiwa</button>}
             </div>
             <div className="cs-rail">
