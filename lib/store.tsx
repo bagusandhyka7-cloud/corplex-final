@@ -286,6 +286,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       const caseRows = r.data.filter((x) => x.module === "case")
         .map((x) => ({ ...(x.data as import("./data").Case), id: x.id, dokUrl: x.dok_url, dokNama: x.dok_nama }));
       const corpRow = r.data.find((x) => x.module === "corp");
+      /* Peristiwa korporasi: satu baris = satu peristiwa (bukan singleton seperti `corp`),
+       * supaya tiap peristiwa punya id sendiri untuk detail, ubah, hapus, dan lampiran. */
+      const evRows = r.data.filter((x) => x.module === "corpev")
+        .map((x) => ({ ...(x.data as import("./peristiwa").Peristiwa), id: x.id, dokUrl: x.dok_url, dokNama: x.dok_nama }));
       setTen((t) => t ? {
         ...t,
         lic: by("lic") as typeof t.lic,
@@ -295,6 +299,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         asr: { ...t.asr, pol: by("pol") as typeof t.asr.pol },
         cases: caseRows,
         corp: corpRow ? { ...(corpRow.data as typeof t.corp), id: corpRow.id } : t.corp,
+        corpev: evRows,
       } : t);
     });
   }, [ten?.id, rekamVer]); // rekamVer: realtime memicu hidrasi ulang

@@ -5,6 +5,7 @@
  * Aturan keras: tenggat yang BUKAN tanggal ISO tidak ditebak jadi angka — ditandai SEGERA.
  */
 import type { Tenant } from "./data";
+import { statusPeristiwa } from "./peristiwa";
 
 export type Jaga = { b: string; d: string; hari: number | null; v: string };
 
@@ -34,6 +35,20 @@ export function tanggalDari(teks?: string | null): string | null {
 
 export function tenggatJaga(t: Tenant, extra: Jaga[] = []): Jaga[] {
   const out: Jaga[] = [...extra];
+
+  /* Peristiwa korporasi: dua tenggat 30 hari (keputusan→akta, akta→Menkumham). Inilah satu-
+   * satunya tempat perusahaan bisa kehilangan keabsahan perubahan anggaran dasarnya, jadi
+   * wajib muncul di panel Pengingat bersama izin & kontrak — bukan hanya di modulnya sendiri. */
+  const hariIni = new Date().toISOString().slice(0, 10);
+  (t.corpev || []).forEach((p) => {
+    const s = statusPeristiwa(p, hariIni);
+    if (!s.tenggat || s.tenggat.sisaHari > 30) return;
+    out.push({
+      b: `${p.jenis} — ${s.status === "telat-akta" ? "belum diaktakan" : "belum disahkan Menkumham"}`,
+      d: `${s.tenggat.label} ${s.tenggat.tanggal}${s.tenggat.sisaHari < 0 ? " — sudah terlampaui, mintakan arahan advokat" : ""}`,
+      hari: s.tenggat.sisaHari, v: "corpsec",
+    });
+  });
 
   /* Izin: tanggal dulu (otomatis), status SEGERA sebagai jaring pengaman untuk masa berlaku
    * yang tak memuat tanggal terbaca. */

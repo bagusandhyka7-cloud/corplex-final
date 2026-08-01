@@ -1,4 +1,4 @@
-/* Dataset multi-tenant — porting 1:1 dari referensi Corplex Platform v2 */
+﻿/* Dataset multi-tenant — porting 1:1 dari referensi Corplex Platform v2 */
 
 import type { VqMsg } from "./api"; // tipe saja — api.ts tak mengimpor data.ts, jadi nol siklus
 
@@ -37,6 +37,9 @@ export interface Tenant {
   assets: (string | string[] | null)[][];
   hki: (string | number | string[] | null)[][];
   corp: { id?: string; entity: string; rupsTitle: string; rups: string[][]; circNo: string; dirs: string[][]; meetings: string[][]; cap: string[][]; stat: string[][]; docs: string[][] };
+  /* Peristiwa korporasi (mod 'corpev') — objek utama Sekretaris Perusahaan sejak redesign.
+   * `corp` di atas TIDAK dihapus: isinya jadi arsip riwayat tak terstruktur milik tenant lama. */
+  corpev: import("./peristiwa").Peristiwa[];
 }
 
 /* ============ TENANT 1 — PT CONTOH SEJAHTERA ============ */
@@ -272,7 +275,7 @@ export const TENANTS: Record<string, Tenant> = {
       ["Merek “CONTOH FRESH”", "Lini minuman", "D2026-4521 · Kelas 32", "", 0, "Pemeriksaan substantif DJKI", null, ["c-mon", "PROSES"]],
       ["Desain Industri Kemasan", "Botol seri B", "IDD00098765", "ok", 70, "s.d. 2031", ["c-red", "1 INDIKASI"], ["c-red", "TINDAK LANJUT"]],
       ["Rahasia Dagang — Formula A", "NDA karyawan kunci", "4 NDA aktif", "", 0, "Selama dijaga · masa NDA turut dipantau", ["c-ver", "TERJAGA"], ["c-ver", "AMAN"]]],
-    corp: { entity: "PT Contoh Sejahtera", rupsTitle: "—", rups: [], circNo: "—", dirs: [], meetings: [], cap: [], stat: [], docs: [] },
+    corp: { entity: "PT Contoh Sejahtera", rupsTitle: "—", rups: [], circNo: "—", dirs: [], meetings: [], cap: [], stat: [], docs: [] }, corpev: [],
   },
   t2: {
     id: "t2", name: "CV Karya Abadi", plan: "BASIC", ava: "KA", user: "Sugeng Riyadi · Owner",
@@ -358,7 +361,7 @@ export const TENANTS: Record<string, Tenant> = {
       ["Kendaraan Operasional (3 unit)", "Pick-up & truk", "BPKB lengkap", null, "Pajak kendaraan", "c-ver", "AMAN"]],
     hki: [
       ["Merek “KARYA ABADI”", "Logo badan usaha", "IDM00456789 · Kelas 37", "wa", 34, "Berlaku s.d. 2028", ["c-ver", "BERSIH"], ["c-ver", "AMAN"]]],
-    corp: { entity: "CV Karya Abadi", rupsTitle: "—", rups: [], circNo: "—", dirs: [], meetings: [], cap: [], stat: [], docs: [] },
+    corp: { entity: "CV Karya Abadi", rupsTitle: "—", rups: [], circNo: "—", dirs: [], meetings: [], cap: [], stat: [], docs: [] }, corpev: [],
   },
   t3: {
     id: "t3", name: "PT Nusantara Digital", plan: "ENTERPRISE", ava: "ND", user: "Putri Handayani · Legal Counsel",
@@ -455,7 +458,7 @@ export const TENANTS: Record<string, Tenant> = {
       ["Merek Layanan", "Platform", "IDM00778900 · Kelas 42", "ok", 64, "Berlaku s.d. 2030", ["c-red", "1 INDIKASI"], ["c-red", "TINDAK LANJUT"]],
       ["Hak Cipta Perangkat Lunak", "Kode aplikasi inti", "EC00202600123", "ok", 88, "Tercatat", ["c-ver", "TERDAFTAR"], ["c-ver", "AMAN"]],
       ["Rahasia Dagang — Algoritma Skoring", "NDA tim data", "6 NDA aktif", "", 0, "Selama dijaga · masa NDA dipantau", ["c-ver", "TERJAGA"], ["c-ver", "AMAN"]]],
-    corp: { entity: "PT Nusantara Digital", rupsTitle: "—", rups: [], circNo: "—", dirs: [], meetings: [], cap: [], stat: [], docs: [] },
+    corp: { entity: "PT Nusantara Digital", rupsTitle: "—", rups: [], circNo: "—", dirs: [], meetings: [], cap: [], stat: [], docs: [] }, corpev: [],
   },
 };
 
@@ -488,7 +491,7 @@ export function emptyTenant(
     asr: { nilai: "Rp 0", polTr: "—", pol: [], klaim: [], gap: [] },
     tax: { score: 0, trend: "—", done: 0, next: "—", nextTr: "—", prof: [], kal: [], join: [], integ: [] },
     mass: [], queue: [], lic: [], assets: [], hki: [],
-    corp: { entity: nama, rupsTitle: "—", rups: [], circNo: "—", dirs: [], meetings: [], cap: [], stat: [], docs: [] },
+    corp: { entity: nama, rupsTitle: "—", rups: [], circNo: "—", dirs: [], meetings: [], cap: [], stat: [], docs: [] }, corpev: [],
   };
 }
 

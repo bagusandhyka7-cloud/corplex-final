@@ -5,6 +5,7 @@
  * matriks risiko, kesimpulan, lampiran, kualifikasi, tanda tangan. Grafik = SVG inline.
  * Dasar hukum hanya UU/PP mapan. ponytail: snapshot DB + PDF engine menyusul saat infra diputus. */
 import type { Tenant } from "./data";
+import { periksaKorporasi } from "./peristiwa";
 import { SECTIONS } from "./ldd-charts";
 
 export type Risk = "TINGGI" | "SEDANG" | "RENDAH";
@@ -40,7 +41,26 @@ export function buildLdd(t: Tenant): LddReport {
   const missing: string[] = [];
   const counts: LddReport["counts"] = {};
 
-  /* 1. Legalitas badan hukum */
+  /* 1. Legalitas badan hukum — kini dinilai dari PERISTIWA korporasi (keputusan → akta →
+   * pengesahan) bila tenant sudah memakainya. Penilaian lama "hitung rekam tata kelola"
+   * hanya dipakai sebagai cadangan untuk tenant yang belum mencatat satu peristiwa pun. */
+  const ev = t.corpev || [];
+  if (ev.length) {
+    const hariIni = new Date().toISOString().slice(0, 10);
+    const periksa = periksaKorporasi(ev, hariIni);
+    const temuan = periksa.filter((x) => !x.ok);
+    examined.push(`${ev.length} peristiwa korporasi (keputusan → akta → pengesahan) beserta tenggat 30 hari masing-masing`);
+    temuan.forEach((x) => f.push({
+      aspect: "Legalitas Badan Hukum", title: x.hal,
+      facts: x.ket,
+      basis: "Undang-Undang Nomor 40 Tahun 2007 tentang Perseroan Terbatas, khususnya Pasal 21 (perubahan anggaran dasar) dan Pasal 78 (RUPS tahunan).",
+      risk: /lewat batas|belum tercatat/i.test(x.ket) ? "TINGGI" : "SEDANG",
+      impact: "Perubahan yang belum memperoleh persetujuan atau pemberitahuan Menteri tidak berlaku terhadap pihak ketiga, sehingga kewenangan penandatangan dan struktur permodalan dapat dipersoalkan dalam transaksi.",
+      action: "Lengkapi rantai peristiwa pada modul Sekretaris Perusahaan; untuk tenggat yang telah terlampaui, mintakan arahan advokat MRWP melalui tombol Ajukan ke Advokat.",
+    }));
+    counts["Legalitas Badan Hukum"] = { rekam: ev.length, temuan: temuan.length, status: temuan.length ? "BERISIKO" : "AMAN" };
+    if (temuan.length) missing.push("Kelengkapan rantai akta dan pengesahan Menkumham");
+  } else {
   const corpEmpty = !t.corp.id && !corpRekam(t);
   if (corpEmpty) {
     missing.push("Akta pendirian, anggaran dasar, dan risalah RUPS");
@@ -64,6 +84,7 @@ export function buildLdd(t: Tenant): LddReport {
   }
   const temuanCorp = f.filter((x) => x.aspect === "Legalitas Badan Hukum").length;
   counts["Legalitas Badan Hukum"] = { rekam: corpRekam(t), temuan: temuanCorp, status: corpEmpty || temuanCorp ? "BERISIKO" : "AMAN" };
+  }
 
   /* 2. Perizinan */
   const urgentLic = t.lic.filter((r) => r.some((c) => c === "SEGERA" || c === "KEDALUWARSA"));

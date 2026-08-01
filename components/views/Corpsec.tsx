@@ -7,6 +7,7 @@ import { Check, Lock, Plus } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { askConfirm, Chip, Field, Jargon, Modal, Panel, Row, Timeline } from "@/components/ui";
 import { ModuleShell } from "@/components/ModuleShell";
+import CorpsecPeristiwa from "@/components/views/CorpsecPeristiwa";
 import { api } from "@/lib/api";
 import { useRouter } from "next/navigation";
 
@@ -109,6 +110,16 @@ export default function Corpsec() {
         {c.id && <button className="btn-act" onClick={() => router.push(`/rekam/corp/${c.id}`)}><Lock size={10} style={{ display: "inline", marginRight: 4 }} />Buka Rekam</button>}
       </>}>
 
+      {/* PUSAT PEMANTAUAN — objek utama modul ini sejak redesign: peristiwa korporasi. */}
+      <CorpsecPeristiwa />
+
+      {/* ARSIP — enam panel lama dipertahankan apa adanya untuk tenant yang sudah mengisinya.
+        * Sengaja TIDAK dimigrasikan: isinya teks bebas yang tak dapat dipetakan otomatis ke
+        * rantai keputusan→akta→pengesahan; memaksa pemetaan akan mengarang data hukum. */}
+      <details open={!!(c.rups.length || c.dirs.length || c.meetings.length || c.cap.length || c.stat.length || c.docs.length)} style={{ marginBottom: 12 }}>
+        <summary style={{ cursor: "pointer", fontFamily: "var(--mono)", fontSize: 10, letterSpacing: ".18em", color: "var(--muted)", padding: "10px 0" }}>
+          ARSIP TATA KELOLA (CATATAN LAMA — TIDAK IKUT DIPANTAU TENGGATNYA)
+        </summary>
       <div className="grid g-wide">
         <div style={{ display: "grid", gap: 16, alignContent: "start" }}>
           <Panel title={<>{c.entity} · RUPS</>}>
@@ -156,6 +167,7 @@ export default function Corpsec() {
           </Panel>
         </div>
       </div>
+      </details>
 
       {/* Satu pintu masuk: pilih jenis data → form. Dokumen asli lewat dropzone di atas. */}
       <Modal right open={pickOpen} title="Tambah Data Perseroan" onClose={() => setPickOpen(false)}>

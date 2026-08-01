@@ -41,4 +41,26 @@ assert.equal(tenggatJaga(tenant([lic("Salah Tanda", `Berlaku s.d. ${hariDepan(36
 assert.equal(sisaHari(hariDepan(0)), 0);
 assert.equal(sisaHari("bukan tanggal"), null);
 
+/* 8. PERISTIWA KORPORASI ikut fungsi JAGA — tenggat 30 hari (keputusan→akta, akta→Menkumham)
+ * adalah satu-satunya tempat perubahan anggaran dasar bisa kehilangan keabsahannya, jadi
+ * wajib muncul di pengingat, bukan hanya di modul Sekretaris. */
+const tenantEv = (corpev: unknown[]) => ({ lic: [], agr: [], emp: [], corpev } as unknown as Tenant);
+{
+  /* keputusan 40 hari lalu tanpa akta → telat 10 hari */
+  const r = tenggatJaga(tenantEv([{ jenis: "Perubahan Susunan Direksi", jalur: "pemberitahuan", dasar: { bentuk: "RUPS Luar Biasa", tanggal: hariDepan(-40) } }]));
+  assert.equal(r.length, 1);
+  assert.equal(r[0].hari, -10);
+  assert.equal(r[0].v, "corpsec");
+  assert.match(r[0].b, /belum diaktakan/);
+
+  /* akta 5 hari lalu → masih dalam tenggat, sisa 25 hari (tetap tampil karena ≤ 30) */
+  const proses = tenggatJaga(tenantEv([{ jenis: "Perubahan Susunan Direksi", jalur: "pemberitahuan", dasar: { bentuk: "RUPS Luar Biasa", tanggal: hariDepan(-20) }, akta: { nomor: "1/2026", tanggal: hariDepan(-5) } }]));
+  assert.equal(proses[0].hari, 25);
+  assert.match(proses[0].b, /belum disahkan Menkumham/);
+
+  /* riwayat lama & peristiwa yang sudah berlaku TIDAK boleh melahirkan pengingat */
+  assert.equal(tenggatJaga(tenantEv([{ jenis: "Pendirian Perseroan", jalur: "persetujuan", historis: true, dasar: { bentuk: "Akta Pendirian", tanggal: "2019-03-12" } }])).length, 0);
+  assert.equal(tenggatJaga(tenantEv([{ jenis: "Perubahan Susunan Direksi", jalur: "pemberitahuan", dasar: { bentuk: "RUPS", tanggal: hariDepan(-60) }, akta: { nomor: "2/2026", tanggal: hariDepan(-50) }, sah: { bentuk: "Surat Penerimaan Pemberitahuan", nomor: "AHU-1", tanggal: hariDepan(-40) } }])).length, 0);
+}
+
 console.log("jaga.test.ts — semua assert lolos");
