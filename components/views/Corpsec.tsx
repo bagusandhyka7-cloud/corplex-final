@@ -20,11 +20,11 @@ const BtnHapus = ({ onClick }: { onClick: () => void }) => (
 const tglID = () => new Date().toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" }).toUpperCase();
 
 /* satu definisi form per panel — baris baru masuk array jsonb terkait */
+/* Tinggal dua: RUPS, keputusan sirkuler, dan rapat organ kini dicatat sebagai PERISTIWA
+ * korporasi (lihat CorpsecPeristiwa) — menyediakan dua pintu untuk hal yang sama justru
+ * memecah riwayat perusahaan ke dua tempat yang tak saling tahu. */
 const ADD: Record<string, { title: string; fields: string[]; make: (v: string[]) => string[] }> = {
-  rups: { title: "Tahapan RUPS", fields: ["Tanggal (mis. 18 MEI 2026)", "Judul tahapan", "Keterangan"], make: (v) => [v[0], v[1], v[2], "next"] },
-  dirs: { title: "Pihak Sirkuler", fields: ["Nama", "Jabatan"], make: (v) => [v[0], v[1], "wait", ""] },
-  meetings: { title: "Rapat Organ", fields: ["Judul rapat", "Jadwal & agenda"], make: (v) => [v[0], v[1]] },
-  cap: { title: "Baris Cap Table", fields: ["Pemegang saham", "Keterangan lembar", "Persentase (mis. 60%)"], make: (v) => [v[0], v[1], v[2]] },
+  cap: { title: "Baris Struktur Kepemilikan", fields: ["Pemegang saham", "Keterangan lembar", "Persentase (mis. 60%)"], make: (v) => [v[0], v[1], v[2]] },
   stat: { title: "Kewajiban Statutori", fields: ["Kewajiban", "Keterangan/pemicu", "Tenggat (mis. 30 HARI)"], make: (v) => [v[0], v[1], "c-draft", v[2]] },
 };
 
@@ -119,39 +119,13 @@ export default function Corpsec() {
       {/* PUSAT PEMANTAUAN — objek utama modul ini sejak redesign: peristiwa korporasi. */}
       <CorpsecPeristiwa filter={fEv} q={qEv} />
 
-      {/* ARSIP — enam panel lama dipertahankan apa adanya untuk tenant yang sudah mengisinya.
-        * Sengaja TIDAK dimigrasikan: isinya teks bebas yang tak dapat dipetakan otomatis ke
-        * rantai keputusan→akta→pengesahan; memaksa pemetaan akan mengarang data hukum. */}
-      <details open={!!(c.rups.length || c.dirs.length || c.meetings.length || c.cap.length || c.stat.length || c.docs.length)} style={{ marginBottom: 12 }}>
-        <summary style={{ cursor: "pointer", fontFamily: "var(--mono)", fontSize: 10, letterSpacing: ".18em", color: "var(--muted)", padding: "10px 0" }}>
-          ARSIP TATA KELOLA (CATATAN LAMA — TIDAK IKUT DIPANTAU TENGGATNYA)
-        </summary>
+      {/* Arsip enam panel DIBUBARKAN atas keputusan owner. Tiga yang benar-benar dipakai naik
+        * jadi panel tetap di modul ini (struktur kepemilikan, kewajiban statutori, dokumen);
+        * RUPS/sirkuler/rapat tidak lagi ditampilkan karena perannya sudah diambil peristiwa
+        * korporasi — barisnya TIDAK dihapus dari database, hanya tak lagi punya layar. */}
       <div className="grid g-wide">
         <div style={{ display: "grid", gap: 16, alignContent: "start" }}>
-          <Panel title={<>{c.entity} · RUPS</>}>
-            {c.rups.length ? <Timeline items={c.rups} onHapus={(i) => void hapusBaris("rups", i, c.rups[i][1] || c.rups[i][0])} /> :<p style={{ fontSize: 12, color: "var(--muted)" }}>Belum ada tahapan RUPS tercatat — lewat tombol Tambah Data di atas.</p>}
-          </Panel>
-          <Panel title={<><Jargon k="keputusan sirkuler">Keputusan Sirkuler</Jargon> — Persetujuan Elektronik <Chip c={allOk ? "c-ver" : "c-draft"}>{allOk ? `SAH — ${done}/${c.dirs.length} (100%)` : `${done} / ${c.dirs.length || 0} SETUJU`}</Chip></>}>
-            <div className="rows">
-              {c.dirs.map((d, i) => d[2] === "ok" ? (
-                <Row key={i} b={`${d[0]} — ${d[1]}`} d={`Disetujui · tercatat ${d[3]}`}
-                  right={<><Chip c="c-ver"><Check size={9} style={{ display: "inline" }} /></Chip><BtnHapus onClick={() => void hapusBaris("dirs", i, d[0])} /></>} />
-              ) : (
-                <Row key={i} b={`${d[0]} — ${d[1]}`} d="Menunggu persetujuan (constraint: sirkuler butuh 100%)"
-                  right={<><Chip c="c-draft">MENUNGGU</Chip><button className="btn btn-navy btn-sm" disabled={busy} onClick={() => void setuju(i)}>Setujui</button><BtnHapus onClick={() => void hapusBaris("dirs", i, d[0])} /></>} />
-              ))}
-              {!c.dirs.length && <Row b="Belum ada pihak sirkuler" d="Tambahkan direksi/pemegang saham yang wajib menyetujui." right={<Chip c="c-mon">KOSONG</Chip>} />}
-            </div>
-          </Panel>
-          <Panel title={<>Rapat Organ Perseroan</>}>
-            <div className="rows">
-              {c.meetings.map((m, i) => <Row key={i} b={m[0]} d={m[1]} right={<><Chip c="c-mon">TERJADWAL</Chip><BtnHapus onClick={() => void hapusBaris("meetings", i, m[0])} /></>} />)}
-              {!c.meetings.length && <Row b="Belum ada rapat terjadwal" d="Catat rapat direksi/komisaris lewat tombol Tambah Data di atas." right={<Chip c="c-mon">KOSONG</Chip>} />}
-            </div>
-          </Panel>
-        </div>
-        <div style={{ display: "grid", gap: 16, alignContent: "start" }}>
-          <Panel title={<>Cap Table</>}>
+          <Panel title={<>Struktur Kepemilikan (Cap Table)</>}>
             <div className="rows">
               {c.cap.map((x, i) => <Row key={i} b={x[0]} d={x[1]} right={<><b style={{ color: "var(--ink)" }}>{x[2]}</b><BtnHapus onClick={() => void hapusBaris("cap", i, x[0])} /></>} />)}
               {/* Janji "validasi Σ=100% menyusul" dicabut — tak ada validasi jumlah persentase
@@ -165,6 +139,8 @@ export default function Corpsec() {
               {!c.stat.length && <Row b="Tidak ada kewajiban tercatat" d="Tenggat statutori (Menkumham, laporan tahunan) dicatat di sini." right={<Chip c="c-ver">BERSIH</Chip>} />}
             </div>
           </Panel>
+        </div>
+        <div style={{ display: "grid", gap: 16, alignContent: "start" }}>
           <Panel title="Dokumen Tata Kelola">
             <div className="rows">
               {c.docs.map((d, i) => <Row key={i} b={d[0]} right={<><Chip c={d[1]}>{d[2]}</Chip>{d[3] && c.id ? <button className="btn-act" onClick={() => router.push(`/rekam/corp/${c.id}`)}><Lock size={10} style={{ display: "inline", marginRight: 4 }} />Buka</button> : null}</>} />)}
@@ -173,7 +149,6 @@ export default function Corpsec() {
           </Panel>
         </div>
       </div>
-      </details>
 
       {/* Satu pintu masuk: pilih jenis data → form. Dokumen asli lewat dropzone di atas. */}
       <Modal right open={pickOpen} title="Tambah Data Perseroan" onClose={() => setPickOpen(false)}>

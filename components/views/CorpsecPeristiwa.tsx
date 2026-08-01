@@ -170,21 +170,24 @@ export default function CorpsecPeristiwa({ filter = "semua", q = "" }: { filter?
   return (
     <div style={{ marginBottom: 22 }}>
       <style>{`
+        /* Rel & simpul: garis di x=7..9 (sumbu 8), simpul 12px dipasang pada x=2..14 sehingga
+         * sumbunya IDENTIK 8px — sebelumnya left:-23px membuat simpul meleset 1px ke kanan dan
+         * deretannya terlihat goyah. box-sizing dikunci agar hitungan tak bergantung reset global. */
         .cs-rail{position:relative;padding-left:26px}
         .cs-rail::before{content:"";position:absolute;left:7px;top:6px;bottom:6px;width:2px;
-          background:linear-gradient(180deg,var(--gold-deep),rgba(28,48,84,.9))}
+          background:var(--line2)}
         .cs-node{position:relative;margin-bottom:10px}
-        .cs-node::before{content:"";position:absolute;left:-23px;top:18px;width:12px;height:12px;border-radius:50%;
-          background:var(--bg-1);border:2px solid var(--line2)}
-        .cs-node.ok::before{border-color:var(--ok)}
-        .cs-node.warn::before{border-color:var(--warn)}
-        .cs-node.bad::before{border-color:var(--danger)}
+        /* Warna simpul SERAGAM emas (seperti versi lama). Status tetap terbaca dari chip dan
+         * rantai tahap di setiap baris — mewarnai simpul hanya menambah bahasa warna kedua. */
+        .cs-node::before{content:"";box-sizing:border-box;position:absolute;left:-24px;top:18px;
+          width:12px;height:12px;border-radius:50%;background:var(--bg-1);border:2px solid var(--gold-deep)}
         .cs-chain{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-top:7px}
-        .cs-step{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:9.5px;
-          letter-spacing:.06em;padding:3px 9px;border-radius:7px;border:1px solid var(--line);color:var(--muted)}
-        .cs-step.done{border-color:var(--ok-line);color:var(--ok);background:var(--ok-bg)}
-        .cs-step.now{border-color:var(--warn-line);color:var(--warn);background:var(--warn-bg)}
-        .cs-step.miss{border-color:var(--danger-line);color:var(--danger);background:var(--danger-bg)}
+        /* Tahap rantai = TEKS, bukan tombol. Berkotak-berlatar membuatnya tampak dapat diklik
+         * padahal tidak, dan bertabrakan dengan chip status di kanan baris. Pembedanya warna saja. */
+        .cs-step{font-family:var(--mono);font-size:9.5px;letter-spacing:.08em;color:var(--muted)}
+        .cs-step.done{color:var(--ok)}
+        .cs-step.now{color:var(--warn)}
+        .cs-step.miss{color:var(--danger)}
         .cs-sep{color:var(--line2);font-size:11px}
         .cs-delta{display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:center;
           background:rgba(16,33,61,.55);border:1px solid rgba(28,48,84,.8);border-radius:11px;padding:11px 14px}
@@ -209,9 +212,8 @@ export default function CorpsecPeristiwa({ filter = "semua", q = "" }: { filter?
             </div>
             <div className="cs-rail">
               {rows.map(({ p, s }) => {
-                const nada = s.status === "berlaku" ? "ok" : s.status === "proses" ? "warn" : "bad";
                 return (
-                  <div key={p.id} className={`cs-node ${nada}`}>
+                  <div key={p.id} className="cs-node">
                     <div className="row clickable" style={{ alignItems: "flex-start" }} onClick={() => setBuka(p)}>
                       <div style={{ minWidth: 0 }}>
                         <b>{p.jenis}</b>
@@ -222,7 +224,7 @@ export default function CorpsecPeristiwa({ filter = "semua", q = "" }: { filter?
                         </span>
                         <div className="cs-chain">
                           <span className="cs-step done">KEPUTUSAN</span>
-                          {p.jalur === "internal" ? <span className="cs-step" style={{ borderStyle: "dashed" }}>TANPA KEWAJIBAN AKTA</span> : (<>
+                          {p.jalur === "internal" ? <span className="cs-step">· TANPA KEWAJIBAN AKTA</span> : (<>
                             <span className="cs-sep">›</span>
                             <span className={`cs-step ${p.akta ? "done" : s.status === "telat-akta" ? "miss" : "now"}`}>AKTA</span>
                             <span className="cs-sep">›</span>
