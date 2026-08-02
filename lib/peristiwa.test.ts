@@ -5,7 +5,7 @@
  * jalur internal tanpa kewajiban, dan keadaan organ yang diturunkan (bukan diketik).
  */
 import assert from "node:assert";
-import { statusPeristiwa, keadaanTerkini, periksaKorporasi, jalurJenis, tambahHari, type Peristiwa } from "./peristiwa";
+import { statusPeristiwa, keadaanTerkini, periksaKorporasi, jalurJenis, tambahHari, sirkuler, sirkulerSah, type Peristiwa } from "./peristiwa";
 
 const HARI_INI = "2026-07-30";
 const buat = (x: Partial<Peristiwa>): Peristiwa => ({
@@ -121,7 +121,30 @@ const buat = (x: Partial<Peristiwa>): Peristiwa => ({
   assert.equal(kosong.every((x) => !x.ok), true, "nol data bukan berarti aman");
 }
 
-/* 11 · util tanggal */
+/* 11 · KEPUTUSAN SIRKULER — Pasal 91 UU PT: sah hanya bila SELURUH pemegang saham setuju
+ * (bukan suara terbanyak), jadi persetujuan timpang wajib jadi temuan uji tuntas. */
+{
+  const dasarSirkuler = { bentuk: "Keputusan Sirkuler Pemegang Saham", tanggal: "2026-07-01" };
+  const timpang = buat({ dasar: dasarSirkuler, ttd: [{ nama: "A", setuju: "2026-07-02" }, { nama: "B" }] });
+  const lengkap = buat({ dasar: dasarSirkuler, ttd: [{ nama: "A", setuju: "2026-07-02" }, { nama: "B", setuju: "2026-07-03" }] });
+  assert.equal(sirkuler(timpang), true);
+  assert.equal(sirkulerSah(timpang), false, "satu pihak belum setuju = belum sah");
+  assert.equal(sirkulerSah(lengkap), true);
+  assert.equal(sirkulerSah(buat({ dasar: dasarSirkuler })), false, "tanpa daftar penanda tangan tak boleh dianggap sah");
+  assert.equal(sirkuler(buat({ dasar: { bentuk: "RUPS Tahunan", tanggal: "2026-07-01" } })), false);
+
+  const p = periksaKorporasi([timpang], HARI_INI);
+  const cek = p.find((x) => /sirkuler/i.test(x.hal))!;
+  assert.equal(cek.ok, false);
+  assert.match(cek.ket, /seluruh pemegang saham/);
+  /* aktanya sudah terbit pun tak boleh menutupi persetujuan yang belum lengkap */
+  const adaAkta = buat({ dasar: dasarSirkuler, ttd: [{ nama: "A" }], akta: { nomor: "5/2026", tanggal: "2026-07-05" } });
+  assert.equal(periksaKorporasi([adaAkta], HARI_INI).find((x) => /sirkuler/i.test(x.hal))!.ok, false);
+  /* perusahaan tanpa sirkuler sama sekali tidak boleh dituduh bermasalah */
+  assert.equal(periksaKorporasi([buat({})], HARI_INI).find((x) => /sirkuler/i.test(x.hal))!.ok, true);
+}
+
+/* 12 · util tanggal */
 assert.equal(tambahHari("2026-01-31", 30), "2026-03-02");
 assert.equal(tambahHari("2024-02-01", 30), "2024-03-02", "tahun kabisat");
 

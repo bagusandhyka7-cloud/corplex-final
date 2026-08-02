@@ -29,6 +29,32 @@ export function Panel({ title, className, style, children }: { title?: React.Rea
  * Tingginya DIUKUR dari baris ke-N yang benar-benar tergambar, bukan ditebak lewat angka px:
  * tinggi baris di modul ini berkisar 65–248px (teks membungkus berbeda-beda), sehingga
  * max-height tetap pasti memotong di tengah baris atau menyisakan ruang kosong. */
+/* Pratinjau dokumen (gambar/PDF) dengan URL bertanda tangan. Bucket privat sejak penutupan
+ * kebocoran storage, jadi src mentah dari DB tak lagi bisa dipakai langsung. */
+export function DokPratinjau({ url, judul, tinggi }: { url?: string | null; judul?: string; tinggi?: number | string }) {
+  const [src, setSrc] = React.useState<string | null>(null);
+  const [gagal, setGagal] = React.useState(false);
+  React.useEffect(() => {
+    let batal = false;
+    setSrc(null); setGagal(false);
+    if (!url) return;
+    void import("@/lib/dok").then(({ urlDok }) => urlDok(url).then((s) => {
+      if (batal) return;
+      if (s) setSrc(s); else setGagal(true);
+    }));
+    return () => { batal = true; };
+  }, [url]);
+  const gaya: React.CSSProperties = { flex: 1, height: tinggi, border: "none", background: "#fff" };
+  if (gagal) return <div className="note" style={{ margin: 0, padding: 18 }}>Dokumen tak dapat ditampilkan — berkas tidak ditemukan atau Anda tak berhak mengaksesnya.</div>;
+  if (!src) return <div className="note" style={{ margin: 0, padding: 18 }}>Menyiapkan dokumen…</div>;
+  return /\.(jpe?g|png|webp|gif)(\?|$)/i.test(url || "")
+    ? <div style={{ flex: 1, overflow: "auto", display: "grid", placeItems: "center", background: "#0A1830", height: tinggi }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={src} alt={judul || "Dokumen"} style={{ maxWidth: "100%", maxHeight: "100%" }} />
+      </div>
+    : <iframe src={src} style={gaya} title={judul || "Dokumen"} />;
+}
+
 export function Batas({ n = 5, className, children }: { n?: number; className?: string; children: React.ReactNode }) {
   const ref = React.useRef<HTMLDivElement>(null);
   const [h, setH] = React.useState<number>();
@@ -249,8 +275,10 @@ export function VqThread({ msgs, me }: { msgs: VqMsg[]; me: "advokat" | "klien" 
             <p style={{ fontSize: 12.5, lineHeight: 1.7, color: "var(--ink)", whiteSpace: "pre-wrap", margin: 0 }}>{m.text}</p>
             {m.dok_url && (
               <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                <a className="btn btn-line btn-sm" href={m.dok_url} target="_blank" rel="noreferrer">Buka {m.dok_nama || "lampiran"}</a>
-                <a className="btn btn-navy btn-sm" href={m.dok_url} download={m.dok_nama || undefined}>Unduh</a>
+                {/* URL mentah tak lagi dipasang di DOM: bucket privat, tautan ditandatangani
+                    saat diklik dan hanya berlaku beberapa menit. */}
+                <button className="btn btn-line btn-sm" onClick={() => void import("@/lib/dok").then(({ bukaDok }) => bukaDok(m.dok_url, alert))}>Buka {m.dok_nama || "lampiran"}</button>
+                <button className="btn btn-navy btn-sm" onClick={() => void import("@/lib/dok").then(({ unduhDok }) => unduhDok(m.dok_url, m.dok_nama, alert))}>Unduh</button>
               </div>
             )}
             <HashChip hash={m.dok_hash} label="SHA-256 lampiran" />

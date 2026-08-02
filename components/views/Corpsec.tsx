@@ -121,6 +121,7 @@ export default function Corpsec() {
         * sedangkan kepemilikan & kewajiban statutori memanjang penuh di bawah dua kolom —
         * keduanya tabel pendek yang sesak bila dipaksa masuk kolom sempit. */}
       <CorpsecPeristiwa filter={fEv} q={qEv}
+        onTutupBuku={(bulan) => void simpan({ tutupBuku: bulan }).then((ok) => ok && toast("Tahun buku diperbarui", "Batas RUPS tahunan dihitung ulang dari akhir tahun buku baru.", "ok"))}
         kananBawah={
           <Panel title="Dokumen Tata Kelola">
             <Batas className="rows">

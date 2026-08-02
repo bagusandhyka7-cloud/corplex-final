@@ -33,6 +33,10 @@ const hash8 = (s: string) => {
  * cap table, dan kewajiban statutori lengkap tetap tampil "BELUM DINILAI" dan "Tata Kelola 0"
  * di Ringkasan — angka yang menyesatkan pemilik data. */
 export const corpRekam = (t: Tenant) =>
+  /* Peristiwa korporasi (mod 'corpev') ikut dihitung sejak redesign Sekretaris — tanpa ini
+   * bar "Tata Kelola" dan KPI "Rekam tercatat" di Ringkasan mengabaikan seluruh riwayat
+   * pendirian/perubahan/RUPS, justru rekam yang paling penting pada aspek korporasi. */
+  (t.corpev?.length || 0) +
   t.corp.docs.length + t.corp.rups.length + t.corp.dirs.length + t.corp.meetings.length + t.corp.cap.length + t.corp.stat.length;
 
 export function buildLdd(t: Tenant): LddReport {
@@ -47,7 +51,7 @@ export function buildLdd(t: Tenant): LddReport {
   const ev = t.corpev || [];
   if (ev.length) {
     const hariIni = new Date().toISOString().slice(0, 10);
-    const periksa = periksaKorporasi(ev, hariIni);
+    const periksa = periksaKorporasi(ev, hariIni, t.corp?.tutupBuku || 12);
     const temuan = periksa.filter((x) => !x.ok);
     examined.push(`${ev.length} peristiwa korporasi (keputusan → akta → pengesahan) beserta tenggat 30 hari masing-masing`);
     temuan.forEach((x) => f.push({

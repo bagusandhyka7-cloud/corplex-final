@@ -36,7 +36,9 @@ export interface Tenant {
   lic: (string | number)[][];
   assets: (string | string[] | null)[][];
   hki: (string | number | string[] | null)[][];
-  corp: { id?: string; entity: string; rupsTitle: string; rups: string[][]; circNo: string; dirs: string[][]; meetings: string[][]; cap: string[][]; stat: string[][]; docs: string[][] };
+  /* tutupBuku = bulan akhir tahun buku (1–12, bawaan 12 = 31 Desember). Menentukan batas
+   * penyelenggaraan RUPS tahunan (maks 6 bulan setelah tutup buku, Pasal 78 UU PT). */
+  corp: { id?: string; entity: string; rupsTitle: string; rups: string[][]; circNo: string; dirs: string[][]; meetings: string[][]; cap: string[][]; stat: string[][]; docs: string[][]; tutupBuku?: number };
   /* Peristiwa korporasi (mod 'corpev') — objek utama Sekretaris Perusahaan sejak redesign.
    * `corp` di atas TIDAK dihapus: isinya jadi arsip riwayat tak terstruktur milik tenant lama. */
   corpev: import("./peristiwa").Peristiwa[];

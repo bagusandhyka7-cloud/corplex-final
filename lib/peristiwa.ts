@@ -24,12 +24,24 @@ export type Peristiwa = {
    * berlaku — tanpa penanda ini seluruh arsip perusahaan akan berteriak "TELAT 2.700 HARI". */
   historis?: boolean;
   dasar: { bentuk: string; tanggal: string; agenda?: string };
-  akta?: { nomor: string; tanggal: string; notaris?: string };
-  sah?: { bentuk: string; nomor: string; tanggal: string };
+  /* Berkas menempel pada TAHAPNYA, bukan satu lampiran per peristiwa: satu perubahan bisa
+   * punya risalah RUPS, akta notaris, dan SK Menkumham sekaligus — menumpuknya jadi satu
+   * kolom membuat pembuktian kehilangan konteks (dokumen mana untuk tahap mana). */
+  akta?: { nomor: string; tanggal: string; notaris?: string; dokUrl?: string; dokNama?: string };
+  sah?: { bentuk: string; nomor: string; tanggal: string; dokUrl?: string; dokNama?: string };
   ubah?: Ubah[];
+  /* Keputusan Sirkuler Pemegang Saham (Pasal 91 UU PT 40/2007) sah HANYA bila SELURUH pemegang
+   * saham dengan hak suara menyetujui secara tertulis — tak ada mekanisme suara terbanyak.
+   * Karena itu daftar ini melekat pada peristiwanya, dan status sah dihitung dari kelengkapannya. */
+  ttd?: { nama: string; jabatan?: string; setuju?: string }[];
   dokUrl?: string | null;
   dokNama?: string | null;
 };
+
+/* Sirkuler hanya sah bila 100% menyetujui — bukan mayoritas. Dipakai UI & pemeriksaan LDD. */
+export const sirkuler = (p: Peristiwa) => /sirkuler/i.test(p.dasar.bentuk);
+export const sirkulerSah = (p: Peristiwa) =>
+  !!p.ttd?.length && p.ttd.every((x) => !!x.setuju);
 
 /* Pasal 21 UU PT 40/2007 — jenis perubahan menentukan jalurnya, jadi pengguna tak perlu hafal.
  * "internal" = rantai berhenti di keputusan (RUPS tahunan penerimaan laporan keuangan,
@@ -135,6 +147,9 @@ export type Periksa = { hal: string; ok: boolean; ket: string };
 /* Pemeriksaan aspek korporasi — PENGGANTI penilaian lama "hitung jumlah berkas", yang membuat
  * unggahan 3 berkas apa pun berstatus AMAN pada bab pertama Laporan Uji Tuntas. */
 export function periksaKorporasi(list: Peristiwa[], hariIni: string, tutupBukuBulan = 12): Periksa[] {
+  /* Sirkuler yang belum lengkap tanda tangannya = keputusan BELUM SAH (Pasal 91 UU PT), jadi
+   * tak boleh lolos diam-diam sekadar karena aktanya sudah terbit. */
+  const sirkulerTimpang = list.filter((p) => sirkuler(p) && !sirkulerSah(p));
   const st = list.map((p) => ({ p, s: statusPeristiwa(p, hariIni) }));
   const pendirian = list.find((p) => /pendirian/i.test(p.jenis));
   const telatAkta = st.filter((x) => x.s.status === "telat-akta");
@@ -183,6 +198,16 @@ export function periksaKorporasi(list: Peristiwa[], hariIni: string, tutupBukuBu
       hal: `RUPS tahunan buku ${tahunBuku}`,
       ok: adaRupsTahunan,
       ket: adaRupsTahunan ? `Tercatat · batas ${batasRups}` : `Belum tercatat — batas penyelenggaraan ${batasRups} (Pasal 78 UU PT)`,
+    },
+    {
+      hal: "Keputusan sirkuler disetujui seluruh pemegang saham",
+      /* Perusahaan tanpa satu pun peristiwa tetap BELUM DINILAI — sama seperti pemeriksaan
+       * lain; "tidak ada sirkuler" hanya sah disebut aman bila ada riwayat yang diperiksa. */
+      ok: list.length > 0 && sirkulerTimpang.length === 0,
+      ket: !list.length ? "Belum ada peristiwa korporasi tercatat"
+        : sirkulerTimpang.length
+          ? `${sirkulerTimpang.length} keputusan sirkuler belum lengkap persetujuannya — Pasal 91 UU PT menuntut persetujuan seluruh pemegang saham, bukan suara terbanyak`
+          : list.some(sirkuler) ? "Seluruh keputusan sirkuler lengkap disetujui" : "Tidak ada keputusan sirkuler tercatat",
     },
   ];
 }

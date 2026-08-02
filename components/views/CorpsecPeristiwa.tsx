@@ -7,15 +7,17 @@
  * tersimpan, jadi tak ada kelas bug "status basi". Data: module_records mod 'corpev',
  * satu baris per peristiwa — mewarisi RLS, realtime, hash dokumen, dan rute detail yang ada.
  */
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { AlertTriangle, ArrowRight, Building2, FileText, Landmark, Plus, Scale, ScrollText, Users } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { api } from "@/lib/api";
+import { bukaDok } from "@/lib/dok";
 import { Batas, Chip, Field, Kpi, Modal, Panel, Row } from "@/components/ui";
 import { askConfirm } from "@/components/ui";
 import {
   BENTUK_DASAR, JENIS_PERISTIWA, bentukPengesahan, jalurJenis, keadaanTerkini,
-  periksaKorporasi, ringkasPeristiwa, statusPeristiwa, type Peristiwa, type StatusPeristiwa,
+  periksaKorporasi, ringkasPeristiwa, sirkuler, sirkulerSah, statusPeristiwa,
+  type Peristiwa, type StatusPeristiwa,
 } from "@/lib/peristiwa";
 
 const tid = () => localStorage.getItem("corplex_tid") || "";
@@ -39,7 +41,7 @@ export function IkhtisarKorporasi() {
   const perluTindakan = dengan.filter((x) => x.s.perluTindakan);
   const menunggu = dengan.filter((x) => x.s.status === "proses" && x.p.akta && !x.p.sah);
   const berlaku = dengan.filter((x) => x.s.status === "berlaku");
-  const periksa = periksaKorporasi(list, hariIni);
+  const periksa = periksaKorporasi(list, hariIni, ten?.corp?.tutupBuku || 12);
   const terpenuhi = periksa.filter((x) => x.ok).length;
 
   return (
@@ -63,8 +65,10 @@ export function IkhtisarKorporasi() {
   );
 }
 
-export default function CorpsecPeristiwa({ filter = "semua", q = "", kananBawah, bawah }: {
+export default function CorpsecPeristiwa({ filter = "semua", q = "", kananBawah, bawah, onTutupBuku }: {
   filter?: string; q?: string;
+  /* Penyimpan setelan tahun buku dipegang modul induk (satu jalur tulis ke rekam corp). */
+  onTutupBuku?: (bulan: number) => void;
   /* Panel milik modul induk dititipkan ke sini agar ikut mengisi kerangka yang sama:
    *   kananBawah = menyambung kolom kanan (dokumen) — mengisi ruang di sisi garis waktu
    *   bawah      = baris penuh di bawah dua kolom (cap table, lalu kewajiban statutori)
@@ -84,6 +88,11 @@ export default function CorpsecPeristiwa({ filter = "semua", q = "", kananBawah,
   /* form tahap lanjutan (akta / pengesahan) */
   const [tahap, setTahap] = useState<{ p: Peristiwa; jenis: "akta" | "sah" } | null>(null);
   const [tf, setTf] = useState({ nomor: "", tanggal: hariIni, notaris: "" });
+  const [berkas, setBerkas] = useState<File | null>(null);
+  const berkasRef = useRef<HTMLInputElement>(null);
+  /* form penanda tangan sirkuler */
+  const [ttdForm, setTtdForm] = useState<Peristiwa | null>(null);
+  const [tt, setTt] = useState({ nama: "", jabatan: "" });
 
   const dengan = useMemo(() => list.map((p) => ({ p, s: statusPeristiwa(p, hariIni) })), [list, hariIni]);
   const berlaku = dengan.filter((x) => x.s.status === "berlaku");
@@ -103,7 +112,8 @@ export default function CorpsecPeristiwa({ filter = "semua", q = "", kananBawah,
           : s.status === "berlaku"));
 
   const organ = useMemo(() => keadaanTerkini(list, hariIni), [list, hariIni]);
-  const periksa = useMemo(() => periksaKorporasi(list, hariIni), [list, hariIni]);
+  const tutupBuku = t.corp?.tutupBuku || 12;
+  const periksa = useMemo(() => periksaKorporasi(list, hariIni, tutupBuku), [list, hariIni, tutupBuku]);
   const pendirian = list.find((p) => /pendirian/i.test(p.jenis));
   const berlakuTerakhir = berlaku
     .map((x) => x.p.sah?.tanggal || x.p.akta?.tanggal || x.p.dasar.tanggal)
@@ -132,19 +142,56 @@ export default function CorpsecPeristiwa({ filter = "semua", q = "", kananBawah,
     if (!tf.nomor.trim() || !tf.tanggal) return toast("Lengkapi isian", "Nomor dan tanggal wajib diisi.", "warn");
     setBusy(true);
     const p = tahap.p;
+    /* Berkas diunggah lebih dulu supaya nomor/tanggal dan dokumennya tersimpan dalam SATU
+     * tulisan — kalau unggahan gagal, rekamnya tidak berubah setengah jalan. */
+    let dok: { url: string; nama: string } | undefined;
+    if (berkas) {
+      const up = await api.records.uploadDoc(tid(), berkas);
+      if (!up.ok) { setBusy(false); return toast("Gagal mengunggah berkas", up.error.message, "warn"); }
+      dok = up.data;
+    }
     const next: Peristiwa = tahap.jenis === "akta"
-      ? { ...p, akta: { nomor: tf.nomor.trim(), tanggal: tf.tanggal, notaris: tf.notaris.trim() || undefined } }
-      : { ...p, sah: { bentuk: bentukPengesahan(p.jalur), nomor: tf.nomor.trim(), tanggal: tf.tanggal } };
+      ? { ...p, akta: { nomor: tf.nomor.trim(), tanggal: tf.tanggal, notaris: tf.notaris.trim() || undefined, dokUrl: dok?.url || p.akta?.dokUrl, dokNama: dok?.nama || p.akta?.dokNama } }
+      : { ...p, sah: { bentuk: bentukPengesahan(p.jalur), nomor: tf.nomor.trim(), tanggal: tf.tanggal, dokUrl: dok?.url || p.sah?.dokUrl, dokNama: dok?.nama || p.sah?.dokNama } };
     const { id, ...data } = next;
-    const r = await api.records.update(String(id), data as unknown as Record<string, unknown>);
+    /* dok diteruskan ke kolom rekam juga → SHA-256 isi dokumen dihitung server (lib/dokhash). */
+    const r = await api.records.update(String(id), data as unknown as Record<string, unknown>, dok);
     setBusy(false);
     if (!r.ok) return toast("Gagal menyimpan", r.error.message, "warn");
-    setTahap(null); setBuka(next);
+    setTahap(null); setBuka(next); setBerkas(null);
     setTf({ nomor: "", tanggal: hariIni, notaris: "" });
     toast(tahap.jenis === "akta" ? "Akta tercatat" : "Pengesahan tercatat",
       tahap.jenis === "akta"
         ? "Tenggat berikutnya dipasang: 30 hari sejak tanggal akta."
         : "Peristiwa kini BERLAKU — keadaan terkini ikut diperbarui.", "ok");
+  };
+
+  /* Persetujuan sirkuler — Pasal 91 UU PT: seluruh pemegang saham wajib setuju tertulis.
+   * Yang tersimpan hanya nama, jabatan, dan tanggal; TIDAK ada tanda tangan digital. */
+  const simpanTtd = async (p: Peristiwa, ttd: NonNullable<Peristiwa["ttd"]>) => {
+    const { id, ...data } = { ...p, ttd };
+    const r = await api.records.update(String(id), data as unknown as Record<string, unknown>);
+    if (!r.ok) { toast("Gagal menyimpan", r.error.message, "warn"); return false; }
+    setBuka({ ...p, ttd });
+    return true;
+  };
+  const tambahTtd = async () => {
+    if (!ttdForm || !tt.nama.trim()) return toast("Nama wajib diisi", "Tulis nama pemegang saham atau organ yang harus menyetujui.", "warn");
+    setBusy(true);
+    const ok = await simpanTtd(ttdForm, [...(ttdForm.ttd || []), { nama: tt.nama.trim(), jabatan: tt.jabatan.trim() || undefined }]);
+    setBusy(false);
+    if (ok) { setTtdForm(null); setTt({ nama: "", jabatan: "" }); toast("Pihak ditambahkan", "Keputusan sirkuler baru sah setelah SELURUH pihak menyetujui.", "ok"); }
+  };
+  const setujuiTtd = async (p: Peristiwa, i: number) => {
+    const ttd = (p.ttd || []).map((x, j) => (j === i ? { ...x, setuju: hariIni } : x));
+    if (await simpanTtd(p, ttd)) {
+      toast(ttd.every((x) => x.setuju) ? "Keputusan sirkuler SAH — seluruh pihak setuju" : "Persetujuan tercatat",
+        `Atas nama ${p.ttd?.[i]?.nama} · tercatat ${hariIni}. Yang tersimpan nama dan tanggal — bukan tanda tangan digital.`, "ok");
+    }
+  };
+  const hapusTtd = async (p: Peristiwa, i: number) => {
+    if (!(await askConfirm(`Hapus "${p.ttd?.[i]?.nama}" dari daftar persetujuan?`))) return;
+    if (await simpanTtd(p, (p.ttd || []).filter((_, j) => j !== i))) toast("Pihak dihapus", "Daftar persetujuan diperbarui.", "ok");
   };
 
   const hapus = async (p: Peristiwa) => {
@@ -281,6 +328,18 @@ export default function CorpsecPeristiwa({ filter = "semua", q = "", kananBawah,
             <Batas className="rows">
               {periksa.map((x) => <Row key={x.hal} b={x.hal} d={x.ket} right={<Chip c={x.ok ? "c-ver" : "c-red"}>{x.ok ? "TERPENUHI" : "TEMUAN"}</Chip>} />)}
             </Batas>
+            {/* Tutup buku menentukan batas RUPS tahunan (Pasal 78). Dulu dipatok 31 Desember —
+              * benar untuk sebagian besar PT Indonesia, tetapi salah untuk yang tahun bukunya
+              * mengikuti induk asing (mis. Maret/Juni), dan tenggatnya jadi menyesatkan. */}
+            {onTutupBuku && !pengawasan && (
+              <div className="row mt16" style={{ alignItems: "center" }}>
+                <div><b>Akhir tahun buku</b><span className="d">Dasar hitung batas RUPS tahunan (6 bulan setelahnya)</span></div>
+                <select value={tutupBuku} onChange={(e) => onTutupBuku(Number(e.target.value))} style={{ maxWidth: 190 }}>
+                  {["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"]
+                    .map((b, i) => <option key={b} value={i + 1}>{b}</option>)}
+                </select>
+              </div>
+            )}
             <p className="note mt16">Bab <b>Legalitas Badan Hukum</b> pada Laporan Uji Tuntas membaca pemeriksaan ini — bukan jumlah berkas yang diunggah.</p>
           </Panel>
           {kananBawah}
@@ -332,7 +391,11 @@ export default function CorpsecPeristiwa({ filter = "semua", q = "", kananBawah,
               <Field label="2 · Akta notaris">
                 {buka.akta ? (
                   <div className="row" style={{ alignItems: "flex-start" }}>
-                    <div><b>Akta No. {buka.akta.nomor} — {buka.akta.tanggal}</b><span className="d">{buka.akta.notaris || "notaris tidak dicatat"}</span></div>
+                    <div><b>Akta No. {buka.akta.nomor} — {buka.akta.tanggal}</b>
+                      <span className="d">{buka.akta.notaris || "notaris tidak dicatat"}{buka.akta.dokNama ? ` · ${buka.akta.dokNama}` : " · berkas belum dilampirkan"}</span></div>
+                    {buka.akta.dokUrl
+                      ? <button className="btn-act" onClick={() => void bukaDok(buka.akta!.dokUrl, (p) => toast("Dokumen tak terbuka", p, "warn"))}>Buka</button>
+                      : !pengawasan && <button className="btn-act" onClick={() => { setTahap({ p: buka, jenis: "akta" }); setTf({ nomor: buka.akta!.nomor, tanggal: buka.akta!.tanggal, notaris: buka.akta!.notaris || "" }); setBerkas(null); }}>Lampirkan</button>}
                   </div>
                 ) : (
                   <div className={`flag${s.status === "telat-akta" ? "" : " w"}`} style={{ marginBottom: 0 }}>
@@ -344,7 +407,11 @@ export default function CorpsecPeristiwa({ filter = "semua", q = "", kananBawah,
               <Field label="3 · Pengesahan Menkumham">
                 {buka.sah ? (
                   <div className="row" style={{ alignItems: "flex-start" }}>
-                    <div><b>{buka.sah.bentuk}</b><span className="d">{buka.sah.nomor} · {buka.sah.tanggal}</span></div>
+                    <div><b>{buka.sah.bentuk}</b>
+                      <span className="d">{buka.sah.nomor} · {buka.sah.tanggal}{buka.sah.dokNama ? ` · ${buka.sah.dokNama}` : " · berkas belum dilampirkan"}</span></div>
+                    {buka.sah.dokUrl
+                      ? <button className="btn-act" onClick={() => void bukaDok(buka.sah!.dokUrl, (p) => toast("Dokumen tak terbuka", p, "warn"))}>Buka</button>
+                      : !pengawasan && <button className="btn-act" onClick={() => { setTahap({ p: buka, jenis: "sah" }); setTf({ nomor: buka.sah!.nomor, tanggal: buka.sah!.tanggal, notaris: "" }); setBerkas(null); }}>Lampirkan</button>}
                   </div>
                 ) : (
                   <div className={`flag${s.status === "telat-lapor" ? "" : " w"}`} style={{ marginBottom: 0 }}>
@@ -356,6 +423,30 @@ export default function CorpsecPeristiwa({ filter = "semua", q = "", kananBawah,
                 )}
               </Field>
             </>)}
+
+            {/* Persetujuan sirkuler (Pasal 91 UU PT) — hanya untuk keputusan sirkuler. */}
+            {sirkuler(buka) && (
+              <Field label={`Persetujuan pemegang saham ${(buka.ttd || []).length ? `— ${(buka.ttd || []).filter((x) => x.setuju).length}/${(buka.ttd || []).length}${sirkulerSah(buka) ? " (SAH)" : ""}` : ""}`}>
+                <div className="rows">
+                  {(buka.ttd || []).map((x, i) => (
+                    <Row key={`${x.nama}-${i}`} b={`${x.nama}${x.jabatan ? ` — ${x.jabatan}` : ""}`}
+                      d={x.setuju ? `Menyetujui · tercatat ${x.setuju}` : "Belum menyetujui — keputusan belum sah"}
+                      right={<>
+                        <Chip c={x.setuju ? "c-ver" : "c-draft"}>{x.setuju ? "SETUJU" : "MENUNGGU"}</Chip>
+                        {!pengawasan && !x.setuju && <button className="btn btn-navy btn-sm" onClick={() => void setujuiTtd(buka, i)}>Setujui</button>}
+                        {!pengawasan && <button className="btn-act" onClick={() => void hapusTtd(buka, i)}>Hapus</button>}
+                      </>} />
+                  ))}
+                  {!(buka.ttd || []).length && <Row b="Belum ada pihak tercatat" d="Tambahkan seluruh pemegang saham yang wajib menyetujui." right={<Chip c="c-mon">KOSONG</Chip>} />}
+                </div>
+                {!pengawasan && <button className="btn btn-line btn-sm mt16" onClick={() => { setTtdForm(buka); setTt({ nama: "", jabatan: "" }); }}><Plus size={12} /> Tambah pihak</button>}
+                <p className="note mt16">
+                  Pasal 91 UU PT 40/2007: keputusan di luar RUPS sah hanya bila <b>seluruh</b> pemegang saham
+                  dengan hak suara menyetujui secara tertulis — tidak mengenal suara terbanyak. Yang tersimpan di sini
+                  adalah nama, jabatan, dan tanggal persetujuan; <b>bukan tanda tangan digital</b>.
+                </p>
+              </Field>
+            )}
 
             {!!(buka.ubah || []).length && (
               <Field label="Yang berubah">
@@ -450,11 +541,30 @@ export default function CorpsecPeristiwa({ filter = "semua", q = "", kananBawah,
         {tahap?.jenis === "akta" && (
           <Field label="Notaris"><input value={tf.notaris} onChange={(e) => setTf({ ...tf, notaris: e.target.value })} placeholder="mis. Andi Prasetyo, S.H., M.Kn." /></Field>
         )}
+        {/* Berkas menempel pada tahap ini — bukan ke tumpukan dokumen umum yang tak tertaut. */}
+        <Field label={`Berkas ${tahap?.jenis === "akta" ? "akta notaris" : "surat/keputusan"} (PDF / gambar)`}>
+          <input ref={berkasRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" style={{ display: "none" }}
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) setBerkas(f); e.target.value = ""; }} />
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <button type="button" className="btn btn-line btn-sm" onClick={() => berkasRef.current?.click()}>{berkas ? "Ganti berkas" : "Pilih berkas"}</button>
+            <span className="sub" style={{ fontSize: 12 }}>{berkas ? berkas.name : "belum ada berkas — nomor & tanggal tetap dapat disimpan"}</span>
+            {berkas && <button type="button" className="btn btn-red btn-sm" onClick={() => setBerkas(null)}>Buang</button>}
+          </div>
+        </Field>
         <p className="note mt16">
           {tahap?.jenis === "akta"
             ? "Setelah akta tercatat, tenggat berpindah otomatis ke batas 30 hari berikutnya (pengajuan ke Menkumham)."
             : "Setelah pengesahan tercatat, peristiwa menjadi BERLAKU dan isinya ikut memperbarui Keadaan Terkini."}
         </p>
+      </Modal>
+
+      {/* Tambah pihak penanda tangan sirkuler */}
+      <Modal right open={!!ttdForm} title="Tambah Pihak yang Harus Menyetujui" onClose={() => setTtdForm(null)}
+        footer={<><button className="btn btn-line" onClick={() => setTtdForm(null)}>Batal</button>
+          <button className="btn btn-gold" disabled={busy} onClick={() => void tambahTtd()}>{busy ? "Menyimpan…" : "Tambah"}</button></>}>
+        <Field label="Nama pemegang saham / organ *"><input value={tt.nama} onChange={(e) => setTt({ ...tt, nama: e.target.value })} placeholder="mis. PT Sentra Modal Nusantara" /></Field>
+        <Field label="Jabatan / kedudukan"><input value={tt.jabatan} onChange={(e) => setTt({ ...tt, jabatan: e.target.value })} placeholder="mis. Pemegang Saham Mayoritas · Direktur Utama" /></Field>
+        <p className="note mt16">Daftar ini harus memuat <b>seluruh</b> pemegang saham dengan hak suara. Selama satu pihak belum menyetujui, keputusan sirkuler dinyatakan belum sah dan muncul sebagai temuan pada kesiapan uji tuntas.</p>
       </Modal>
 
       <p className="note" style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 16 }}>

@@ -10,7 +10,8 @@ import { StoreProvider, useStore } from "@/lib/store";
 import { admin, api, InviteRow, VqMsg } from "@/lib/api";
 import { sb } from "@/lib/supabase";
 import { useAsyncAction } from "@/lib/hooks";
-import { askConfirm, Chip, ConfirmHost, Field, HashChip, Modal, Row, VqThread } from "@/components/ui";
+import { askConfirm, Chip, ConfirmHost, DokPratinjau, Field, HashChip, Modal, Row, VqThread } from "@/components/ui";
+import { bukaDok, unduhDok } from "@/lib/dok";
 import { RowActions } from "@/components/RecordModal";
 import { RecRow, SPECS, stripId } from "@/lib/records";
 import { Toasts } from "@/components/shell";
@@ -801,9 +802,7 @@ function AdminInner() {
                       <div style={{ position: "sticky", top: 16, background: "var(--sur-3)", border: "1px solid var(--line)", borderRadius: 10, overflow: "hidden", height: 420, display: "flex", flexDirection: "column" }}>
                         <div style={{ padding: "8px 12px", borderBottom: "1px solid var(--line)", fontFamily: "var(--mono)", fontSize: 9.5, letterSpacing: ".1em", color: "var(--muted)" }}>DOKUMEN ASLI — {srcRec.dok_nama || "TIDAK ADA"}</div>
                         {srcRec.dok_url
-                          ? (/\.(jpe?g|png|webp|gif)(\?|$)/i.test(srcRec.dok_url)
-                            ? <div style={{ flex: 1, overflow: "auto", display: "grid", placeItems: "center", background: "#0A1830" }}><img src={srcRec.dok_url} alt="Dokumen" style={{ maxWidth: "100%" }} /></div>
-                            : <iframe src={srcRec.dok_url} style={{ flex: 1, border: "none", background: "#fff" }} title="Dokumen sumber" />)
+                          ? <DokPratinjau url={srcRec.dok_url} judul="Dokumen sumber" />
                           : <div style={{ flex: 1, display: "grid", placeItems: "center", color: "var(--muted)", fontSize: 12 }}>Belum ada dokumen terunggah pada rekam ini.</div>}
                       </div>
                     </div>
@@ -820,14 +819,12 @@ function AdminInner() {
                     <span style={{ fontSize: 12.5, color: "var(--ink)", flex: 1, minWidth: 200, overflowWrap: "anywhere" }}>
                       📎 {vqSel.dok_nama || "dokumen"}
                     </span>
-                    <a className="btn btn-line btn-sm" href={vqSel.dok_url} target="_blank" rel="noreferrer">Buka di tab baru</a>
-                    <a className="btn btn-navy btn-sm" href={vqSel.dok_url} download={vqSel.dok_nama || undefined}>Unduh</a>
+                    <button className="btn btn-line btn-sm" onClick={() => void bukaDok(vqSel.dok_url, (p) => toast("Dokumen tak terbuka", p, "warn"))}>Buka di tab baru</button>
+                    <button className="btn btn-navy btn-sm" onClick={() => void unduhDok(vqSel.dok_url, vqSel.dok_nama, (p) => toast("Dokumen tak terunduh", p, "warn"))}>Unduh</button>
                   </div>
                   <HashChip hash={vqSel.dok_hash} />
                   <div style={{ background: "var(--sur-3)", border: "1px solid var(--line)", borderRadius: 10, overflow: "hidden", height: 460, display: "flex", flexDirection: "column" }}>
-                    {/\.(jpe?g|png|webp|gif)(\?|$)/i.test(vqSel.dok_url)
-                      ? <div style={{ flex: 1, overflow: "auto", display: "grid", placeItems: "center", background: "#0A1830" }}><img src={vqSel.dok_url} alt={vqSel.dok_nama || "Lampiran"} style={{ maxWidth: "100%" }} /></div>
-                      : <iframe src={vqSel.dok_url} style={{ flex: 1, border: "none", background: "#fff" }} title="Lampiran klien" />}
+                    <DokPratinjau url={vqSel.dok_url} judul={vqSel.dok_nama || "Lampiran klien"} />
                   </div>
                   <p className="note mt16">Diunggah klien bersama pengajuan ini — bukan hasil ekstraksi sistem. Nama berkas &amp; isinya persis seperti yang dikirim.</p>
                 </div>
@@ -1126,9 +1123,7 @@ function AdminInner() {
             <div style={{ padding: "8px 14px", borderBottom: "1px solid var(--line)", background: "var(--sur-2)" }}>
               <span className="sub mono" style={{ fontSize: 10, letterSpacing: ".1em" }}>PREVIEW — {docPrev.nama}</span>
             </div>
-            {/\.(jpe?g|png|webp)(\?|$)/i.test(docPrev.url)
-              ? <div style={{ flex: 1, overflow: "auto", display: "grid", placeItems: "center", background: "#0A1830" }}><img src={docPrev.url} alt="Dokumen" style={{ maxWidth: "100%" }} /></div>
-              : <iframe src={docPrev.url} style={{ flex: 1, border: "none", background: "#fff" }} title="Dokumen pendaftaran" />}
+            <DokPratinjau url={docPrev.url} judul="Dokumen pendaftaran" />
           </div>
         )}
       </Modal>
