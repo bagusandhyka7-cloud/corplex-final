@@ -23,7 +23,7 @@ export type Peristiwa = {
   /* Riwayat lama yang dicatat mundur (akta 2019 diketik hari ini). Tenggat & alarm TIDAK
    * berlaku — tanpa penanda ini seluruh arsip perusahaan akan berteriak "TELAT 2.700 HARI". */
   historis?: boolean;
-  dasar: { bentuk: string; tanggal: string; agenda?: string };
+  dasar: { bentuk: string; tanggal: string; agenda?: string; dokUrl?: string; dokNama?: string };
   /* Berkas menempel pada TAHAPNYA, bukan satu lampiran per peristiwa: satu perubahan bisa
    * punya risalah RUPS, akta notaris, dan SK Menkumham sekaligus — menumpuknya jadi satu
    * kolom membuat pembuktian kehilangan konteks (dokumen mana untuk tahap mana). */

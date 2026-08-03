@@ -92,6 +92,11 @@ export default function DatabaseKaryawan() {
   const emp = t.emp; // satu sumber: store — dashboard & profil ikut ter-update
   const [f, setF] = useState("semua");
   const [q, setQ] = useState("");
+  /* Revisi owner: tabel dapat diurut dari tanggal masuk / tanggal habis kontrak —
+   * klik judul kolomnya untuk membalik arah. Tanpa tanggal selalu di ekor daftar. */
+  const [urut, setUrut] = useState<{ k: "mulaiKerja" | "akhirKontrak"; naik: boolean } | null>(null);
+  const klikUrut = (k: "mulaiKerja" | "akhirKontrak") =>
+    setUrut(urut?.k === k ? (urut.naik ? { k, naik: false } : null) : { k, naik: true });
   const fileRef = useRef<HTMLInputElement>(null);
 
   /* modal tambah/edit manual */
@@ -174,6 +179,13 @@ export default function DatabaseKaryawan() {
     if (f === "reminder" && !e.rem) return false;
     return (e.n + " " + e.j).toLowerCase().includes(q.toLowerCase());
   });
+  if (urut) rows.sort((a, b) => {
+    /* ISO yyyy-mm-dd → perbandingan string sudah kronologis. PKWTT tak punya habis kontrak. */
+    const va = urut.k === "akhirKontrak" && a.e.s === "PKWTT" ? "" : a.e[urut.k] || "";
+    const vb = urut.k === "akhirKontrak" && b.e.s === "PKWTT" ? "" : b.e[urut.k] || "";
+    if (!va || !vb) return va === vb ? 0 : va ? -1 : 1; // kosong selalu di ekor
+    return urut.naik ? va.localeCompare(vb) : vb.localeCompare(va);
+  });
 
   const empUp = useUpload((file) => {
     registerVault(file);
@@ -232,7 +244,7 @@ export default function DatabaseKaryawan() {
   /* Dulu memakai empOut yang TIDAK PERNAH diisi (selalu 0) — padahal angka ini dilaporkan ke
    * LKPM OSS-RBA. Kini dihitung nyata: PKWT yang tanggal habis kontraknya sudah terlewat. */
   const empOut = emp.filter((e) => {
-    if (e.s !== "PKWT" || !/^d{4}-d{2}-d{2}$/.test(e.akhirKontrak || "")) return false;
+    if (e.s !== "PKWT" || !/^\d{4}-\d{2}-\d{2}$/.test(e.akhirKontrak || "")) return false;
     return new Date(e.akhirKontrak + "T00:00:00").getTime() < Date.now();
   }).length;
 
@@ -272,7 +284,10 @@ export default function DatabaseKaryawan() {
         
         <div className="tblwrap">
           <table>
-            <thead><tr><th>Tenaga Kerja</th><th>Jenis Kelamin</th><th>TKI / TKA</th><th>Lokal</th><th>Status</th><th>Tanggal Masuk</th><th>Habis Kontrak</th><th>Kontrak Kerja</th><th>Kepatuhan</th><th>Aksi</th></tr></thead>
+            <thead><tr><th>Tenaga Kerja</th><th>Jenis Kelamin</th><th>TKI / TKA</th><th>Lokal</th><th>Status</th>
+              <th style={{ cursor: "pointer", whiteSpace: "nowrap" }} title="Klik untuk mengurut" onClick={() => klikUrut("mulaiKerja")}>Tanggal Masuk{urut?.k === "mulaiKerja" ? (urut.naik ? " ▲" : " ▼") : ""}</th>
+              <th style={{ cursor: "pointer", whiteSpace: "nowrap" }} title="Klik untuk mengurut" onClick={() => klikUrut("akhirKontrak")}>Habis Kontrak{urut?.k === "akhirKontrak" ? (urut.naik ? " ▲" : " ▼") : ""}</th>
+              <th>Kontrak Kerja</th><th>Kepatuhan</th><th>Aksi</th></tr></thead>
             <tbody>
               {rows.map(({ e, i }) => {
                 const slug = e.n.toLowerCase().replace(/\s+/g, '-');

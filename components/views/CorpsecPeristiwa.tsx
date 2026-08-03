@@ -85,6 +85,10 @@ export default function CorpsecPeristiwa({ filter = "semua", q = "", kananBawah,
   const [busy, setBusy] = useState(false);
   /* form peristiwa baru */
   const [f, setF] = useState({ historis: false, jenis: JENIS_PERISTIWA[8].nama, bentuk: BENTUK_DASAR[0], tanggal: hariIni, agenda: "", hal: "", dari: "", jadi: "" });
+  /* Revisi owner: dokumen dasar keputusan (risalah RUPS / sirkuler) dapat diunggah langsung
+   * dari form catat — tidak menunggu tahap akta/pengesahan. */
+  const [berkasBaru, setBerkasBaru] = useState<File | null>(null);
+  const berkasBaruRef = useRef<HTMLInputElement>(null);
   /* form tahap lanjutan (akta / pengesahan) */
   const [tahap, setTahap] = useState<{ p: Peristiwa; jenis: "akta" | "sah" } | null>(null);
   const [tf, setTf] = useState({ nomor: "", tanggal: hariIni, notaris: "" });
@@ -122,15 +126,23 @@ export default function CorpsecPeristiwa({ filter = "semua", q = "", kananBawah,
   const simpanBaru = async () => {
     if (!f.jenis || !f.tanggal) return toast("Lengkapi isian", "Jenis peristiwa dan tanggal keputusan wajib diisi.", "warn");
     setBusy(true);
+    /* Berkas diunggah lebih dulu — bila gagal, tidak ada rekam setengah jadi. */
+    let dok: { url: string; nama: string } | undefined;
+    if (berkasBaru) {
+      const up = await api.records.uploadDoc(tid(), berkasBaru);
+      if (!up.ok) { setBusy(false); return toast("Gagal mengunggah berkas", up.error.message, "warn"); }
+      dok = up.data;
+    }
     const p: Peristiwa = {
       jenis: f.jenis, jalur: jalurJenis(f.jenis), historis: f.historis || undefined,
-      dasar: { bentuk: f.bentuk, tanggal: f.tanggal, agenda: f.agenda.trim() || undefined },
+      dasar: { bentuk: f.bentuk, tanggal: f.tanggal, agenda: f.agenda.trim() || undefined, dokUrl: dok?.url, dokNama: dok?.nama },
       ubah: f.hal.trim() ? [{ hal: f.hal.trim(), dari: f.dari.trim() || "—", jadi: f.jadi.trim() }] : [],
     };
-    const r = await api.records.create(tid(), "corpev", p as unknown as Record<string, unknown>);
+    /* dok diteruskan ke kolom rekam → SHA-256 isi dokumen dihitung server (lib/dokhash). */
+    const r = await api.records.create(tid(), "corpev", p as unknown as Record<string, unknown>, "manual", dok);
     setBusy(false);
     if (!r.ok) return toast("Gagal menyimpan", r.error.message, "warn");
-    setTambah(false);
+    setTambah(false); setBerkasBaru(null);
     setF({ ...f, agenda: "", hal: "", dari: "", jadi: "" });
     toast("Peristiwa tercatat", f.historis
       ? "Masuk riwayat hukum perusahaan — tanpa alarm keterlambatan."
@@ -379,7 +391,9 @@ export default function CorpsecPeristiwa({ filter = "semua", q = "", kananBawah,
 
             <Field label="1 · Dasar keputusan">
               <div className="row" style={{ alignItems: "flex-start" }}>
-                <div><b>{buka.dasar.bentuk} — {buka.dasar.tanggal}</b><span className="d">{buka.dasar.agenda || "tanpa catatan agenda"}</span></div>
+                <div><b>{buka.dasar.bentuk} — {buka.dasar.tanggal}</b>
+                  <span className="d">{buka.dasar.agenda || "tanpa catatan agenda"}{buka.dasar.dokNama ? ` · ${buka.dasar.dokNama}` : ""}</span></div>
+                {buka.dasar.dokUrl && <button className="btn-act" onClick={() => void bukaDok(buka.dasar.dokUrl!, (m) => toast("Dokumen tak terbuka", m, "warn"))}>Buka</button>}
               </div>
             </Field>
 
@@ -474,8 +488,8 @@ export default function CorpsecPeristiwa({ filter = "semua", q = "", kananBawah,
       </Modal>
 
       {/* Catat peristiwa — mode dulu, karena riwayat lama tak boleh melahirkan alarm */}
-      <Modal right open={tambah} title="Catat Peristiwa Korporasi" onClose={() => setTambah(false)}
-        footer={<><button className="btn btn-line" onClick={() => setTambah(false)}>Batal</button>
+      <Modal right open={tambah} title="Catat Peristiwa Korporasi" onClose={() => { setTambah(false); setBerkasBaru(null); }}
+        footer={<><button className="btn btn-line" onClick={() => { setTambah(false); setBerkasBaru(null); }}>Batal</button>
           <button className="btn btn-gold" disabled={busy} onClick={() => void simpanBaru()}>{busy ? "Menyimpan…" : "Simpan Peristiwa"}</button></>}>
         <Field label="Peristiwa ini *">
           <div style={{ display: "grid", gap: 8 }}>
@@ -500,6 +514,16 @@ export default function CorpsecPeristiwa({ filter = "semua", q = "", kananBawah,
         </Field>
         <Field label="Tanggal keputusan *"><input type="date" value={f.tanggal} onChange={(e) => setF({ ...f, tanggal: e.target.value })} /></Field>
         <Field label="Agenda / ringkasan keputusan"><textarea rows={2} value={f.agenda} onChange={(e) => setF({ ...f, agenda: e.target.value })} placeholder="mis. Pengangkatan Direktur Keuangan menggantikan pejabat lama" /></Field>
+
+        <Field label="Berkas dasar keputusan (risalah RUPS / keputusan sirkuler — PDF / gambar)">
+          <input ref={berkasBaruRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" style={{ display: "none" }}
+            onChange={(e) => { const b = e.target.files?.[0]; if (b) setBerkasBaru(b); e.target.value = ""; }} />
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <button type="button" className="btn btn-line btn-sm" onClick={() => berkasBaruRef.current?.click()}>{berkasBaru ? "Ganti berkas" : "Pilih berkas"}</button>
+            <span className="sub" style={{ fontSize: 12 }}>{berkasBaru ? berkasBaru.name : "opsional — peristiwa tetap dapat disimpan tanpa berkas"}</span>
+            {berkasBaru && <button type="button" className="btn btn-red btn-sm" onClick={() => setBerkasBaru(null)}>Buang</button>}
+          </div>
+        </Field>
 
         <Field label="Yang berubah (opsional — jadi dasar Keadaan Terkini)">
           <div style={{ display: "grid", gap: 8 }}>
