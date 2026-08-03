@@ -12,10 +12,12 @@ import { lblJaga, tenggatJaga } from "@/lib/jaga";
 import { ROUTE } from "@/lib/routes";
 import { useRouter, usePathname } from "next/navigation";
 
-import logoMrwp from "./logo-mrwp.svg";
+import logoCorplex from "./logo-corplex.svg";
 
+/* Logo Corplex sendiri (bukan phoenix MRWP — itu logo firma, tetap dipakai di konteks MRWP).
+ * Mark digambar rapat tanpa margin, jadi tak perlu trik scale-up seperti phoenix autotrace. */
 const BrandMark = ({ size, className = "" }: { size?: number, className?: string }) => (
-  <img src={(logoMrwp as any).src || logoMrwp} alt="MRWP Logo" className={`object-contain ${className}`} style={size ? { width: size, height: size } : undefined} />
+  <img src={(logoCorplex as any).src || logoCorplex} alt="Logo Corplex" className={`object-contain ${className}`} style={size ? { width: size, height: size } : undefined} />
 );
 
 /* ===== SIDEBAR ===== */
@@ -106,7 +108,7 @@ export function Sidebar({ open, onClose, isCollapsed }: { open: boolean; onClose
           bagian sticky = .sb-body agar navigasi tetap statis saat konten di-scroll. */}
       <div className="sb-body">
       <div className={`sb-brand ${isCollapsed ? "!px-0 !justify-center" : ""}`}>
-        <BrandMark className="w-10 h-10 scale-[1.85] origin-center" />
+        <BrandMark className="w-10 h-10" />
         <div className={isCollapsed ? "!hidden" : ""}><b>CORPLEX</b><span>MRWP LAW FIRM</span></div>
       </div>
       {groupedNav.map((group, i) => {
