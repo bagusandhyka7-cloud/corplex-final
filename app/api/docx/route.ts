@@ -10,6 +10,7 @@ const CM = 567; // 1cm ≈ 567 twip
 
 export async function POST(req: NextRequest) {
   if (limited(req, "docx", 10)) return tooMany();
+  if (Number(req.headers.get("content-length") || 0) > 5 * 1024 * 1024) return Response.json({ error: "Konten melebihi 5 MB." }, { status: 413 });
   const { html, title } = await req.json().catch(() => ({})) as { html?: string; title?: string };
   if (!html) return Response.json({ error: "Konten kosong." }, { status: 400 });
   const doc = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>

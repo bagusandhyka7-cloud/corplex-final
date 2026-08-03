@@ -108,3 +108,13 @@ const tanpaJudul = parseWorkbook(wbOf("Perkara", [["Judul Perkara", "Jenis"], ["
 assert.equal(tanpaJudul.items.length, 0, "perkara tanpa judul tak boleh tersimpan");
 
 console.log("impor(perkara): 9 assert PASS");
+
+/* ── Normalisasi nilai ber-opsi: sinonim & kapitalisasi → kanonik (kasus nyata "SMK") ── */
+const norm = parseWorkbook(wbOf("Karyawan", [
+  ["Nama Lengkap", "Pendidikan Terakhir", "Lokal Setempat", "Status Hubungan Kerja"],
+  ["Riyan", "SMK", "1", "pkwt"],
+]));
+assert.equal(norm.items.length, 1, "baris karyawan terbaca");
+assert.equal(norm.items[0].vals.pend, "SMA/SMK", "SMK dinormalkan ke SMA/SMK");
+assert.equal(norm.items[0].vals.lok, "Ya", "'1' dinormalkan ke Ya");
+assert.equal(norm.items[0].vals.s, "PKWT", "kapitalisasi disamakan ke kanonik");

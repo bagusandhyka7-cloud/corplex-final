@@ -188,17 +188,63 @@ html,body{overflow-x:clip} /* S1: nol scroll horizontal — clip (bukan hidden) 
 .sidebar button:focus{outline:none}
 .sidebar button:focus-visible{outline:1px solid var(--blue-400);outline-offset:2px}
 .sb-sec:hover{color:#fff}
-.sb-chev{flex:0 0 auto;transition:transform .32s cubic-bezier(.4,0,.2,1);opacity:.7}
-.sb-drop{display:grid;grid-template-rows:0fr;transition:grid-template-rows .36s cubic-bezier(.4,0,.2,1)}
+/* Satu bahasa animasi seluruh dropdown (grup & submenu): 600ms, easing easeOutQuint —
+ * berat di awal, mendarat lembut; item masuk MENYAMPING DARI GARIS rel, bergantian. */
+.sb-chev{flex:0 0 auto;transition:transform .6s cubic-bezier(.22,1,.36,1);opacity:.7}
+.sb-drop{display:grid;grid-template-rows:0fr;transition:grid-template-rows .6s cubic-bezier(.22,1,.36,1)}
+/* Induk emas saat grupnya terbuka / memuat halaman aktif — jalur "Anda sedang di sini" */
+.sb-sec.act,.sb-it.act{color:var(--gold-bright)}
+.sb-sec.act .lucide,.sb-it.act .sb-chev{opacity:1}
+/* Rel anak grup: garis tipis mengikat semua anak; SATU penanda emas saja = ruas rel.
+ * Border-left emas bawaan .on dimatikan di sini (spesifisitas .sb-nav.railed menang),
+ * dan bayangan latar TUMBUH DARI GARIS: background-size 0%→100% dari kiri. */
+.railed::before{content:"";position:absolute;left:27px;top:4px;bottom:4px;width:2px;border-radius:2px;background:var(--line2)}
+.railed>div>button,.railed>.w-full>button{padding-left:46px}
+.sb-nav.railed button{border-left:none;
+  background:linear-gradient(90deg,rgba(58,96,166,.30),rgba(58,96,166,.05)) 27px center / 0% 100% no-repeat;
+  transition:background-size .6s cubic-bezier(.22,1,.36,1),color .18s,opacity .4s ease,transform .4s cubic-bezier(.22,1,.36,1)}
+.sb-nav .sb-subrail button.sub-it{border-left:none;
+  background:linear-gradient(90deg,rgba(58,96,166,.30),rgba(58,96,166,.05)) 0 center / 0% 100% no-repeat;
+  transition:background-size .6s cubic-bezier(.22,1,.36,1),color .18s,opacity .4s ease,transform .4s cubic-bezier(.22,1,.36,1)}
+/* Hover: teks menerang saja — TANPA bayangan; bayangan hanya milik menu yang DIKLIK (.on).
+ * Shorthand background ditulis LENGKAP di ketiga status: aturan generik .sb-nav button:hover/.on
+ * di bawah file bersifat setara-spesifisitas dan menyuntik background dari tepi bila ada
+ * properti yang tak kita timpa (akar bug "bayangan muncul dari tepi, bukan dari garis"). */
+.sb-nav.railed button:hover{color:#fff;
+  background:linear-gradient(90deg,rgba(58,96,166,.30),rgba(58,96,166,.05)) 27px center / 0% 100% no-repeat}
+.sb-nav .sb-subrail button.sub-it:hover{color:#fff;
+  background:linear-gradient(90deg,rgba(58,96,166,.30),rgba(58,96,166,.05)) 0 center / 0% 100% no-repeat}
+.sb-nav.railed button.on{color:#fff;
+  background:linear-gradient(90deg,rgba(58,96,166,.30),rgba(58,96,166,.05)) 27px center / calc(100% - 27px) 100% no-repeat}
+.sb-nav .sb-subrail button.sub-it.on{color:#fff;
+  background:linear-gradient(90deg,rgba(58,96,166,.30),rgba(58,96,166,.05)) 0 center / 100% 100% no-repeat}
+.railed button::after{content:"";position:absolute;left:27px;top:8px;bottom:8px;width:2px;border-radius:2px;background:transparent;transition:background .3s}
+.railed button.on::after{background:var(--gold-bright)}
+/* Rel submenu (Aset & Merek, Asuransi, Pajak) — bahasa visual sama dengan rel grup */
+.sb-subrail{position:relative;margin-left:27px}
+.sb-subrail::before{content:"";position:absolute;left:0;top:2px;bottom:2px;width:2px;border-radius:2px;background:var(--line2)}
+.sb-subrail button.sub-it{padding-left:16px}
+.sb-subrail button.sub-it::after{content:"";position:absolute;left:0;top:6px;bottom:6px;width:2px;border-radius:2px;background:transparent;transition:background .3s}
+.sb-subrail button.sub-it.on::after{background:var(--gold-bright)}
+@media (prefers-reduced-motion:reduce){.sb-drop,.sb-chev,.sb-drop .sb-it,.sb-nav button{transition:none}}
 .sb-drop.open{grid-template-rows:1fr}
 .sb-drop>.sb-nav{overflow:hidden;min-height:0} /* rata kiri seragam — indent 10px dihapus (ikon semua menu sejajar) */
-.sb-drop .sb-it{opacity:0;transform:translateY(-6px);transition:opacity .28s ease,transform .28s cubic-bezier(.2,.8,.3,1.05)}
+.sb-drop .sb-it{opacity:0;transform:translateX(-12px);transition:opacity .4s ease,transform .4s cubic-bezier(.22,1,.36,1)}
 .sb-drop.open .sb-it{opacity:1;transform:none}
-.sb-drop.open .sb-it:nth-child(1){transition-delay:.06s}
-.sb-drop.open .sb-it:nth-child(2){transition-delay:.12s}
-.sb-drop.open .sb-it:nth-child(3){transition-delay:.18s}
-.sb-drop.open .sb-it:nth-child(4){transition-delay:.24s}
-.sb-drop.open .sb-it:nth-child(n+5){transition-delay:.3s}
+/* Stagger dihitung dari PEMBUNGKUS baris (anak grup terbungkus div.w-full — nth-child pada
+ * tombolnya selalu 1, bug stagger lama), plus varian tombol-langsung untuk submenu. */
+.sb-drop.open .sb-nav>:nth-child(1) .sb-it,.sb-drop.open .sb-nav>.sb-it:nth-child(1){transition-delay:.08s}
+.sb-drop.open .sb-nav>:nth-child(2) .sb-it,.sb-drop.open .sb-nav>.sb-it:nth-child(2){transition-delay:.16s}
+.sb-drop.open .sb-nav>:nth-child(3) .sb-it,.sb-drop.open .sb-nav>.sb-it:nth-child(3){transition-delay:.24s}
+.sb-drop.open .sb-nav>:nth-child(4) .sb-it,.sb-drop.open .sb-nav>.sb-it:nth-child(4){transition-delay:.32s}
+.sb-drop.open .sb-nav>:nth-child(n+5) .sb-it,.sb-drop.open .sb-nav>.sb-it:nth-child(n+5){transition-delay:.4s}
+/* Submenu bersarang: status & stagger diikat ke sb-drop TERDEKAT (induk selalu .open bila
+ * tanpa seksi, jadi tanpa ini sub-item tak pernah ikut animasi masuk). */
+.sb-drop .sb-drop:not(.open) .sb-it{opacity:0;transform:translateX(-12px);transition-delay:0s}
+.sb-drop .sb-drop.open .sb-it:nth-child(1){transition-delay:.08s}
+.sb-drop .sb-drop.open .sb-it:nth-child(2){transition-delay:.16s}
+.sb-drop .sb-drop.open .sb-it:nth-child(3){transition-delay:.24s}
+.sb-drop .sb-drop.open .sb-it:nth-child(n+4){transition-delay:.32s}
 .sb-nav{display:grid;position:relative}
 .sb-nav button{background:none;border:none;color:#A9BDE4;text-align:left;padding:10px 20px;font-size:13px;display:flex;gap:11px;align-items:center;border-left:3px solid transparent;transition:.18s;font-weight:500;position:relative}
 .sb-nav button .n{font-family:var(--mono);font-size:9.5px;color:#5E76A8;margin-left:auto;transition:.18s}

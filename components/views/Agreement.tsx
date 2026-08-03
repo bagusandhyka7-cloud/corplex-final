@@ -10,7 +10,7 @@ import { Chip, Field, Kpi, Modal } from "@/components/ui";
 import { ModuleShell } from "@/components/ModuleShell";
 import { useRouter } from "next/navigation";
 import { RecActions, RecordModal } from "@/components/RecordModal";
-import { idOf, RecRow } from "@/lib/records";
+import { idOf, ISO_RE, RecRow, tglCantik } from "@/lib/records";
 import { aiExtract } from "@/lib/extract";
 import { useExcelImport } from "@/components/ExcelImport";
 
@@ -74,7 +74,10 @@ export default function Agreement() {
     if (!ax.nama.trim() || !ax.p2.trim()) { toast("Data belum lengkap", "Nama perjanjian dan Pihak Kedua wajib diisi.", "warn"); return; }
     const rec = {
       n: ax.nama, p1: ax.p1.trim() || t.name, p2: ax.p2,
-      mulai: ax.mulai.trim() || "—", akhir: ax.akhir.trim() || "—", nilai: ax.nilai.trim() || "—",
+      /* ISO dari picker → teks tampil "31 Jul 2028" (format tabel & terbaca lib/jaga) */
+      mulai: (ISO_RE.test(ax.mulai) ? tglCantik(ax.mulai) : ax.mulai.trim()) || "—",
+      akhir: (ISO_RE.test(ax.akhir) ? tglCantik(ax.akhir) : ax.akhir.trim()) || "—",
+      nilai: ax.nilai.trim() || "—",
       st: "DRAF", cls: "c-draft", lbl: "DRAF AI", dok: ax.dok,
     };
     // Berkas asli DIUNGGAH ke Storage (dulu hanya namanya dicatat — janji "tersimpan di vault" tak ditepati).
@@ -154,9 +157,16 @@ export default function Agreement() {
           <Field label="Pihak Pertama"><input value={ax.p1} onChange={(e) => setAx({ ...ax, p1: e.target.value })} /></Field>
           <Field label="Pihak Kedua"><input value={ax.p2} onChange={(e) => setAx({ ...ax, p2: e.target.value })} /></Field>
         </div>
+        {/* Picker kalender — teks hasil baca AI yang bukan ISO tetap dipertahankan bila picker tak disentuh */}
         <div className="grid g2" style={{ gap: 10 }}>
-          <Field label="Tanggal mulai"><input value={ax.mulai} placeholder="mis. 1 Agu 2026" onChange={(e) => setAx({ ...ax, mulai: e.target.value })} /></Field>
-          <Field label="Tanggal berakhir"><input value={ax.akhir} placeholder="mis. 31 Jul 2028" onChange={(e) => setAx({ ...ax, akhir: e.target.value })} /></Field>
+          <Field label="Tanggal mulai">
+            <input type="date" value={ISO_RE.test(ax.mulai) ? ax.mulai : ""} onChange={(e) => setAx({ ...ax, mulai: e.target.value })} />
+            {!!(ax.mulai && !ISO_RE.test(ax.mulai)) && <span className="sub" style={{ fontSize: 10.5 }}>AI membaca: “{ax.mulai}”</span>}
+          </Field>
+          <Field label="Tanggal berakhir">
+            <input type="date" value={ISO_RE.test(ax.akhir) ? ax.akhir : ""} onChange={(e) => setAx({ ...ax, akhir: e.target.value })} />
+            {!!(ax.akhir && !ISO_RE.test(ax.akhir)) && <span className="sub" style={{ fontSize: 10.5 }}>AI membaca: “{ax.akhir}”</span>}
+          </Field>
         </div>
         <Field label="Nilai perikatan"><input value={ax.nilai} placeholder="mis. Rp 500 jt / tahun" onChange={(e) => setAx({ ...ax, nilai: e.target.value })} /></Field>
         <div className="note">Hasil <b>ekstraksi AI dari dokumen terunggah</b> — koreksi bila perlu. Tanggal berakhir otomatis menjadi aturan JAGA (tangga pengingat H-90 → H-14). Berstatus <b>DRAF AI</b> hingga verifikasi advokat bila berakibat hukum.</div>

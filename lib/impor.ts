@@ -130,6 +130,33 @@ const selVal = (v: unknown) =>
     : String(v ?? "").trim();
 export type ParsedItem = { mod: string; label: string; vals: Record<string, string> };
 
+/* Sinonim → nilai kanonik per-field. Hanya padanan yang TIDAK mengubah makna hukum:
+ * SMK/STM/MA memang setingkat SMA (daftar kanonik menggabungkannya jadi "SMA/SMK");
+ * D4 sengaja TIDAK dipetakan ke D3/S1 — setaranya diperdebatkan, biar pengguna yang memutuskan. */
+const SINONIM: Record<string, Record<string, string>> = {
+  pend: { sma: "SMA/SMK", smk: "SMA/SMK", stm: "SMA/SMK", ma: "SMA/SMK", smea: "SMA/SMK", "sma/smk/sederajat": "SMA/SMK" },
+  lok: { ya: "Ya", tidak: "Tidak", "1": "Ya", "0": "Tidak" },
+};
+
+/* Kolom tanggal yang hilirnya menuntut ISO (input date / sisaHari / kolom date DB). Sel Excel
+ * bertipe Date sudah dinormalkan selVal; sel TEKS ("20 Agustus 2026", "20/08/2026") dulu lolos
+ * mentah — tenggat pajak jadi tak terbaca fungsi JAGA dan tanggal perkara jadi "Invalid Date". */
+const KOLOM_TGL = new Set(["tenggat", "tgl", "mulaiKerja", "akhirKontrak", "lahir"]);
+const BULAN_FULL: Record<string, number> = {
+  jan: 1, feb: 2, mar: 3, apr: 4, mei: 5, may: 5, jun: 6, jul: 7, agu: 8, aug: 8, agt: 8,
+  sep: 9, okt: 10, oct: 10, nov: 11, des: 12, dec: 12,
+};
+export function isoTanggal(teks: string): string {
+  const t = teks.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
+  const id = t.match(/^(\d{1,2})\s+([A-Za-z]{3,})\s+(\d{4})$/);
+  const b = id && BULAN_FULL[id[2].slice(0, 3).toLowerCase()];
+  if (b) return `${id![3]}-${String(b).padStart(2, "0")}-${id![1].padStart(2, "0")}`;
+  const dmy = t.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/); // 20/08/2026 — konvensi Indonesia d/m/y
+  if (dmy) return `${dmy[3]}-${dmy[2].padStart(2, "0")}-${dmy[1].padStart(2, "0")}`;
+  return ""; // tak terbaca — biarkan pemanggil menyimpan teks aslinya (jangan mengarang tanggal)
+}
+
 /* Parse workbook terisi → daftar item siap simpan (per baris). Baris kosong/contoh/tanpa field wajib dilewati.
  * Pemetaan kolom deterministik: header sheet → label field → key. */
 export function parseWorkbook(buf: ArrayBuffer): { items: ParsedItem[]; skipped: number; unknownSheets: string[]; peringatan: string[] } {
@@ -158,6 +185,16 @@ export function parseWorkbook(buf: ArrayBuffer): { items: ParsedItem[]; skipped:
       const vals: Record<string, string> = {};
       colKey.forEach((k, i) => { if (k) vals[k] = selVal((row as unknown[])[i]); });
       if (!Object.values(vals).some(Boolean)) continue; // baris kosong
+      /* Normalisasi nilai ber-opsi: kapitalisasi disamakan ke opsi kanonik, sinonim lazim
+       * dipetakan (kasus nyata: "SMK" ditandai di luar daftar padahal daftarnya "SMA/SMK"). */
+      cfg.fields.forEach((f) => {
+        const val = vals[f.k];
+        if (!val) return;
+        if (KOLOM_TGL.has(f.k)) { vals[f.k] = isoTanggal(val) || val; return; }
+        if (!f.opts) return;
+        const canon = f.opts.find((o) => o.toLowerCase() === val.trim().toLowerCase());
+        vals[f.k] = canon || SINONIM[f.k]?.[val.trim().toLowerCase()] || val;
+      });
       if (wajib.some((f) => !vals[f.k])) { skipped++; continue; }
       // lewati baris contoh bawaan template
       if (cfg.fields.every((f) => vals[f.k] === (f.opts ? f.opts[0] : f.ph || "") || !vals[f.k])) continue;
@@ -178,9 +215,12 @@ export function toPayload(item: ParsedItem, tenantName: string): RecRow | Record
      * hasil impor dan hasil ketik tak bisa dibedakan oleh halaman detail. */
     const judul = (v.judul || "").trim();
     const jenis = v.jenis || "Perdata";
-    const tgl = v.tgl
+    /* Guard Invalid Date: hanya ISO sah yang diformat; teks lain dipakai apa adanya —
+     * dulu "28 Juli 2026" membeku permanen sebagai "INVALID DATE" di timeline jsonb. */
+    const tglValid = v.tgl && !isNaN(new Date(v.tgl).getTime());
+    const tgl = tglValid
       ? new Date(v.tgl).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" }).toUpperCase()
-      : new Date().toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" }).toUpperCase();
+      : (v.tgl || new Date().toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })).toUpperCase();
     return {
       tab: `${jenis} — ${judul.slice(0, 24)}`, head: `Perkara: ${jenis} — ${judul}`,
       tl: [[tgl, (v.tahap || "").trim() || "Perkara dibuka", "Diimpor dari Excel", "next"]],

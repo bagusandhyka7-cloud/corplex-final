@@ -576,6 +576,9 @@ export const admin = {
   async decideDemo(id: string, status: string) { return adminPost<{ ok: true }>("decideDemo", { id, status }); },
 
   async listTenants(): Promise<ApiResult<TenantRow[]>> { return adminPost<TenantRow[]>("listTenants"); },
+  /* Kamus id→nama SEMUA tenant (tanpa filter status) — Konsol Advokat butuh nama PT pelapor
+   * meski tenantnya pending/kedaluwarsa; listTenants hanya yang aktif. */
+  async tenNames(): Promise<ApiResult<{ id: string; name: string }[]>> { return adminPost<{ id: string; name: string }[]>("tenNames"); },
   /* Pusat Data: kelola profil perusahaan */
   async editTenant(id: string, name: string, sector: string, tier: string) { return adminPost<{ ok: true }>("editTenant", { id, name, sector, tier }); },
   async removeTenant(id: string) { return adminPost<{ ok: true }>("removeTenant", { id }); },
@@ -617,10 +620,15 @@ export const admin = {
  * Topik diberi suffix unik — sb.channel(nama) mengembalikan channel LAMA bila topik sama, dan
  * menambah callback setelah subscribe() dilarang (crash saat remount/StrictMode). */
 let vqSeq = 0;
-export function subscribeRealtime(tenantId: string, cb: (row: { id: string; title: string; meta: string; chip: string; label: string; sla: string; status: string; note: string | null; msgs: VqMsg[] }) => void): () => void {
+export function subscribeRealtime(tenantId: string, cb: (row: { id: string; title: string; meta: string; chip: string; label: string; sla: string; status: string; note: string | null; msgs: VqMsg[] }, ev: "INSERT" | "UPDATE" | "DELETE") => void): () => void {
   const ch = sb.channel(`vq:${tenantId}:${++vqSeq}`)
     .on("postgres_changes", { event: "*", schema: "public", table: "verification_queue", filter: `tenant_id=eq.${tenantId}` },
-      (p) => { const r = p.new as Parameters<typeof cb>[0] | null; if (r && r.id) cb(r); })
+      (p) => {
+        /* DELETE membawa payload di `old`, bukan `new` — dulu diabaikan sehingga baris yang
+         * dihapus tetap terpampang di portal klien sampai reload. */
+        if (p.eventType === "DELETE") { const o = p.old as { id?: string } | null; if (o?.id) cb(o as Parameters<typeof cb>[0], "DELETE"); return; }
+        const r = p.new as Parameters<typeof cb>[0] | null; if (r && r.id) cb(r, p.eventType as "INSERT" | "UPDATE");
+      })
     .subscribe();
   return () => { void sb.removeChannel(ch); };
 }

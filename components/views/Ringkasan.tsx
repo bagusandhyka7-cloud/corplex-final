@@ -6,7 +6,8 @@ import { Chip, Kpi, Panel, Row } from "@/components/ui";
 import Ldd from "@/components/views/Ldd";
 import HRDashboard from "@/components/views/HRDashboard";
 import { buildLdd, corpRekam } from "@/lib/ldd";
-import { chipJaga, lblJaga, sisaHari, tenggatJaga } from "@/lib/jaga";
+import { chipJaga, lblJaga, sisaHari, tanggalDari, tenggatJaga } from "@/lib/jaga";
+import { tglCantik } from "@/lib/records";
 import { api } from "@/lib/api";
 
 function useCountUp(target: number, dur = 1000) {
@@ -115,11 +116,15 @@ export default function Ringkasan({ onOpenWizard }: { onOpenWizard: () => void }
       const rows = r.data.filter((x) => x.module === "tax").map((x) => x.data as { nama?: string; tenggat?: string; status?: string });
       if (!rows.length) return;
       const dipenuhi = rows.filter((x) => x.status === "DIPENUHI").length;
-      const terbuka = rows.filter((x) => x.status !== "DIPENUHI" && x.tenggat).sort((a, b) => (a.tenggat || "").localeCompare(b.tenggat || ""));
+      /* Urut kronologis lewat tanggalDari — tenggat hasil impor Excel bisa berupa teks bebas
+       * ("20 Agustus 2026"); localeCompare mentah menaruhnya di urutan salah dan KPI
+       * "kewajiban terdekat" menunjuk baris yang keliru. */
+      const terbuka = rows.filter((x) => x.status !== "DIPENUHI" && x.tenggat)
+        .sort((a, b) => (tanggalDari(a.tenggat) || "9999").localeCompare(tanggalDari(b.tenggat) || "9999"));
       setPajak({
         skor: Math.round((dipenuhi / rows.length) * 100),
         next: terbuka[0]?.nama || "—",
-        nextTr: terbuka[0]?.tenggat ? `tenggat ${terbuka[0].tenggat}` : "seluruh kewajiban dipenuhi",
+        nextTr: terbuka[0]?.tenggat ? `tenggat ${tglCantik(tanggalDari(terbuka[0].tenggat) || "") || terbuka[0].tenggat}` : "seluruh kewajiban dipenuhi",
         total: rows.length,
         terbuka: terbuka.map((x) => ({ nama: x.nama || "Kewajiban pajak", tenggat: x.tenggat || "" })),
       });
@@ -148,8 +153,16 @@ export default function Ringkasan({ onOpenWizard }: { onOpenWizard: () => void }
    * Kewajiban pajak ditambahkan di sini karena datanya di luar `ten` (fetch module_records). */
   const remData: [string, string, string, string, ViewId][] = tenggatJaga(
     t,
-    pajak.terbuka.map((x) => ({ b: x.nama, d: `Tenggat lapor/setor ${x.tenggat}`, hari: sisaHari(x.tenggat), v: "pajak" }))
-      .filter((x) => x.hari !== null && x.hari <= 120),
+    /* tanggalDari dulu: tenggat hasil impor bisa teks bebas — sisaHari mentah membuangnya
+     * dari pengingat justru saat paling dibutuhkan. Yang tetap tak terbaca dijadikan SEGERA. */
+    pajak.terbuka.map((x) => {
+      const h = sisaHari(tanggalDari(x.tenggat));
+      return {
+        b: x.nama,
+        d: h === null ? `Tenggat "${x.tenggat}" tak terbaca sistem — buka rekamnya dan pilih tanggal dari kalender` : `Tenggat lapor/setor ${tglCantik(tanggalDari(x.tenggat)!)}`,
+        hari: h, v: "pajak" as const,
+      };
+    }).filter((x) => x.hari === null || x.hari <= 120),
   ).slice(0, 8).map((x) => [x.b, x.d, chipJaga(x.hari), lblJaga(x.hari), x.v as ViewId]);
 
   /* Rekam per Bab dihitung dari koleksi nyata (bar relatif terhadap bab terbanyak). */

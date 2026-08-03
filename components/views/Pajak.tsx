@@ -8,6 +8,7 @@ import { api } from "@/lib/api";
 import { useExcelImport } from "@/components/ExcelImport";
 import { askConfirm, Chip, Field, Kpi, Modal, Panel, Row } from "@/components/ui";
 import { ModuleShell } from "@/components/ModuleShell";
+import { tglCantik } from "@/lib/records";
 
 const SUBJUDUL = ["Kalender Kewajiban", "Profil Pajak"];
 type Tax = { id?: string; nama: string; jenis: string; tenggat: string; status: "TERBUKA" | "DIPENUHI" };
@@ -93,7 +94,7 @@ export default function Pajak() {
         <Panel title="Kalender Pemenuhan — Lapor & Setor">
           <div className="rows">
             {list.map((x) => (
-              <Row key={x.id} b={x.nama} d={`${x.jenis}${x.tenggat ? ` · tenggat ${x.tenggat}` : ""}`} right={<>
+              <Row key={x.id} b={x.nama} d={`${x.jenis}${x.tenggat ? ` · tenggat ${tglCantik(x.tenggat) || x.tenggat}` : ""}`} right={<>
                 <Chip c={x.status === "DIPENUHI" ? "c-ver" : "c-draft"}>{x.status}</Chip>
                 {x.status === "TERBUKA" && <button className="btn btn-line btn-sm" onClick={() => void penuhi(x)}>Lapor + Bukti</button>}
                 <button className="btn btn-red btn-sm" onClick={() => void hapus(x)}>Hapus</button>

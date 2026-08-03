@@ -97,13 +97,30 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     if (!ten) return;
     const tid = localStorage.getItem("corplex_tid");
     if (!tid) return;
-    return subscribeRealtime(tid, (row) => {
+    return subscribeRealtime(tid, (row, ev) => {
+      if (ev === "DELETE") { setQueue((q) => q.filter((x) => x.id !== row.id)); return; }
       const item: QItem = { id: row.id, t: row.title, m: row.meta, chip: row.chip, lbl: row.label, sla: row.sla, status: row.status as QItem["status"], note: row.note || undefined, msgs: row.msgs || [] };
-      setQueue((q) => q.some((x) => x.id === row.id) ? q.map((x) => x.id === row.id ? item : x) : [item, ...q]);
+      setQueue((q) => {
+        if (q.some((x) => x.id === row.id)) return q.map((x) => x.id === row.id ? item : x);
+        /* Echo INSERT atas pengajuan optimistis perangkat ini: gantikan item tmp berjudul sama —
+         * dulu item optimistis tanpa id tak pernah match dedup, jadi satu klik = dua kartu. */
+        const tmp = q.findIndex((x) => String(x.id || "").startsWith("tmp-") && x.t === row.title);
+        if (tmp >= 0) { const n = [...q]; n[tmp] = item; return n; }
+        return [item, ...q];
+      });
       if (row.status === "verified") toast("TERVERIFIKASI ADVOKAT ✓", `“${row.title}” — keputusan advokat tercatat.`, "ok");
       if (row.status === "rejected") toast("Perlu revisi", `“${row.title}” — catatan advokat tersedia.`, "warn");
     });
   }, [ten, toast]);
+
+  /* Kuota terpakai & terverifikasi DITURUNKAN dari antrean (bukan counter manual) — dulu hanya
+   * perangkat pengaju yang menaikkan angkanya, kursi lain melihat sisa kuota basi. Sesi demo
+   * (t1 dkk) tetap pakai angka seed-nya. */
+  useEffect(() => {
+    if (!localStorage.getItem("corplex_ten")) return;
+    setQuota(queue.length);
+    setVerified(queue.filter((x) => x.status === "verified").length);
+  }, [queue]);
 
   /* Tarik antrean advokat setiap kali tenant aktif berganti (hidrasi ULANG maupun login baru). */
   useEffect(() => {
@@ -134,7 +151,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
        * jadi pemuatan tak pernah terjadi sampai halaman di-reload manual. */
       /* PINTU KEDUA (sesi berjalan): tiap rehidrasi cek whoami — demo kedaluwarsa langsung ditendang.
        * RLS (jwt_tenant → NULL) sudah membutakan data detik itu juga; ini merapikan UX-nya. */
-      if (!TENANTS[storedTid] && !localStorage.getItem("corplex_impersonate")) {
+      /* Pemeriksaan whoami TIDAK boleh bisa dilucuti dari klien: dulu key localStorage
+       * corplex_impersonate men-skip seluruh blok ini — siapa pun bisa menyetelnya dari DevTools
+       * untuk menghindari tendangan sesi. Kini klaim "sedang mengawasi" divalidasi ke role
+       * whoami: bukan super_admin → key dicabut dan pemeriksaan berjalan normal. */
+      if (!TENANTS[storedTid]) {
         void sb.rpc("whoami").then(({ data, error }) => {
           const keluar = (t: string, d: string) => {
             setTen(null); setQueue([]);
@@ -143,6 +164,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             toast(t, d, "warn");
             router.replace("/login");
           };
+          const klaimAwas = !!localStorage.getItem("corplex_impersonate");
+          if (klaimAwas) {
+            if (!error && data?.ok && data.role === "super_admin") return; // pengawasan sah
+            localStorage.removeItem("corplex_impersonate"); // klaim palsu — cabut, lanjut periksa normal
+          }
           /* Akun/kursi sudah tidak sah (dihapus admin, tenant dibubarkan) tetapi JWT-nya belum
            * kedaluwarsa. RLS memang sudah membutakan datanya — layar tampil kosong — namun
            * pengguna dibiarkan duduk di dashboard hampa tanpa penjelasan. Galat jaringan
@@ -165,6 +191,32 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       }
     }
     setIsHydrated(true);
+  }, []);
+
+  /* Revalidasi saat tab kembali fokus (throttle 60 detik): kursi dicabut / tenant kedaluwarsa
+   * ketika dashboard sedang terbuka dulu baru ketahuan setelah reload manual — RLS sudah
+   * membutakan datanya, tapi layar dibiarkan hampa tanpa penjelasan. */
+  useEffect(() => {
+    let terakhir = 0;
+    const cek = () => {
+      if (document.visibilityState !== "visible" || Date.now() - terakhir < 60_000) return;
+      const tid = localStorage.getItem("corplex_tid");
+      if (!tid || TENANTS[tid] || localStorage.getItem("corplex_impersonate")) return;
+      terakhir = Date.now();
+      void sb.rpc("whoami").then(({ data, error }) => {
+        if (error || !data) return; // galat jaringan tak menendang — hanya jawaban tegas server
+        const keluar = (t: string, d: string) => {
+          setTen(null); setQueue([]);
+          localStorage.removeItem("corplex_tid"); localStorage.removeItem("corplex_ten");
+          void sb.auth.signOut(); toast(t, d, "warn"); router.replace("/login");
+        };
+        if (!data.ok) keluar("Akses tidak lagi berlaku", "Akun ini sudah tidak terdaftar pada Corplex — hubungi tim MRWP bila ini keliru.");
+        else if (data.tenant?.status === "expired") keluar("Masa demo berakhir", "Akses demo Anda telah usai — hubungi tim MRWP untuk perpanjangan.");
+      });
+    };
+    document.addEventListener("visibilitychange", cek);
+    return () => document.removeEventListener("visibilitychange", cek);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Sesi JWT habis/di-revoke → jangan blank screen: beri toast elegan + antar ke /login.
@@ -198,7 +250,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, [router]);
 
   const pushQueue = useCallback((t: string, m: string, chip: string, lbl: string, refs?: { mod: string; id: string; label: string }[], detail?: string, dok?: { url: string; nama: string }) => {
-    setQueue((q) => [{ t, m, chip, lbl, sla: "SLA 24 JAM", status: "masuk" as const }, ...q]);
+    /* id tmp- supaya echo realtime bisa menggantikannya (lihat handler subscribe) — bukan menduakan. */
+    setQueue((q) => [{ id: `tmp-${Date.now()}`, t, m, chip, lbl, sla: "SLA 24 JAM", status: "masuk" as const }, ...q]);
     setQuota((n) => n + 1); // kuota terpakai = jumlah pengajuan nyata
     toast("Masuk antrean verifikasi", `“${t}” — prioritas dihitung dari SLA paket + risiko + eskalasi.`);
     // tulis juga ke antrean nyata (DB) — dibaca Konsol Advokat di /adminmrwp

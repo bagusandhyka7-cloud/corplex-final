@@ -6,7 +6,11 @@ const hits = new Map<string, number[]>();
 
 /** true = lewat batas (balas 429). n permintaan per ms. */
 export function limited(req: NextRequest, key: string, n: number, ms = 60_000): boolean {
-  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "local";
+  /* Elemen TERAKHIR XFF = yang ditulis proxy kita (Railway); elemen kiri dikendalikan klien —
+   * dulu diambil [0], jadi penyerang mengganti IP palsu tiap permintaan dan seluruh pagar
+   * (brute-force ADMIN_PASSWORD, kuota AI) lumpuh total. */
+  const xff = req.headers.get("x-forwarded-for")?.split(",").map((s) => s.trim()).filter(Boolean);
+  const ip = xff?.[xff.length - 1] || "local";
   const k = `${key}:${ip}`, now = Date.now();
   const xs = (hits.get(k) || []).filter((t) => now - t < ms);
   if (xs.length >= n) { hits.set(k, xs); return true; }

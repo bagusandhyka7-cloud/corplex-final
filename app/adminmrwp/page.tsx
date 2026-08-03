@@ -281,8 +281,15 @@ function AdminInner() {
     });
   }, [menu]); // + menu: daftar disegarkan tiap pindah menu (dulu hanya sekali seumur sesi)
   /* id tenant → nama PT (utk Konsol Advokat & Data Modul — jangan tampilkan uuid mentah).
-   * t1 = tenant demo tanpa baris tenants (seed) — beri nama baku. */
-  const tenNama = (id: string) => id === "t1" ? "PT Contoh Sejahtera (Demo)" : tens.find((t) => t.id === id)?.nama || id;
+   * tens hanya tenant AKTIF; kamus tenNames mencakup semua status (pending/kedaluwarsa),
+   * sisanya label jujur — bukan uuid, bukan "null". t1 = tenant demo seed. */
+  const [tenNames, setTenNames] = useState<Record<string, string>>({});
+  useEffect(() => {
+    void admin.tenNames().then((r) => { if (r.ok) setTenNames(Object.fromEntries(r.data.map((t) => [t.id, t.name]))); });
+  }, [menu]);
+  const tenNama = (id: string | null) => !id || id === "null" ? "(tanpa tenant — data uji lama)"
+    : id === "t1" ? "PT Contoh Sejahtera (Demo)"
+      : tens.find((t) => t.id === id)?.nama || tenNames[id] || `(tenant terhapus · ${id.slice(0, 8)}…)`;
 
   const [sel, setSel] = useState<string | null>(null);
   const [seatOpen, setSeatOpen] = useState(false);
@@ -481,7 +488,9 @@ function AdminInner() {
     const res = await admin.decideTenant(p.id, ok, alasan);
     if (!res.ok) return toast("Gagal", res.error.message, "warn");
     setPend((xs) => xs.filter((x) => x.id !== p.id));
-    if (ok) setTens((xs) => [...xs, { id: p.id, nama: p.nama, sector: "—", entity: "—", tier: "Demo", sejak: p.masuk, exp: new Date(Date.now() + 24 * 3600_000).toISOString(), seats: [{ nama: p.pendaftar, email: p.email, peran: "Pendaftar", status: "aktif" }] }]);
+    /* Idempoten: baris bisa sudah ada di tens (fetch listTenants mendarat setelah approve,
+     * atau approve terpanggil dua kali) — append buta membuat key React dobel. */
+    if (ok) setTens((xs) => xs.some((x) => x.id === p.id) ? xs : [...xs, { id: p.id, nama: p.nama, sector: "—", entity: "—", tier: "Demo", sejak: p.masuk, exp: new Date(Date.now() + 24 * 3600_000).toISOString(), seats: [{ nama: p.pendaftar, email: p.email, peran: "Pendaftar", status: "aktif" }] }]);
     /* Status email dilaporkan APA ADANYA — dulu toast selalu mengklaim "email terkirim"
      * padahal keputusan approval tak pernah mengirim email sama sekali. */
     const em = res.data.email;

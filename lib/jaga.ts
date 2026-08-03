@@ -61,10 +61,27 @@ export function tenggatJaga(t: Tenant, extra: Jaga[] = []): Jaga[] {
     }
     if (a[7] === "SEGERA") out.push({ b: String(a[0]), d: `Masa berlaku segera berakhir — ${String(a[6] || "periksa rekam izin")}`, hari: null, v: "licensing" });
   });
-  // Perjanjian dengan tanggal berakhir terbaca
+  /* Polis & HKI: pola sama dengan izin — tanggal dibaca otomatis. Dulu keduanya TAK PERNAH
+   * disentuh fungsi JAGA: polis kedaluwarsa berstatus AKTIF dan merek yang perlindungannya
+   * habis lolos tanpa satu pengingat pun. */
+  (t.asr?.pol || []).forEach((r) => {
+    const a = r as unknown[];
+    const h = sisaHari(tanggalDari(String(a[6] ?? "")));
+    if (h !== null && h <= 90) out.push({ b: String(a[0]), d: `Masa polis berakhir ${tanggalDari(String(a[6]))} — urus perpanjangan sebelum pertanggungan putus`, hari: h, v: "asuransi" });
+    else if (h === null && a[7] === "SEGERA") out.push({ b: String(a[0]), d: "Masa polis segera berakhir — periksa rekam polis", hari: null, v: "asuransi" });
+  });
+  (t.hki || []).forEach((r) => {
+    const a = r as unknown[];
+    const h = sisaHari(tanggalDari(String(a[5] ?? "")));
+    if (h !== null && h <= 180) out.push({ b: String(a[0]), d: `Perlindungan HKI berakhir ${tanggalDari(String(a[5]))} — ajukan perpanjangan ke DJKI`, hari: h, v: "asset" });
+  });
+
+  // Perjanjian dengan tanggal berakhir terbaca. sisaHari hanya menerima ISO ketat,
+  // sedangkan `akhir` tersimpan sebagai teks tampil ("31 Jul 2028") — tanpa tanggalDari,
+  // alarm perjanjian tak pernah bunyi sama sekali.
   t.agr.forEach((a) => {
     const x = a as { n?: string; akhir?: string };
-    const h = sisaHari(x.akhir);
+    const h = sisaHari(tanggalDari(x.akhir));
     if (h !== null && h <= 120) out.push({ b: x.n || "Perjanjian", d: `Berakhir ${x.akhir} — siapkan perpanjangan atau pengakhiran`, hari: h, v: "agreement" });
   });
   // Kontrak PKWT karyawan yang mendekati habis

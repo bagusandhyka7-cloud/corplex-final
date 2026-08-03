@@ -21,11 +21,13 @@ export default function ResetPage() {
   const [sukses, setSukses] = useState(false);
 
   useEffect(() => {
-    /* Dua sumber: sesi yang sudah terbentuk saat halaman dimuat, atau event PASSWORD_RECOVERY
-     * yang menyusul beberapa milidetik kemudian. Tanpa keduanya = tautan tak sah. */
-    const { data: sub } = sb.auth.onAuthStateChange((_e, sesi) => { if (sesi) setSiap("ada"); });
+    /* HANYA konteks pemulihan yang diterima: event PASSWORD_RECOVERY atau fragmen token dari
+     * tautan email. Dulu sesi login biasa pun lolos — pengguna yang sudah masuk bisa mengganti
+     * sandi tanpa sandi lama hanya dengan membuka /reset. */
+    const dariTautan = typeof window !== "undefined" && /access_token=|type=recovery/.test(window.location.hash);
+    const { data: sub } = sb.auth.onAuthStateChange((e, sesi) => { if (sesi && (e === "PASSWORD_RECOVERY" || dariTautan)) setSiap("ada"); });
     void sb.auth.getSession().then(({ data }) => {
-      if (data.session) setSiap("ada");
+      if (data.session && dariTautan) setSiap("ada");
       else setTimeout(() => setSiap((s) => (s === "tunggu" ? "tak-ada" : s)), 2500);
     });
     return () => sub.subscription.unsubscribe();

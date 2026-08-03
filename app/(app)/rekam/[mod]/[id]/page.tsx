@@ -6,7 +6,8 @@ import React, { use, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Download, FileText, Scale, Upload } from "lucide-react";
 import { api } from "@/lib/api";
-import { RecRow, SPECS, stripId } from "@/lib/records";
+import { RecRow, SPECS, stripId, tglCantik } from "@/lib/records";
+import { unduhDok, urlDok } from "@/lib/dok";
 import { Chip, HashChip, Timeline, ViewHead } from "@/components/ui";
 import { useStore } from "@/lib/store";
 
@@ -20,7 +21,7 @@ const isImg = (u: string) => /\.(jpe?g|png|webp|gif)(\?|$)/i.test(u);
 export default function DetailRekam({ params }: { params: Promise<{ mod: string; id: string }> }) {
   const { mod, id } = use(params);
   const router = useRouter();
-  const { toast, pushQueue, patchTen, ten } = useStore();
+  const { toast, pushQueue, patchTen, ten, rekamVer } = useStore();
   const [rec, setRec] = useState<{ data: unknown; dok_url: string | null; dok_nama: string | null; dok_hash?: string | null; created_at: string; source: string } | null>(null);
   const [err, setErr] = useState(false);
   const [view, setView] = useState<{ url: string; nama: string } | null>(null); // preview berkas terpilih (bundel)
@@ -31,7 +32,7 @@ export default function DetailRekam({ params }: { params: Promise<{ mod: string;
   const buktiRef = useRef<HTMLInputElement>(null);
   const tglID = () => new Date().toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" }).toUpperCase();
 
-  useEffect(() => { void api.records.get(id).then((r) => (r.ok ? setRec(r.data) : setErr(true))); }, [id]);
+  useEffect(() => { void api.records.get(id).then((r) => (r.ok ? setRec(r.data) : setErr(true))); }, [id, rekamVer]); // rekamVer: rekam diubah user lain → detail ikut segar
 
   /* tulis patch jsonb case ke DB + sinkron store (ten.cases) */
   const saveCase = async (patch: Partial<CaseData>, dok?: { url: string; nama: string }) => {
@@ -66,6 +67,10 @@ export default function DetailRekam({ params }: { params: Promise<{ mod: string;
   const files = Array.isArray((rec?.data as unknown[])?.[11]) ? ((rec!.data as unknown[])[11] as [string, string][]) : null;
   const shownUrl = view?.url ?? rec?.dok_url ?? null;
   const shownNama = view?.nama ?? rec?.dok_nama ?? null;
+  /* Bucket privat: URL mentah dirender = JSON "Bucket not found". Tukar dulu jadi signed URL.
+   * undefined = sedang menyiapkan · null = gagal/tak berhak · string = siap render. */
+  const [signed, setSigned] = useState<string | null | undefined>(undefined);
+  useEffect(() => { setSigned(undefined); void urlDok(shownUrl).then(setSigned); }, [shownUrl]);
   const judul = JUDUL_TL[mod] || spec?.title || "Rekam";
   const vals = rec && spec ? spec.fromData(stripId(mod, rec.data as RecRow)) : null;
   const cd = mod === "case" && rec ? (rec.data as CaseData) : null;
@@ -145,7 +150,8 @@ export default function DetailRekam({ params }: { params: Promise<{ mod: string;
               {spec?.fields.map((f) => (
                 <div key={f.k} style={{ marginBottom: 11, borderTop: "1px solid rgba(255,255,255,.05)", paddingTop: 9 }}>
                   <span style={{ fontSize: 10.5, color: "var(--mon)", textTransform: "uppercase", letterSpacing: ".05em", display: "block", marginBottom: 3 }}>{f.l.replace(" *", "")}</span>
-                  <span style={{ fontSize: 13, color: vals?.[f.k] ? "var(--ink)" : "var(--muted)" }}>{vals?.[f.k] || "— belum diisi"}</span>
+                  {/* fromData mengembalikan ISO utk field picker (kebutuhan input date) — utk TAMPILAN dicantikkan lagi */}
+                  <span style={{ fontSize: 13, color: vals?.[f.k] ? "var(--ink)" : "var(--muted)" }}>{(f.date ? tglCantik(vals?.[f.k]) : vals?.[f.k]) || vals?.[f.k] || "— belum diisi"}</span>
                 </div>
               ))}
               {files && files.length > 0 && (
@@ -156,7 +162,7 @@ export default function DetailRekam({ params }: { params: Promise<{ mod: string;
                       <FileText size={12} style={{ color: "var(--gold-deep)", flexShrink: 0 }} />
                       <span style={{ flex: 1, fontSize: 12, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nama}</span>
                       <button className="btn btn-line btn-sm" onClick={() => setView({ url, nama })}>Preview</button>
-                      <a className="btn btn-navy btn-sm" href={url} target="_blank" rel="noreferrer" download><Download size={11} /></a>
+                      <button className="btn btn-navy btn-sm" onClick={() => void unduhDok(url, nama, (p) => toast("Gagal mengunduh", p, "warn"))}><Download size={11} /></button>
                     </div>
                   ))}
                 </div>
@@ -173,13 +179,17 @@ export default function DetailRekam({ params }: { params: Promise<{ mod: string;
         <div style={{ background: "var(--sur)", border: "1px solid var(--line)", borderRadius: 14, overflow: "hidden", display: "flex", flexDirection: "column", height: "calc(100vh - 260px)", minHeight: 420 }}>
           <div style={{ padding: "11px 15px", borderBottom: "1px solid var(--line)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <span className="mono" style={{ fontSize: 10, letterSpacing: ".12em", color: "var(--muted)" }}>DOKUMEN ASLI — {shownNama || "VAULT"}</span>
-            {shownUrl && <a className="btn btn-line btn-sm" href={shownUrl} target="_blank" rel="noreferrer"><Download size={11} /> Unduh</a>}
+            {shownUrl && <button className="btn btn-line btn-sm" onClick={() => void unduhDok(shownUrl, shownNama, (p) => toast("Gagal mengunduh", p, "warn"))}><Download size={11} /> Unduh</button>}
           </div>
           {!view && rec?.dok_hash && <div style={{ padding: "0 15px" }}><HashChip hash={rec.dok_hash} /></div>}
           {shownUrl ? (
-            isImg(shownUrl)
-              ? <div style={{ flex: 1, overflow: "auto", display: "grid", placeItems: "center", background: "#0A1830" }}><img src={shownUrl} alt="Dokumen" style={{ maxWidth: "100%" }} /></div>
-              : <iframe src={shownUrl} style={{ flex: 1, border: "none", background: "#fff" }} title="Dokumen rekam" />
+            signed === undefined
+              ? <div style={{ flex: 1, display: "grid", placeItems: "center", color: "var(--muted)", fontSize: 12.5 }}>Menyiapkan tautan aman…</div>
+              : signed === null
+                ? <div style={{ flex: 1, display: "grid", placeItems: "center", color: "var(--muted)", fontSize: 12.5, textAlign: "center", padding: 30 }}>Dokumen tak dapat dibuka — berkas tidak ditemukan atau Anda tak berhak mengaksesnya.</div>
+                : isImg(shownUrl)
+                  ? <div style={{ flex: 1, overflow: "auto", display: "grid", placeItems: "center", background: "#0A1830" }}><img src={signed} alt="Dokumen" style={{ maxWidth: "100%" }} /></div>
+                  : <iframe src={signed} style={{ flex: 1, border: "none", background: "#fff" }} title="Dokumen rekam" />
           ) : (
             <div style={{ flex: 1, display: "grid", placeItems: "center", color: "var(--muted)", fontSize: 12.5, textAlign: "center", padding: 30 }}>
               <div>

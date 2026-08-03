@@ -77,11 +77,13 @@ function CropPane({ src, onDone, onClose }: { src: string; onDone: (f: File) => 
   );
 }
 
-/* Avatar bulat: foto bila ada, inisial bila tidak — selaras palet navy/gold. */
+/* Avatar bulat: foto bila ada, inisial bila tidak — selaras palet navy/gold.
+ * onError → inisial: foto yang gagal dimuat (jaringan/objek hilang) tak boleh tampil ikon pecah. */
 function Ava({ e }: { e: Emp }) {
+  const [rusak, setRusak] = useState(false);
   const ini = e.n.split(/\s+/).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
-  return e.foto
-    ? <img src={e.foto} alt={e.n} style={{ width: 30, height: 30, borderRadius: "50%", objectFit: "cover", border: "1px solid var(--line)", flexShrink: 0 }} />
+  return e.foto && !rusak
+    ? <img src={e.foto} alt={e.n} onError={() => setRusak(true)} style={{ width: 30, height: 30, borderRadius: "50%", objectFit: "cover", border: "1px solid var(--line)", flexShrink: 0 }} />
     : <span style={{ width: 30, height: 30, borderRadius: "50%", display: "grid", placeItems: "center", flexShrink: 0, fontSize: 10.5, fontWeight: 700, color: "var(--gold-deep)", background: "rgba(176,138,62,.12)", border: "1px solid rgba(176,138,62,.3)" }}>{ini}</span>;
 }
 
@@ -166,6 +168,13 @@ export default function DatabaseKaryawan() {
   /* modal ekstraksi karyawan */
   const [exOpen, setExOpen] = useState(false);
   const [ex, setEx] = useState({ dok: "", nama: "", jk: "L", wn: "TKI", lok: "1", status: "PKWT", jab: "", masa: "" });
+  /* Masa kerja dipilih lewat picker bulan (bukan ketik) — hasilnya dikomposisi ke ex.masa
+   * dalam format tampil lama ("Sep 2026 – Agu 2028" / "Sejak Sep 2026"), nol perubahan hilir. */
+  const [exM, setExM] = useState({ m1: "", m2: "" });
+  const BLN_ID = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+  const blnCantik = (m: string) => { const [y, b] = m.split("-"); return m ? `${BLN_ID[+b - 1]} ${y}` : ""; };
+  const masaDari = (m: { m1: string; m2: string }, status: string) =>
+    !m.m1 ? "" : status === "PKWTT" ? `Sejak ${blnCantik(m.m1)}` : m.m2 ? `${blnCantik(m.m1)} – ${blnCantik(m.m2)}` : blnCantik(m.m1);
   const [exFile, setExFile] = useState<File | null>(null); // berkas sumber → diunggah saat Simpan
 
   /* Impor Excel karyawan LEWAT DROPZONE (template diunduh di Alat Legal). Deteksi .xlsx otomatis. */
@@ -193,6 +202,7 @@ export default function DatabaseKaryawan() {
     const guess = fn.replace(/\.[^.]+$/, "").replace(/^(PK[_ -]?)?(PKWTT?[_ -]?)?(KTP[_ -]?)?(Pengesahan[_ -]?)?(RPTKA[_ -]?)?/i, "").replace(/[_-]+/g, " ").trim();
     const isTKA = /rptka|imta|kitas/i.test(fn), isPKWTT = /pkwtt/i.test(fn);
     setEx({ dok: fn, nama: guess, jk: "L", wn: isTKA ? "TKA" : "TKI", lok: isTKA ? "0" : "1", status: isPKWTT ? "PKWTT" : "PKWT", jab: "", masa: "" });
+    setExM({ m1: "", m2: "" });
     setExOpen(true);
   });
 
@@ -215,6 +225,7 @@ export default function DatabaseKaryawan() {
       jk: vals.jk === "P" ? "P" : "L", wn: vals.wn === "TKA" ? "TKA" : "TKI",
       lok: vals.lok === "0" ? "0" : "1", status: vals.status === "PKWTT" ? "PKWTT" : "PKWT", masa: vals.masa || "",
     });
+    setExM({ m1: "", m2: "" });
     setExOpen(true);
   };
 
@@ -388,7 +399,13 @@ export default function DatabaseKaryawan() {
           <Field label="Status hubungan kerja"><select value={ex.status} onChange={(e) => setEx({ ...ex, status: e.target.value })}><option>PKWT</option><option>PKWTT</option></select></Field>
         </div>
         <Field label="Jabatan"><input value={ex.jab} placeholder="Jabatan sesuai perjanjian kerja" onChange={(e) => setEx({ ...ex, jab: e.target.value })} /></Field>
-        <Field label="Masa kerja / kontrak"><input value={ex.masa} placeholder="mis. Sep 2026 – Agu 2028 atau Sejak 2026" onChange={(e) => setEx({ ...ex, masa: e.target.value })} /></Field>
+        <Field label={ex.status === "PKWTT" ? "Mulai kerja (bulan)" : "Masa kontrak (bulan mulai – berakhir)"}>
+          <div style={{ display: "grid", gridTemplateColumns: ex.status === "PKWTT" ? "1fr" : "1fr 1fr", gap: 8 }}>
+            <input type="month" value={exM.m1} onChange={(e) => { const m = { ...exM, m1: e.target.value }; setExM(m); setEx({ ...ex, masa: masaDari(m, ex.status) }); }} />
+            {ex.status !== "PKWTT" && <input type="month" value={exM.m2} onChange={(e) => { const m = { ...exM, m2: e.target.value }; setExM(m); setEx({ ...ex, masa: masaDari(m, ex.status) }); }} />}
+          </div>
+          {!!ex.masa && <span className="sub" style={{ fontSize: 10.5, marginTop: 4, display: "block" }}>{exM.m1 ? `tersimpan: ${ex.masa}` : `AI membaca: “${ex.masa}” — pilih bulan untuk menggantinya`}</span>}
+        </Field>
         <div className="note">Hasil <b>ekstraksi AI dari dokumen terunggah</b> — koreksi bila perlu. Klasifikasi mengikuti kolom pelaporan tenaga kerja LKPM OSS-RBA (di luar Komisaris &amp; Direksi). TKA memicu validasi keterkaitan pengesahan RPTKA.</div>
       </Modal>
 

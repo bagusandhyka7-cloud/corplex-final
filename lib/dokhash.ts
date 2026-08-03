@@ -64,7 +64,7 @@ export async function hashRow(
   if (kind === "vqmsg") {
     const { data: row } = await sb.from("verification_queue").select("tenant_id,msgs").eq("id", id).maybeSingle();
     if (!row) return { ok: false, error: "Baris tidak ditemukan." };
-    if (!boleh(String(row.tenant_id))) return { ok: false, error: "Bukan dokumen perusahaan Anda." };
+    if (!boleh(String(row.tenant_id))) return { ok: false, error: "Baris tidak ditemukan." };
     const msgs = (row.msgs || []) as { dok_url?: string | null; dok_hash?: string | null }[];
     let n = 0;
     for (const m of msgs) {
@@ -83,7 +83,7 @@ export async function hashRow(
   const { data: row } = await sb.from(tabel).select("tenant_id,dok_url,dok_hash").eq("id", id).maybeSingle();
   if (!row) return { ok: false, error: "Baris tidak ditemukan." };
   const tenant = String(row.tenant_id);
-  if (!boleh(tenant)) return { ok: false, error: "Bukan dokumen perusahaan Anda." };
+  if (!boleh(tenant)) return { ok: false, error: "Baris tidak ditemukan." };
   /* Berkas dilepas dari rekam → hash ikut dikosongkan, jangan tinggalkan hash yatim yang
    * seolah masih menjamin sesuatu. Kolomnya hanya bisa ditulis service role (trigger). */
   if (!row.dok_url) {

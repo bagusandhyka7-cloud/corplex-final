@@ -44,6 +44,8 @@ import { limited, tooMany } from "@/lib/ratelimit";
  * → balasan bytes application/pdf. Alat lain tetap stub JSON. */
 export async function POST(req: NextRequest) {
   if (limited(req, "tools", 10)) return tooMany();
+  /* Cap ukuran: pdf-lib memuat seluruh berkas ke memori — tanpa batas, endpoint ini pintu DoS. */
+  if (Number(req.headers.get("content-length") || 0) > 60 * 1024 * 1024) return Response.json({ error: "Total berkas melebihi 60 MB." }, { status: 413 });
   const ct = req.headers.get("content-type") || "";
   if (!ct.includes("multipart/form-data")) {
     const { tool } = await req.json().catch(() => ({ tool: "?" })) as { tool?: string };

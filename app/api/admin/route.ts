@@ -68,6 +68,13 @@ export async function POST(req: NextRequest) {
       return Response.json({ ok: true, data: (data || []).map((t) => ({ ...t, users: by[String(t.id)] || [] })) });
     }
 
+    /* Kamus nama seluruh tenant (semua status) — resolusi nama PT di Konsol Advokat. */
+    if (op === "tenNames") {
+      const { data, error } = await sb.from("tenants").select("id,name");
+      if (error) throw error;
+      return Response.json({ ok: true, data });
+    }
+
     if (op === "listTenants") {
       const { data, error } = await sb.from("tenants")
         .select("id,name,sector,entity,tier,status,created_at,expires_at")

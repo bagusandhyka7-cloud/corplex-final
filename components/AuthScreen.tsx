@@ -63,6 +63,9 @@ export function AuthScreen() {
   const [kode, setKode] = useState("");
   const [invite, setInvite] = useState<{ tier: string; expiresIn: string; seats: number } | null>(null);
   const [akun, setAkun] = useState({ nama: "", jabatan: "", email: "", pw: "" });
+  /* Konfirmasi sandi — tanpa ini, salah ketik saat daftar baru ketahuan saat login gagal
+   * dan sandinya mustahil dipulihkan selain reset (kasus nyata tenant "01", 2026-08-03). */
+  const [pw2, setPw2] = useState("");
   const [pt, setPt] = useState({ nama: "", bidang: "", nib: "", npwp: "", alamat: "", provinsi: "", kota: "", email: "" });
   const [docs, setDocs] = useState<Record<string, File | null>>({ nib: null, akta: null, npwp: null });
   const [submitted, setSubmitted] = useState(false);
@@ -135,6 +138,7 @@ export function AuthScreen() {
     if (!akun.nama.trim()) { toast("Nama wajib diisi", "Lengkapi nama lengkap Anda.", "warn"); return; }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(akun.email)) { toast("Email tidak valid", "Periksa kembali format email.", "warn"); return; }
     if (akun.pw.length < 8) { toast("Kata sandi terlalu pendek", "Minimal 8 karakter.", "warn"); return; }
+    if (akun.pw !== pw2) { toast("Konfirmasi sandi tidak cocok", "Ketik ulang kata sandi yang sama persis di kedua kolom.", "warn"); return; }
     const cek = await api.auth.cekEmail(kode, akun.email);
     if (!cek.ok) {
       if (cek.error.code === "validation") { setEmailBentrok(cek.error.message); return; }
@@ -491,6 +495,14 @@ export function AuthScreen() {
                         <Lock size={15} style={{ position: "absolute", left: 13, top: "50%", transform: "translateY(-50%)", color: "rgba(206,218,238,.5)" }} />
                         <button type="button" className="cx-eye" onClick={() => setShowPw((s) => !s)} aria-label="Tampilkan sandi">{showPw ? <EyeOff size={16} /> : <Eye size={16} />}</button>
                       </div>
+                    </div>
+                    <div>
+                      <label className="cx-lbl">Ulangi password <i>*</i></label>
+                      <div style={{ position: "relative" }}>
+                        <input className="cx-in" style={{ paddingLeft: 40 }} type={showPw ? "text" : "password"} value={pw2} onChange={(e) => setPw2(e.target.value)} placeholder="Ketik ulang kata sandi" />
+                        <Lock size={15} style={{ position: "absolute", left: 13, top: "50%", transform: "translateY(-50%)", color: "rgba(206,218,238,.5)" }} />
+                      </div>
+                      {pw2 && akun.pw !== pw2 && <p style={{ margin: "6px 0 0", fontSize: 11.5, color: "#E8A0A0" }}>Belum sama dengan kata sandi di atas.</p>}
                     </div>
                     <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
                       <button className="cx-btn ghost" style={{ flex: "0 0 40%" }} onClick={() => setStep(0)}>← Kembali</button>

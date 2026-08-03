@@ -37,7 +37,9 @@ export async function POST(req: NextRequest) {
     /* Kepemilikan diperiksa di dalam hashRow — SEBELUM berkas diunduh. Tenant diambil dari DB,
      * bukan dari klaim klien. */
     const r = await hashRow(sb, kind as HashKind, id, { tenant: me.tenant_id, super: me.role === "super_admin" });
-    if (!r.ok) return Response.json({ error: r.error }, { status: r.error.startsWith("Bukan") ? 403 : 400 });
+    /* Jawaban seragam 400 "Baris tidak ditemukan." untuk baris-tak-ada MAUPUN milik tenant lain —
+     * pemisahan 400/403 dulu jadi oracle keberadaan id lintas tenant (pola /api/reset). */
+    if (!r.ok) return Response.json({ error: r.error }, { status: 400 });
     return Response.json({ ok: true, n: r.n });
   } catch (e) {
     console.error("[api/hash]", kind, id, e);

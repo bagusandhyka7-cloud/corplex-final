@@ -3,6 +3,7 @@ import React, { useEffect, useState, use } from "react";
 import { ArrowLeft, Download, Briefcase, GraduationCap, HeartPulse, ShieldAlert, FileText, CreditCard, Eye } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { downloadDoc, vaultUrl } from "@/lib/vault";
+import { urlDok, unduhDok } from "@/lib/dok";
 import { api, AttRow } from "@/lib/api";
 import { Chip, Field, Panel, Row, ViewHead, HashChip } from "@/components/ui";
 import { useRouter } from "next/navigation";
@@ -18,23 +19,32 @@ const umurDari = (iso?: string) => {
   return Math.floor((Date.now() - d.getTime()) / 31_557_600_000);
 };
 const tglID = (iso?: string) => iso ? new Date(iso).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" }) : "";
-/* Viewer dokumen dropdown — dipakai Administrasi & tiap baris SP. Sumber: URL Storage atau vault sesi. */
-const DocViewer = ({ url, name }: { url: string | null; name?: string }) => (
-  <div style={{ marginTop: 10, border: "1px solid var(--line)", borderRadius: 12, overflow: "hidden", height: 380, display: "flex", flexDirection: "column" }}>
-    <div style={{ padding: "8px 14px", borderBottom: "1px solid var(--line)", background: "var(--sur-2)" }}>
-      <span className="sub mono" style={{ fontSize: 10, letterSpacing: ".1em" }}>PREVIEW — {name || "DOKUMEN"}</span>
-    </div>
-    {url ? (
-      /\.(jpe?g|png|webp)(\?|$)/i.test(url) || /\.(jpe?g|png|webp)$/i.test(name || "")
-        ? <div style={{ flex: 1, overflow: "auto", display: "grid", placeItems: "center", background: "#0A1830" }}><img src={url} alt="Dokumen" style={{ maxWidth: "100%" }} /></div>
-        : <iframe src={url} style={{ flex: 1, border: "none", background: "#fff" }} title="Preview dokumen" />
-    ) : (
-      <div style={{ flex: 1, display: "grid", placeItems: "center", color: "var(--muted)", fontSize: 12.5, textAlign: "center", padding: 30 }}>
-        Berkas asli tidak tersedia untuk dipreview — belum ada unggahan tersimpan.<br />Unggah ulang dokumen untuk mengaktifkan preview.
+/* Viewer dokumen dropdown — dipakai Administrasi & tiap baris SP.
+ * URL tersimpan menunjuk BUCKET PRIVAT — dirender mentah, iframe hanya memuat JSON
+ * "Bucket not found". Wajib ditukar dulu jadi tautan bertanda tangan lewat lib/dok. */
+const DocViewer = ({ url, name }: { url: string | null; name?: string }) => {
+  const [signed, setSigned] = useState<string | null>(null);
+  const [siap, setSiap] = useState(false);
+  useEffect(() => { setSiap(false); void urlDok(url).then((s) => { setSigned(s); setSiap(true); }); }, [url]);
+  return (
+    <div style={{ marginTop: 10, border: "1px solid var(--line)", borderRadius: 12, overflow: "hidden", height: 380, display: "flex", flexDirection: "column" }}>
+      <div style={{ padding: "8px 14px", borderBottom: "1px solid var(--line)", background: "var(--sur-2)" }}>
+        <span className="sub mono" style={{ fontSize: 10, letterSpacing: ".1em" }}>PREVIEW — {name || "DOKUMEN"}</span>
       </div>
-    )}
-  </div>
-);
+      {!siap ? (
+        <div style={{ flex: 1, display: "grid", placeItems: "center", color: "var(--muted)", fontSize: 12.5 }}>Menyiapkan tautan aman…</div>
+      ) : signed ? (
+        /\.(jpe?g|png|webp)(\?|$)/i.test(url || "") || /\.(jpe?g|png|webp)$/i.test(name || "")
+          ? <div style={{ flex: 1, overflow: "auto", display: "grid", placeItems: "center", background: "#0A1830" }}><img src={signed} alt="Dokumen" style={{ maxWidth: "100%" }} /></div>
+          : <iframe src={signed} style={{ flex: 1, border: "none", background: "#fff" }} title="Preview dokumen" />
+      ) : (
+        <div style={{ flex: 1, display: "grid", placeItems: "center", color: "var(--muted)", fontSize: 12.5, textAlign: "center", padding: 30 }}>
+          Berkas asli tidak tersedia untuk dipreview — belum ada unggahan tersimpan, berkas hilang, atau Anda tak berhak mengaksesnya.<br />Unggah ulang dokumen untuk mengaktifkan preview.
+        </div>
+      )}
+    </div>
+  );
+};
 
 const Info = ({ l, v }: { l: string; v?: string | null }) => (
   <div>
@@ -46,7 +56,7 @@ const Info = ({ l, v }: { l: string; v?: string | null }) => (
 export default function EmployeeProfile({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
-  const { ten, toast, pushQueue, patchTen } = useStore();
+  const { ten, toast, pushQueue, patchTen, rekamVer } = useStore();
   const t = ten!;
 
   /* Baca store HIDUP — bukan snapshot: karyawan dimuat async dari Supabase, snapshot saat mount
@@ -63,7 +73,7 @@ export default function EmployeeProfile({ params }: { params: Promise<{ id: stri
     const eid = det?.id;
     if (!eid) return;
     void api.attendance.list(tid()).then((r) => { if (r.ok) setAttList(r.data.filter((a) => a.employee_id === eid)); });
-  }, [det?.id]);
+  }, [det?.id, rekamVer]); // rekamVer: kehadiran ditulis kursi lain langsung tampil (realtime attendance sudah di-subscribe store)
 
   const simpanAbsensi = async () => {
     if (!det?.id) { toast("Rekam belum tersimpan", "Karyawan ini belum ada di database.", "warn"); return; }
@@ -80,6 +90,7 @@ export default function EmployeeProfile({ params }: { params: Promise<{ id: stri
     setAttList((xs) => xs.filter((x) => x.id !== aid));
   };
 
+  const [fotoRusak, setFotoRusak] = useState(false);   // foto gagal dimuat → inisial, bukan ikon pecah
   const [dokOpen, setDokOpen] = useState(false);       // preview dropdown dokumen kerja
   const [spOpen, setSpOpen] = useState<string | null>(null); // id SP yang dipreview
   const [spRecs, setSpRecs] = useState<SpRow[]>([]);
@@ -91,7 +102,7 @@ export default function EmployeeProfile({ params }: { params: Promise<{ id: stri
       setSpRecs(r.data.filter((x) => x.module === "sp" && (x.data as { nama?: string }).nama === n)
         .map((x) => ({ id: x.id, dok_url: x.dok_url ?? null, dok_nama: x.dok_nama ?? null, ...(x.data as Omit<SpRow, "id" | "dok_url" | "dok_nama">) })));
     });
-  }, [det?.n]);
+  }, [det?.n, rekamVer]); // rekamVer: SP diterbitkan dari submenu/kursi lain langsung tampil
 
   if (!det) {
     return (
@@ -129,7 +140,7 @@ export default function EmployeeProfile({ params }: { params: Promise<{ id: stri
               display: "flex", alignItems: "center", justifyContent: "center",
               color: "var(--bg)", fontSize: "56px", fontWeight: "bold", fontFamily: "var(--mono)"
             }}>
-              {det.foto ? <img src={det.foto} alt={det.n} style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: 14 }} /> : inisial}
+              {det.foto && !fotoRusak ? <img src={det.foto} alt={det.n} onError={() => setFotoRusak(true)} style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: 14 }} /> : inisial}
             </div>
           </div>
 
@@ -236,7 +247,9 @@ export default function EmployeeProfile({ params }: { params: Promise<{ id: stri
                         tercatat pada jejak audit" padahal nol pencatatan. Kini akses benar-benar
                         ditulis sebagai rekam vault — pola sama dengan modul Aset & Merek. */}
                     <button className="btn btn-navy btn-sm" onClick={() => {
-                      downloadDoc(det.dok, t.name);
+                      /* Berkas nyata di Storage → unduh via signed URL; downloadDoc hanya untuk vault sesi. */
+                      if (det.dokUrl) void unduhDok(det.dokUrl, det.dok, (p) => toast("Gagal mengunduh", p, "warn"));
+                      else downloadDoc(det.dok, t.name);
                       void api.records.create(localStorage.getItem("corplex_tid") || "", "vault", {
                         dok: det.dok, alasan: `Unduh dokumen kerja — ${det.n}`, oleh: t.user,
                         waktu: new Date().toLocaleString("id-ID", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }),
@@ -265,7 +278,7 @@ export default function EmployeeProfile({ params }: { params: Promise<{ id: stri
                     right={<div style={{ display: "flex", gap: 8 }}>
                       <button className={`btn btn-sm ${spOpen === s.id ? "btn-gold" : "btn-line"}`} onClick={() => setSpOpen(spOpen === s.id ? null : s.id)}><Eye size={11} /> Preview</button>
                       <button className="btn btn-navy btn-sm" onClick={() => {
-                        if (s.dok_url) { const a = document.createElement("a"); a.href = s.dok_url; a.download = s.dok_nama || "SP"; a.target = "_blank"; a.click(); }
+                        if (s.dok_url) void unduhDok(s.dok_url, s.dok_nama || "SP", (p) => toast("Gagal mengunduh", p, "warn"));
                         else downloadDoc(`${s.tingkat}_${det.n}.pdf`, t.name);
                         toast("Unduhan dimulai", `${s.dok_nama || s.tingkat} · akses unduh tercatat pada jejak audit.`, "ok");
                       }}><Download size={11} /> Unduh</button></div>} />

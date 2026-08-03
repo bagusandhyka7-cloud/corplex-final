@@ -69,13 +69,22 @@ export const tr = (s: string, lang: string) => (lang === "en" && EN[s]) ? EN[s] 
 
 export function Sidebar({ open, onClose, isCollapsed }: { open: boolean; onClose: () => void; isCollapsed?: boolean }) {
   const { queueCount, logout, activeTab, setActiveTab, lang } = useStore();
-  const [shut, setShut] = useState<Record<string, boolean>>({}); // seksi tertutup; default semua terbuka
-  const [openMenus, setOpenMenus] = useState<Record<string, boolean>>({});
+  /* AKORDEON TUNGGAL: satu kunci untuk SEMUA dropdown (grup seksi & submenu) — hanya satu
+   * boleh terbuka, emas hanya di yang terbuka. Dua state terpisah dulu (shut + openMenus)
+   * membuat grup & submenu terbuka berbarengan dan emasnya jamak. */
+  const [openKey, setOpenKey] = useState<string | null>(null);
   const asideRef = useRef<HTMLElement>(null);
   const router = useRouter();
   const pathname = usePathname();
 
   const isActive = (v: ViewId) => pathname.startsWith(ROUTE[v]);
+
+  /* Berpindah halaman = sidebar merapikan diri: satu-satunya yang terbuka adalah wadah
+   * halaman aktif (grupnya, atau submenunya); sisanya menutup & warnanya kembali normal. */
+  useEffect(() => {
+    const act = NAV.find((n) => pathname.startsWith(ROUTE[n.v]));
+    setOpenKey(act ? (act.section || (act.subItems ? act.v : null)) : null);
+  }, [pathname]);
 
   // Group adjacent NAV items by section to respect the exact array order
   const groupedNav: { section: string; items: typeof NAV }[] = [];
@@ -110,28 +119,30 @@ export function Sidebar({ open, onClose, isCollapsed }: { open: boolean; onClose
       </div>
       {groupedNav.map((group, i) => {
         const sec = group.section;
-        const open = sec ? shut[sec] !== true : true; // standalone items are always open
+        const open = sec ? openKey === sec : true; // standalone items are always open
         return (
           <React.Fragment key={`${sec}-${i}`}>
             {sec && (
-              <button className={`sb-label sb-sec ${isCollapsed ? "!hidden" : ""}`} onClick={() => setShut((s) => ({ ...s, [sec]: open }))} aria-expanded={open}>
+              /* Emas HANYA untuk grup yang terbuka — satu emas di satu waktu. Grup halaman
+               * aktif otomatis terbuka saat navigasi, jadi jejak lokasi tetap terlihat. */
+              <button className={`sb-label sb-sec${open ? " act" : ""} ${isCollapsed ? "!hidden" : ""}`} onClick={() => setOpenKey(open ? null : sec)} aria-expanded={open}>
                 {SECTION_ICONS[sec]}
                 {tr(sec, lang)}
                 <ChevronDown size={13} className="sb-chev" style={{ transform: open ? "rotate(180deg)" : "none" }} />
               </button>
             )}
             <div className={`sb-drop${open || isCollapsed ? " open" : ""}`}>
-              <div className="sb-nav" style={sec ? undefined : { paddingLeft: 0 }}>
+              <div className={`sb-nav${sec && !isCollapsed ? " railed" : ""}`} style={sec ? undefined : { paddingLeft: 0 }}>
                 {group.items.map((n) => {
                   const hasSub = n.subItems && n.subItems.length > 0;
-                  const isMenuOpen = openMenus[n.v];
                   const active = isActive(n.v);
+                  const isMenuOpen = openKey === n.v; // akordeon: kunci yang sama dengan grup seksi
 
                   return (
                     <div key={n.v} className="w-full">
-                      <button className={`sb-it ${active && !hasSub ? "on" : ""} ${isCollapsed ? "!p-0 !h-10 !w-full !justify-center" : ""}`} onClick={() => {
+                      <button className={`sb-it ${active && !hasSub ? "on" : ""}${hasSub && isMenuOpen ? " act" : ""} ${isCollapsed ? "!p-0 !h-10 !w-full !justify-center" : ""}`} onClick={() => {
                         if (hasSub) {
-                          setOpenMenus(s => ({ ...s, [n.v]: !s[n.v] }));
+                          setOpenKey(isMenuOpen ? null : n.v);
                           return;
                         }
                         if (n.v === "logout" as any) {
@@ -147,17 +158,18 @@ export function Sidebar({ open, onClose, isCollapsed }: { open: boolean; onClose
                         <span className={isCollapsed ? "!hidden" : ""}>{tr(n.label, lang)}</span>
                         {n.v === "lawyer" && !isCollapsed ? <span className="bdg">{queueCount}</span> : null}
                         {hasSub && !isCollapsed && (
-                          <ChevronDown size={14} className="ml-auto transition-transform duration-200" style={{ transform: isMenuOpen ? "rotate(180deg)" : "none", color: "var(--txt2)" }} />
+                          <ChevronDown size={14} className="ml-auto sb-chev" style={{ transform: isMenuOpen ? "rotate(180deg)" : "none" }} />
                         )}
                       </button>
                       
+                      {/* Submenu memakai mekanisme .sb-drop yang sama dengan grup seksi — satu bahasa animasi. */}
                       {hasSub && !isCollapsed && (
-                        <div className="overflow-hidden transition-all duration-300 ease-in-out" style={{ maxHeight: isMenuOpen ? "300px" : "0", opacity: isMenuOpen ? 1 : 0 }}>
-                          <div className="pt-1 pb-2 flex flex-col gap-1">
+                        <div className={`sb-drop${isMenuOpen ? " open" : ""}`}>
+                          <div className="sb-nav sb-subrail pt-1 pb-2" style={{ gap: 4 }}>
                             {n.subItems!.map(sub => {
                               const isSubActive = active && activeTab === sub.tab;
                               return (
-                                <button key={sub.label} className={`sb-it sub-it ${isSubActive ? "on" : ""}`} style={{ marginLeft: "20px", paddingLeft: "15px", width: "calc(100% - 20px)", fontSize: "13px", minHeight: "36px", color: isSubActive ? "var(--gold-bright)" : "var(--txt2)" }} onClick={() => {
+                                <button key={sub.label} className={`sb-it sub-it ${isSubActive ? "on" : ""}`} style={{ fontSize: "13px", minHeight: "36px", color: isSubActive ? "var(--gold-bright)" : "var(--txt2)" }} onClick={() => {
                                   router.push(ROUTE[n.v]);
                                   setActiveTab(sub.tab);
                                   onClose();

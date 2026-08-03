@@ -5,7 +5,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useStore } from "@/lib/store";
-import { idOf, RecRow, SPECS, stripId, withId } from "@/lib/records";
+import { idOf, ISO_RE, RecRow, SPECS, stripId, withId } from "@/lib/records";
 import { askConfirm, Field, Modal } from "@/components/ui";
 
 const tidNow = () => localStorage.getItem("corplex_tid") || "";
@@ -73,6 +73,11 @@ export function RecordModal({ mod, open, editRow, tenantName, onClose, onDone, t
             <label>{f.l}</label>
             {f.opts
               ? <select value={v[f.k] || f.opts[0]} onChange={(e) => setV({ ...v, [f.k]: e.target.value })}>{f.opts.map((o) => <option key={o}>{o}</option>)}</select>
+              : f.date ? (<>
+                  {/* Picker kalender — nilai LAMA berformat bebas tetap dipertahankan bila picker tak disentuh */}
+                  <input type="date" value={ISO_RE.test(v[f.k] || "") ? v[f.k] : ""} onChange={(e) => setV({ ...v, [f.k]: e.target.value })} />
+                  {!!(v[f.k] && !ISO_RE.test(v[f.k])) && <span className="sub" style={{ fontSize: 10.5, marginTop: 4, display: "block" }}>tersimpan: “{v[f.k]}” — pilih tanggal untuk menggantinya</span>}
+                </>)
               : <input value={v[f.k] || ""} placeholder={f.ph} onChange={(e) => setV({ ...v, [f.k]: e.target.value })} />}
           </div>
         ))}

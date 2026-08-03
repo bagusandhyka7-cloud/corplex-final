@@ -64,3 +64,23 @@ const tenantEv = (corpev: unknown[]) => ({ lic: [], agr: [], emp: [], corpev } a
 }
 
 console.log("jaga.test.ts — semua assert lolos");
+
+/* Perjanjian bertanggal cantik ("31 Jul 2028") WAJIB menghasilkan alarm — dulu sisaHari
+ * menolak non-ISO sehingga alarm perjanjian tak pernah bunyi. */
+{
+  const akhirDekat = new Date(Date.now() + 30 * 86_400_000).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
+  const t = tenant([]); (t as { agr: unknown[] }).agr = [{ n: "PJ Vendor", akhir: akhirDekat }];
+  assert.equal(tenggatJaga(t).filter((x) => x.v === "agreement").length, 1, "agr tanggal cantik → alarm");
+}
+
+/* Polis & HKI kini ikut fungsi JAGA — dulu tak pernah disentuh: polis kedaluwarsa
+ * berstatus AKTIF dan merek habis perlindungan lolos tanpa pengingat. */
+{
+  const t = tenant([]);
+  (t as unknown as { asr: { pol: unknown[] } }).asr = { pol: [["PAR Pabrik", "", "", "", "", "", `18 ${["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agu","Sep","Okt","Nov","Des"][new Date(Date.now()+30*86_400_000).getMonth()]} ${new Date(Date.now()+30*86_400_000).getFullYear()}`, "AKTIF"]] };
+  (t as unknown as { hki: unknown[] }).hki = [["Merek CONTOH", "", "", "", 0, hariDepan(100), null, ["c-ver","TERDAFTAR"]]];
+  const r = tenggatJaga(t);
+  assert.equal(r.filter((x) => x.v === "asuransi").length, 1, "polis 30 hari lagi → alarm");
+  assert.equal(r.filter((x) => x.v === "asset").length, 1, "HKI 100 hari lagi (≤180) → alarm");
+  assert.equal(tenggatJaga(tenant([])).length, 0, "tenant kosong tetap senyap");
+}
