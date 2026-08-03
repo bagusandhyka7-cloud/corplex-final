@@ -10,7 +10,7 @@ const mono = IBM_Plex_Mono({ subsets: ["latin"], variable: "--font-mono", weight
 export const metadata: Metadata = {
   title: "Corplex — Rekam Hukum Hidup",
   description: "Legal Due Diligence perusahaan Anda, selalu siap. CORPLEX by MRWP Law Firm.",
-  icons: { icon: "/logo-corplex.svg" },
+  icons: { icon: "/logo-final.png" },
   openGraph: {
     title: "Corplex — Rekam Hukum Hidup",
     description: "Legal Due Diligence perusahaan Anda, selalu siap. CORPLEX by MRWP Law Firm.",

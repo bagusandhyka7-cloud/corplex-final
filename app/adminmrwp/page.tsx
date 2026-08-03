@@ -134,7 +134,7 @@ function AdminLogin({ onOk }: { onOk: () => void }) {
       <div className="am-card">
         {/* ZONA ATAS — identitas, warna lebih terang + cahaya bergerak */}
         <div className="am-top">
-          <img src="/logo-mrwp.svg" alt="MRWP" style={{ width: 54, height: 54, objectFit: "contain", margin: "0 auto 14px", display: "block" }} />
+          <img src="/logo-final.png" alt="MRWP" style={{ width: 54, height: 54, objectFit: "contain", margin: "0 auto 14px", display: "block" }} />
           <h2 style={{ fontFamily: "var(--serif)", color: "#fff", fontSize: 23, margin: 0, letterSpacing: "-.01em" }}>Panel MRWP</h2>
           <span style={{ fontFamily: "var(--mono)", fontSize: 8.5, letterSpacing: ".28em", color: "#D9BC80", display: "block", marginTop: 9 }}>KHUSUS STAF · SUPER ADMIN</span>
         </div>
@@ -520,7 +520,7 @@ function AdminInner() {
       {/* sidebar */}
       <aside style={S.side}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "4px 10px 16px" }}>
-          <img src="/logo-mrwp.svg" alt="MRWP" style={{ width: 36, height: 36, objectFit: "contain" }} />
+          <img src="/logo-final.png" alt="MRWP" style={{ width: 36, height: 36, objectFit: "contain" }} />
           <div>
             <b style={{ color: "#fff", fontFamily: "var(--serif)", fontSize: 15, display: "block", lineHeight: 1 }}>PANEL MRWP</b>
             <span style={{ fontFamily: "var(--mono)", fontSize: 8, letterSpacing: ".18em", color: "var(--gold-deep)" }}>SUPER ADMIN · RAHASIA</span>

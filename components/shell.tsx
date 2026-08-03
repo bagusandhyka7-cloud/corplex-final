@@ -12,12 +12,9 @@ import { lblJaga, tenggatJaga } from "@/lib/jaga";
 import { ROUTE } from "@/lib/routes";
 import { useRouter, usePathname } from "next/navigation";
 
-import logoCorplex from "./logo-corplex.svg";
-
-/* Logo Corplex sendiri (bukan phoenix MRWP — itu logo firma, tetap dipakai di konteks MRWP).
- * Mark digambar rapat tanpa margin, jadi tak perlu trik scale-up seperti phoenix autotrace. */
+/* Logo final Corplex (public/logo-final.png) — dipakai seragam di seluruh aplikasi. */
 const BrandMark = ({ size, className = "" }: { size?: number, className?: string }) => (
-  <img src={(logoCorplex as any).src || logoCorplex} alt="Logo Corplex" className={`object-contain ${className}`} style={size ? { width: size, height: size } : undefined} />
+  <img src="/logo-final.png" alt="Logo Corplex" className={`object-contain ${className}`} style={size ? { width: size, height: size } : undefined} />
 );
 
 /* ===== SIDEBAR ===== */

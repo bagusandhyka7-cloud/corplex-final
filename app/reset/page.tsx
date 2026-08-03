@@ -60,7 +60,7 @@ export default function ResetPage() {
         .rs-lbl{display:block;text-align:left;font-size:11px;letter-spacing:.12em;color:#8FA0BC;margin:0 0 6px}
       `}</style>
       <div className="rs-card">
-        <img src="/logo-mrwp.svg" alt="MRWP" style={{ width: 48, height: 48, objectFit: "contain", margin: "0 auto 14px", display: "block" }} />
+        <img src="/logo-final.png" alt="MRWP" style={{ width: 48, height: 48, objectFit: "contain", margin: "0 auto 14px", display: "block" }} />
         <h2 style={{ fontFamily: "var(--serif)", color: "#fff", fontSize: 21, margin: 0 }}>Setel Ulang Kata Sandi</h2>
 
         {siap === "tunggu" && <p style={{ color: "#8FA0BC", fontSize: 13, marginTop: 18 }}>Memeriksa tautan…</p>}
