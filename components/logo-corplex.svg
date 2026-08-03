@@ -1,10 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <!-- Corplex — "Simpul Terkunci": C monoline = riwayat hukum yang memeluk; pin = satu
-       peristiwa tercatat, sekaligus lubang kunci vault dokumen. Emas tunggal di navy.
-       Lingkaran C berpusat tepat di (256,256); pin simetris pada sumbu tengah. -->
-  <g fill="none" stroke="#C9A763" stroke-linecap="round">
-    <path d="M 348.4 374.2 A 150 150 0 1 1 348.4 137.8" stroke-width="40"/>
-    <circle cx="256" cy="225" r="46" stroke-width="38"/>
-    <line x1="256" y1="271" x2="256" y2="335" stroke-width="38"/>
+  <!-- Corplex — "Sayap Bertahap", versi sidebar: dibungkus squircle navy lebih terang +
+       garis emas tipis supaya tampak sebagai lencana di atas latar sidebar yang sama gelap.
+       Faset berbagi garis (slope -0.75), emas ramp phoenix: keputusan → akta → sah. -->
+  <rect x="4" y="4" width="504" height="504" rx="116" fill="#10213D" stroke="#C9A763" stroke-width="8"/>
+  <g transform="translate(108,45) scale(0.78)">
+    <polygon points="340,40 40,265 85,360 340,169" fill="#F7E48F"/>
+    <polygon points="85,360 270,221 270,337 125,446" fill="#EDCB6E"/>
+    <polygon points="125,446 205,386 205,458 150,500" fill="#D4A94F"/>
   </g>
 </svg>

@@ -1,9 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <!-- Versi favicon/ikon aplikasi: squircle navy + mark emas (lihat components/logo-corplex.svg). -->
+  <!-- Versi favicon: squircle navy, mark diperbesar (0.92) supaya jelas di tab 16px. -->
   <rect width="512" height="512" rx="118" fill="#091124"/>
-  <g fill="none" stroke="#C9A763" stroke-linecap="round" transform="translate(66,66) scale(0.742)">
-    <path d="M 348.4 374.2 A 150 150 0 1 1 348.4 137.8" stroke-width="40"/>
-    <circle cx="256" cy="225" r="46" stroke-width="38"/>
-    <line x1="256" y1="271" x2="256" y2="335" stroke-width="38"/>
+  <g transform="translate(81,8) scale(0.92)">
+    <polygon points="340,40 40,265 85,360 340,169" fill="#F7E48F"/>
+    <polygon points="85,360 270,221 270,337 125,446" fill="#EDCB6E"/>
+    <polygon points="125,446 205,386 205,458 150,500" fill="#D4A94F"/>
   </g>
 </svg>
